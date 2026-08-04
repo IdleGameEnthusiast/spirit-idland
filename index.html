@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spirit Idland - Erste Spielversion</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="sky-glow"></div>
+  <div class="grain"></div>
+
+  <header class="topbar">
+    <div>
+      <h1>Spirit Idland</h1>
+      <p id="topSubtitle">Kooperatives Idle-Prototyping im Geister-Stil</p>
+    </div>
+    <div class="topbar-controls">
+      <button id="languageToggleBtn" class="small-btn lang-btn">English</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel metrics">
+      <h2 id="metricsTitle">Kernwerte</h2>
+      <div class="metric-grid">
+        <article>
+          <h3 id="energyLabel">Energie</h3>
+          <p id="energyValue" class="value">0</p>
+          <small id="energyRate">0/s</small>
+        </article>
+        <article>
+          <h3 id="fearLabel">Furcht</h3>
+          <p id="fearValue" class="value">0</p>
+          <small id="fearRate">0/s</small>
+        </article>
+      </div>
+      <h4 id="invaderTrackTitle">Invasorenphasen</h4>
+      <div class="invader-phase-cards">
+        <article class="invader-phase-card">
+          <strong id="ravageLabel">Verwuesten:</strong>
+          <span id="ravageArea">-</span>
+        </article>
+        <article class="invader-phase-card">
+          <strong id="buildLabel">Bauen:</strong>
+          <span id="buildArea">-</span>
+        </article>
+        <article class="invader-phase-card">
+          <strong id="discoverLabel">Entdecken:</strong>
+          <span id="discoverArea">-</span>
+        </article>
+      </div>
+      <h2 id="mapTitle">Insel-Kampfkarte</h2>
+      <small id="mapPlanHint" class="action-info">Ein fester Inselplan mit 8 Gebieten (Platzhalter fuer spaetere Effekte).</small>
+      <div id="mapGrid" class="map-grid"></div>
+    </section>
+
+    <section class="panel actions">
+      <h2 id="cardsTitle">Geisterkarten</h2>
+      <h3 id="turnTitle">Rundenablauf</h3>
+      <small id="turnInfo" class="action-info">Waehle pro Runde genau eine Wachstumsoption. Die neuen Systeme sind vorerst Platzhalter.</small>
+      <div class="deck-row">
+        <span><strong id="turnLabel">Runde:</strong> <span id="turnNumber">1</span></span>
+        <span><strong id="growthChosenLabel">Wachstum:</strong> <span id="growthChosenValue">-</span></span>
+      </div>
+      <div id="growthOptions" class="growth-options"></div>
+      <button id="endTurnBtn" class="small-btn">Runde beenden</button>
+
+      <div class="deck-row">
+        <span><strong id="discardLabel">Ablage:</strong> <span id="discardCount">0</span></span>
+        <span><strong id="handLabel">Hand:</strong> <span id="handCount">0</span></span>
+      </div>
+      <div id="handCards" class="hand-cards"></div>
+      <small id="playHint" class="action-info"></small>
+      <div id="noFailHint" class="hint">Furcht ist zentral und wird spaeter als Waehrung fuer neue Zykluslogik genutzt.</div>
+    </section>
+
+    <section class="panel spirits">
+      <h2 id="spiritTitle">Geisterfokus (Phase 1)</h2>
+      <p><strong id="activeSpiritLabel">Aktiver Geist:</strong> <span id="spiritFixedName">Reissende Fluten im Sonnenlicht</span></p>
+      <small id="spiritPhaseHint" class="hint">Diese Version ist absichtlich auf einen Geist begrenzt, damit wir Mechaniken Schritt fuer Schritt aufbauen koennen.</small>
+      <p id="spiritTraits" class="hint"></p>
+    </section>
+
+    <section class="panel progression">
+      <h2 id="progressionTitle">Fortschritt</h2>
+      <ul class="stats-list">
+        <li><strong>Aktiver Geist:</strong> <span id="activeSpiritName">-</span></li>
+        <li><strong>Laufzeit:</strong> <span id="runTime">0m</span></li>
+        <li><strong>Wachstumsstufe:</strong> <span id="growthLevel">0</span></li>
+        <li><strong>Freigeschaltete Geister:</strong> <span id="spiritsUnlocked">1</span></li>
+      </ul>
+      <div id="milestoneNotice" class="notice"></div>
+    </section>
+
+    <section class="panel log">
+      <h2 id="logTitle">Spielprotokoll</h2>
+      <ol id="eventLog"></ol>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-controls">
+      <button id="manualSaveBtn" class="small-btn">Jetzt speichern</button>
+      <button id="wipeSaveBtn" class="small-btn danger-btn">Spielstand loeschen</button>
+    </div>
+    <small id="autosaveHint">Autosave alle 10s. Offline-Fortschritt wird bei Rueckkehr angewendet.</small>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
