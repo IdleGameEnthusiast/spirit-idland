@@ -2,11 +2,12 @@
 
 ## Intent
 
-Define the canonical save shape used by the current browser build.
+Define the canonical save shape for the round-based redesign.
 
 ## Rules
 
-- Field names in this document match the live implementation.
+- Field names in this document are the target shape; the live implementation has not been
+  migrated to it yet (see [index.md](./index.md)).
 - Save files must carry `schemaVersion`.
 - New fields must normalize safely when older saves are loaded.
 
@@ -14,41 +15,37 @@ Define the canonical save shape used by the current browser build.
 
 ```json
 {
-  "schemaVersion": "1.5.0",
+  "schemaVersion": "3.0.0",
   "time": {
     "totalSeconds": 0,
     "lastTickUnixMs": 0,
     "lastSaveUnixMs": 0
   },
-  "resources": {
-    "energy": 20,
-    "fear": 0
-  },
-  "rates": {
-    "energyPerSecond": 0,
-    "fearPerSecond": 0
+  "meta": {
+    "fear": 0,
+    "totalRoundsPlayed": 0,
+    "bestRoundReached": 0
   },
   "spirit": {
     "activeSpiritId": "core_spirit_01",
-    "unlockedSpiritIds": ["core_spirit_01"],
-    "growthLevel": 0
+    "unlockedSpiritIds": ["core_spirit_01"]
   },
-  "actions": {
-    "charges": 1,
-    "maxCharges": 3,
-    "nextChargeInSeconds": 7,
-    "intervalSeconds": 7
+  "upgrades": {
+    "purchased": {}
   },
   "ui": {
     "language": "de",
-    "defeatFx": null
+    "defeatFx": null,
+    "selectedLand": null
   },
-  "turn": {
+  "round": {
     "number": 1,
-    "selectedGrowthOption": "",
-    "powerCardsGained": 0,
-    "presencesPlaced": 0,
-    "powerCardsPlayed": 0
+    "status": "running",
+    "elapsedSeconds": 0,
+    "blight": 0,
+    "blightThreshold": 10,
+    "waveTimerRemaining": 8,
+    "wavesResolved": 0
   },
   "invader": {
     "ravage": null,
@@ -56,123 +53,145 @@ Define the canonical save shape used by the current browser build.
     "explore": "mountains"
   },
   "invaders": {
-    "mountains": { "explorers": 0, "towns": 0, "cities": 0 },
-    "desert": { "explorers": 0, "towns": 0, "cities": 0 },
-    "jungle": { "explorers": 0, "towns": 0, "cities": 0 },
-    "wetlands": { "explorers": 0, "towns": 0, "cities": 0 }
+    "1": { "explorers": 0, "towns": 0, "cities": 0 },
+    "2": { "explorers": 0, "towns": 0, "cities": 0 },
+    "3": { "explorers": 0, "towns": 0, "cities": 0 },
+    "4": { "explorers": 0, "towns": 0, "cities": 0 },
+    "5": { "explorers": 0, "towns": 0, "cities": 0 },
+    "6": { "explorers": 0, "towns": 0, "cities": 0 },
+    "7": { "explorers": 0, "towns": 0, "cities": 0 },
+    "8": { "explorers": 0, "towns": 0, "cities": 0 }
   },
-  "invaderDamage": {
-    "mountains": { "explorers": 0, "towns": 0, "cities": 0 },
-    "desert": { "explorers": 0, "towns": 0, "cities": 0 },
-    "jungle": { "explorers": 0, "towns": 0, "cities": 0 },
-    "wetlands": { "explorers": 0, "towns": 0, "cities": 0 }
+  "invaderDamage": { "1": { "explorers": 0, "towns": 0, "cities": 0 }, "...": {}, "8": {} },
+  "dahan": { "1": 0, "...": 0, "8": 0 },
+  "abilities": {
+    "boon_of_vigor": { "cooldownRemaining": 0 },
+    "wash_away": { "cooldownRemaining": 0 },
+    "flash_floods": { "cooldownRemaining": 0 },
+    "rivers_bounty": { "cooldownRemaining": 0 }
   },
-  "dahan": {
+  "pendingAbilityTarget": null,
+  "resources": { "energy": 0 },
+  "essence": {
     "mountains": 0,
     "desert": 0,
     "jungle": 0,
     "wetlands": 0
-  },
-  "effects": {
-    "washAway": null,
-    "flashFloods": null,
-    "riversBounty": null
-  },
-  "progression": {
-    "totalEnergySpent": 0,
-    "totalFearGenerated": 0
-  },
-  "cards": {
-    "drawPile": [],
-    "discardPile": [],
-    "hand": [],
-    "maxHandSize": 4
-  },
-  "milestones": {
-    "unlockedCount": 0,
-    "lastNotice": ""
   },
   "_log": []
 }
 ```
 
-## Terrain Keys
+## Keys
 
-- `mountains`
-- `desert`
-- `jungle`
-- `wetlands`
+**Land IDs** are the strings `"1"` through `"8"`. They key `invaders`, `invaderDamage`,
+`dahan`, and `ui.selectedLand`. They are always strings: JSON object keys are strings, so a
+numeric id would stop matching itself after a save/load round-trip.
 
-## Effect Shapes
+**Terrain keys** are `mountains`, `desert`, `jungle`, `wetlands`. They key `essence` and the
+three `invader` track slots. The board registry mapping one to the other lives in
+[09-island-board.md](./09-island-board.md).
 
-### `effects.washAway`
+## Retired Fields
+
+Carried over from `2.0.0` but dropped here, since nothing in the round-based design reads
+them:
+
+- `presence`, `essenceProgress` — presence placement and its per-land Essence driver are
+  gone. `essence` itself (the four terrain pools) stays as an inert placeholder; only its
+  per-land generator is removed.
+- `tracks` (the two presence tracks) — replaced by the permanent `upgrades` shop.
+- `turn.*` — replaced by `round.*`.
+- `cards` (draw/discard/hand) — replaced by `abilities`.
+- `effects.*` (washAway, flashFloods, riversBounty, presencePlacement, ravageCounter) —
+  replaced by the single `pendingAbilityTarget`, since abilities take at most one click.
+- `progression` and `milestones` — folded into `meta`.
+
+## `round` Fields
+
+- `status` is `running` while a round is live, or `ended` once Blight has reached
+  `blightThreshold`. No other values are valid.
+- `blight` only increases during a round and is clamped to `blightThreshold` as its max.
+- `blightThreshold` is copied from the current permanent-upgrade baseline at round setup, so
+  a mid-round upgrade purchase (not currently possible; upgrades only apply between rounds)
+  can't retroactively change an already-running round's threshold.
+- `waveTimerRemaining` counts down in whole seconds; at 0 a wave resolves and it resets to
+  `WAVE_INTERVAL_SECONDS`.
+- `wavesResolved` is a display/debug counter, incremented once per wave.
+
+## `abilities` Shape
+
+Each key is an ability id (see [07-content-registry.md](./07-content-registry.md) for the
+current set). Each value:
 
 ```json
-{
-  "step": "choose-source",
-  "source": null,
-  "explorers": 0,
-  "towns": 0
-}
+{ "cooldownRemaining": 0 }
 ```
 
-Valid steps:
+`cooldownRemaining` is seconds, clamped to `[0, ability.cooldownSeconds]`. An ability is
+usable exactly when this is `0`.
 
-- `choose-source`
-- `choose-units`
-- `choose-destination`
-
-### `effects.flashFloods`
+## `pendingAbilityTarget`
 
 ```json
-{
-  "step": "choose-land",
-  "land": null
-}
+"flash_floods"
 ```
 
-Valid steps:
-
-- `choose-land`
-- `choose-target`
-
-### `effects.riversBounty`
-
-```json
-{
-  "step": "choose-destination",
-  "destination": null,
-  "moved": 0,
-  "pulledFrom": {
-    "mountains": 0,
-    "desert": 0,
-    "jungle": 0,
-    "wetlands": 0
-  }
-}
-```
-
-Valid steps:
-
-- `choose-destination`
-- `choose-sources`
+Either `null`, or the id of an ability currently waiting for a single land click. Set when
+an ability that needs a land target is triggered; cleared the instant that land is clicked
+and the effect applies. No other card/effect state exists in this design — there is nothing
+to resume mid-effect beyond "which ability is waiting for a click."
 
 ## Normalization Requirements
 
 - Unknown language values must normalize to `de` unless explicitly `en`.
-- All terrain maps must be filled for every terrain key.
-- Invader damage cannot exceed the number of living invaders of each type in that terrain.
-- All effect objects must be validated by step and terrain key and reset to `null` if invalid.
-- Older saves must be migrated to a single-spirit mode with `core_spirit_01` active.
+- `essence` and `invaders`/`invaderDamage`/`dahan` must be filled for every terrain key or
+  land ID respectively.
+- `round.status` must be `running` or `ended`, and normalizes to `running` otherwise.
+- `round.blight` is clamped to `[0, round.blightThreshold]`.
+- Invader damage cannot exceed the number of living invaders of each type in that land.
+- `pendingAbilityTarget` must be a known ability id or `null`; an unknown id normalizes to
+  `null`.
+- `abilities` must contain an entry for every ability id the active spirit defines; missing
+  entries normalize to `{ "cooldownRemaining": 0 }`.
+- `ui.selectedLand` normalizes to `null` if it is not a valid land ID.
+- Older saves must be migrated to single-spirit mode with `core_spirit_01` active.
+
+### Migration from 2.0.0
+
+A `2.0.0` save is turn-based and presence-driven — structurally incompatible with the
+round-based shape, not just a rekeying. Rather than attempt a field-by-field translation
+(there is no meaningful mapping from a presence track to an ability cooldown, or from a
+mid-turn card hand to a mid-round ability target), migration is a **hard reset**:
+
+- `meta.fear` starts at `0` — the old build's tracked `resources.fear` is not carried over,
+  since it was never spendable there and porting an arbitrary head start would distort the
+  new shop's early balance.
+- Everything else initializes from `createFreshRoundState()` as if no save existed.
+- The migration logs a one-line notice so a returning player understands why their old run
+  is gone, rather than assuming data loss is a bug.
+
+This is a one-time cost specific to this redesign, not a precedent — future schema bumps
+within the round-based shape should still migrate field by field where a mapping exists.
 
 ## Derived Runtime Behavior
 
-- `createFreshGameState()` adds the initial Dahan distribution after base state creation.
-- Loading a save may apply offline action recharge and elapsed run time before returning the normalized state.
-- `endTurn()` clears `invaderDamage` but does not remove living invaders or Dahan.
+- `createFreshMetaState()` runs once, on first-ever load with no save: `meta.fear = 0`, no
+  upgrades purchased, `round.number = 1`.
+- `createFreshRoundState()` runs at the start of every round (see
+  [02-core-loop.md](./02-core-loop.md) Round Sequence step 1), not just game start. It resets
+  `invaders`, `dahan`, `round.blight`, `round.waveTimerRemaining`, `invader`, and every
+  ability's `cooldownRemaining`, using the current permanent-upgrade baseline from
+  `upgrades.purchased`.
+- Loading a save does not simulate elapsed wall-clock time against a running round; a round
+  resumes exactly as saved. See the open question on offline behavior in
+  [index.md](./index.md).
+- `essence` remains present but has no writer in this design; it neither accrues nor resets.
 
 ## Acceptance
 
-- Save and load round-trip without losing map counts, damage carry, deck state, or pending effects.
+- Save and load round-trip without losing `meta`, `upgrades.purchased`, round state, board
+  state, or a pending ability target.
+- A `2.0.0` save loads via the hard-reset migration path and logs why.
 - New save fields can be added with defaults without breaking old saves.
 - All other docs in this folder reference these exact top-level fields.

@@ -2,105 +2,169 @@
 
 ## Intent
 
-Specify the implemented turn loop, action gating, invader advancement, and interactive card resolution.
+Specify the round loop: automatic invader/Dahan resolution on a live clock, player-triggered
+cooldown abilities, Blight as the round's only loss condition, and the Fear-funded permanent
+upgrade shop between rounds.
 
 ## Rules
 
-- Exactly one growth option must be chosen each turn before any card play or end turn.
-- A pending targeting effect locks other cards, growth changes, and end turn until resolved.
-- Card play spends one action charge and the card's energy cost.
-- End turn advances invader phases and clears all partial invader damage.
+- A round runs in real time. Nothing in it waits for player input; the clock keeps moving
+  regardless of whether the player acts.
+- Exactly one loss condition exists: Blight reaching `round.blightThreshold`. There is no
+  other way for a round to end.
+- Abilities are cooldown-gated, not resource-gated, for this slice. See
+  [Open Question: Energy](#open-question-energy).
+- Waves resolve automatically on a fixed interval; the player cannot speed them up, pause
+  them, or resolve them early.
+- Fear earned during a round is never lost, including when the round ends. It is the only
+  state that survives a round.
+- A new round resets the island (invaders, Dahan, Blight, wave timer) to the spirit's
+  current permanent-upgrade baseline. It does not reset Fear or purchased upgrades.
 
-## Core Resources
+## Round Sequence
 
-- Energy: spent to play cards, increased by some growth and card effects.
-- Fear: gained from defeating invader health/damage worth. Currently tracked and displayed only.
-- Action charges: regenerated over time, capped, and consumed on each card play attempt.
+1. **Round setup.** Reset `invaders`, `dahan`, `blight`, and the invader track to the
+   spirit's starting values, modified by any permanent upgrades purchased. Reset every
+   ability's cooldown to ready. Set `round.status` to `running` and `round.elapsedSeconds`
+   to 0.
+2. **Live resolution**, repeating until the round ends:
+   - The wave timer counts down. At 0, resolve one full wave (Ravage, then Build, then
+     Discover, then shift the invader track) and reset the timer. See
+     [Wave Resolution](#wave-resolution).
+   - At any moment an ability is off cooldown, the player may trigger it. See
+     [Abilities](#abilities).
+   - After every wave, check `round.blight >= round.blightThreshold`. If true, the round
+     ends immediately; the wave that pushed Blight over the line is the last one that
+     resolves.
+3. **Round end.** Set `round.status` to `ended`. Stop the wave timer and freeze all board
+   state. Log the round number reached and the Fear earned.
+4. **Upgrade shop.** The player spends any accumulated `meta.fear` on permanent upgrades.
+   See [Between Rounds](#between-rounds).
+5. **Next round.** Starting a new round returns to step 1. `round.number` increments;
+   `meta.bestRoundReached` updates if beaten.
 
-## Turn Sequence
+## Abilities
 
-1. Start turn with the current map, hand, action charges, and energy.
-2. Choose one growth option.
-3. Play zero or more cards while actions and energy allow.
-4. Resolve any multi-step targeting effect fully before any other play.
-5. End turn.
-6. Advance invader phases from Discover to Build to Ravage and draw a new Discover terrain.
-7. Reset `turn.powerCardsPlayed` and clear `invaderDamage` carry for the next turn.
+Abilities replace the turn-based prototype's cards. Each has an id, a cooldown, and an
+effect that either reinforces the island's defense (more Dahan, delayed Blight) or damages
+invaders directly.
 
-## Growth Rules
+- An ability is usable whenever `abilities.<id>.cooldownRemaining <= 0`.
+- Triggering an ability applies its effect immediately and resets
+  `abilities.<id>.cooldownRemaining` to its full cooldown.
+- Cooldowns tick down continuously in real time, independent of the wave timer.
+- If an ability's effect needs a land, it takes exactly one click on the board — there is no
+  multi-step targeting flow left in this design. An ability that needs no land resolves the
+  instant it is triggered.
+- The specific ability kit (which of the four River abilities do what, and their cooldown
+  values) is placeholder content — see [07-content-registry.md](./07-content-registry.md) —
+  and is expected to change during balancing.
 
-### `reclaim_and_power`
+### Open Question: Energy
 
-- Rebuild the deck by shuffling all draw, discard, and hand cards back into hand.
-- Gain 1 energy.
-- Increment `turn.powerCardsGained` by 1.
+The turn-based prototype gated card plays on an Energy resource fed by the presence tracks.
+Both are retired along with presence. For now, abilities cost only their cooldown. Whether a
+resource cost returns, and what would feed it without presence, is deliberately left open;
+treat `resources.energy` as parked, not deleted, until that's decided.
 
-### `double_presence`
+## Wave Resolution
 
-- Increment `turn.presencesPlaced` by 2.
-- No other map effect is implemented yet.
+A wave is the automatic unit of invader advancement: the same Ravage / Build / Discover
+sequence the turn-based prototype resolved on End Turn, now self-triggering on
+`WAVE_INTERVAL_SECONDS` instead of waiting for a click.
 
-### `power_and_presence`
+1. **Ravage** every land of the current `invader.ravage` terrain, lowest land id first.
+2. **Build** every land of the current `invader.build` terrain.
+3. **Discover** every eligible land of the current `invader.explore` terrain.
+4. **Shift the track**: old `build` becomes `ravage`, old `explore` becomes `build`, a new
+   `explore` is drawn.
+5. Reset the wave timer to `WAVE_INTERVAL_SECONDS`.
 
-- Increment `turn.powerCardsGained` by 1.
-- Increment `turn.presencesPlaced` by 1.
-- No card gain or presence placement effect is implemented yet.
+Build and Discover are unchanged from the turn-based design (see
+[09-island-board.md](./09-island-board.md) for the per-land rules); only their trigger
+changed, from a click to a timer.
 
-## Invader Loop
+### Ravage, Now Automatic
 
-- The active lands are `mountains`, `desert`, `jungle`, and `wetlands`.
-- `explore` is always drawn from a terrain not already used by `ravage` or `build` when possible.
-- On phase advance:
-	- the old `build` becomes `ravage`
-	- the old `explore` becomes `build`
-	- a new `explore` is drawn
-- The new `explore` land gains 1 explorer.
-- The new `build` land gains a town or city if invaders are already present there.
-	- If towns outnumber cities, add 1 city.
-	- Otherwise add 1 town.
+Within a land, resolution is still sequential:
+
+1. Invader damage is the sum of each unit's damage value: explorers 1, towns 2, cities 3.
+2. That damage destroys Dahan at 2 health each; damage below a full 2 is discarded.
+3. Surviving Dahan counterattack for 2 damage each — automatically now. The counterattack
+   pool is spent on the highest-tier invader type present first (cities, then towns, then
+   explorers), 1 damage at a time, until the pool or the invaders run out. Defeated invaders
+   award Fear through the normal defeat path.
+4. The land gains Blight. See [Blight](#blight).
+
+Because Dahan die before they swing, a land can still be wiped with no counterattack — that
+part of the old rule is unchanged. Only who assigns the counterattack changed.
+
+## Blight
+
+Blight is the round's clock. It only goes up; nothing in this slice removes it once gained.
+
+- `round.blight` is a single value for the whole round, not tracked per land in this pass.
+- Each land Ravaged this wave adds Blight:
+  - `+1` base, for any land with at least one invader that Ravages.
+  - `+1` more if that land held 0 Dahan going into the Ravage — an undefended land degrades
+    faster, which is Dahan's actual payoff for staying alive, beyond the counterattack.
+- The round ends the instant `round.blight` reaches `round.blightThreshold`.
+- These numbers are a first-pass placeholder; see
+  [04-economy-formulas.md](./04-economy-formulas.md) for the current constants and
+  [Implementation Microtasks](../tasks/implementation-microtasks.md) for balancing follow-up.
+
+## Fear
+
+Fear keeps its turn-based formula: defeating an invader awards `defeatedPower * 0.35` Fear,
+whether the defeat came from a counterattack or an ability. Unlike the turn-based build,
+Fear is no longer just tracked — it is the round's entire point:
+
+- Fear accumulates in `meta.fear`, a persistent value that survives every round, won or lost.
+- It is spent only between rounds, in the upgrade shop.
+- There is no in-round spend for Fear in this slice.
+
+## Between Rounds
+
+When `round.status` is `ended`, the player can spend `meta.fear` on permanent upgrades
+before starting the next round. Upgrades apply to the round-setup baseline in
+[Round Sequence](#round-sequence) step 1 — shorter ability cooldowns, more starting Dahan, a
+higher Blight threshold, or a new ability, depending on what's purchased. The exact
+catalogue is content, not loop mechanics; see [05-progression.md](./05-progression.md).
+
+Starting the next round is always available once in the shop; there's no requirement to
+spend all Fear first.
 
 ## Dahan Rules
 
-- Dahan are tracked separately from invaders.
-- 3 Dahan are added only on fresh game creation or save wipe restart.
-- No more than 2 of those newly added Dahan may be placed in the same terrain during that setup distribution.
-- Dahan are currently moved only by River's Bounty.
-
-## Interactive Card Flows
-
-### Wash Away
-
-1. Choose a source terrain with explorers and/or towns.
-2. Select up to 3 total explorers and towns.
-3. Choose a different destination terrain.
-4. Move the selected invaders and clear the pending effect.
-
-### Flash Floods
-
-1. Choose a terrain containing invaders.
-2. Choose one target type: explorers, towns, or cities.
-3. Deal 1 damage, or 2 damage if the terrain is wetlands.
-4. Apply defeat, fear gain, partial damage carry, and clear the pending effect.
-
-### River's Bounty
-
-1. Choose a destination terrain.
-2. Choose one or more source terrains.
-3. Each source click moves 1 Dahan into the destination, up to 2 total.
-4. Press Finish Gather to resolve the effect.
-5. If the destination then has at least 2 Dahan, add 1 Dahan there and gain 1 energy.
+- Dahan are tracked per land, same as the turn-based build.
+- Round setup seeds Dahan the same way fresh-game setup used to: a base count distributed
+  across lands, at most 2 per land, modified upward by any permanent Dahan upgrade
+  purchased.
+- Dahan counterattack automatically now; see [Ravage, Now Automatic](#ravage-now-automatic).
+- Dahan are not currently moved or reinforced by any ability. That is expected placeholder
+  content, not a design decision to leave them static forever.
 
 ## Damage Rules
+
+Unchanged from the turn-based build:
 
 - Explorers have 1 health and 1 damage.
 - Towns have 2 health and 2 damage.
 - Cities have 3 health and 3 damage.
 - Dahan have 2 health and 2 damage.
-- Partial invader damage is tracked per terrain and per invader type within the turn.
-- Partial invader damage is cleared on end turn.
+- Partial invader damage is tracked per land and per invader type, and persists across
+  waves within a round. There is no "end turn" to clear it against anymore — it only clears
+  on round reset.
 
 ## Acceptance
 
-- The user cannot play cards before choosing growth.
-- The user cannot play another card or end the turn while Wash Away, Flash Floods, or River's Bounty is pending.
-- Push, gather, and damage outcomes all produce visible map or log feedback.
+- A round's Blight only increases; nothing in this slice reduces it.
+- A round ends exactly when Blight reaches its threshold, never earlier or later.
+- Waves resolve on their own without any player input, at a fixed interval.
+- An ability is only usable when its cooldown has fully elapsed, and using it resets that
+  cooldown immediately.
+- Fear earned during a lost round is still spendable in the following shop.
+- A new round starts every board value (invaders, Dahan, Blight) from the current permanent
+  baseline, not from wherever the previous round left off.
+- Permanent upgrades purchased in the shop are still in effect after any number of further
+  rounds.

@@ -2,52 +2,72 @@
 
 ## Intent
 
-Document what progression exists now and what is only scaffolded for later.
+Document the permanent meta-progression loop: Fear as a persistent currency, the upgrade
+shop it funds, and what carries across rounds versus what resets.
 
 ## Rules
 
-- Only shipped progression behavior belongs in the implemented section.
-- Counter fields that currently exist without downstream payoff must be listed as placeholders.
-- Multi-run meta progression is not implemented yet.
+- Progression in this design happens entirely between rounds. Nothing purchased mid-round
+  exists, because the shop only opens once `round.status` is `ended`.
+- A permanent upgrade, once purchased, applies to every round from then on. There is no
+  respec and no way to lose a purchased upgrade short of a save wipe.
+- `meta.fear` is the only currency. There is no second meta-currency in this slice.
 
-## Implemented Progression
+## Meta State
 
-### Spirit Access
+### Fear
 
-- The build is locked to one spirit: `core_spirit_01`.
-- Save normalization forces single-spirit mode even when older data suggests otherwise.
+- `meta.fear` accumulates from every invader defeat, in every round, and is never reset by a
+  round ending — win or lose, the Fear earned stays.
+- It is spendable only in the between-round shop.
+- See [04-economy-formulas.md](./04-economy-formulas.md) for the defeat-to-Fear formula.
 
-### Run Tracking
+### Round Tracking
 
-- `progression.totalEnergySpent` increases whenever card energy is successfully spent.
-- `progression.totalFearGenerated` increases whenever fear is awarded from defeated invaders.
+- `meta.totalRoundsPlayed` increments every time a round ends.
+- `meta.bestRoundReached` updates whenever `round.number` at round-end exceeds it. This is
+  the run's headline score.
 
-### Turn Tracking
+### Permanent Upgrades
 
-- `turn.powerCardsPlayed` tracks how many cards have resolved this turn.
-- `turn.powerCardsGained` tracks growth choices that would grant a power card later.
-- `turn.presencesPlaced` tracks growth choices that would place presence later.
+- `upgrades.purchased` holds every upgrade bought, keyed by upgrade id, with whatever count
+  or tier that upgrade tracks (a flat unlock is `true`; a repeatable upgrade tracks its
+  purchased tier as a number).
+- Applied at round setup — see [Round Reset Formula](./04-economy-formulas.md#round-reset-formula).
 
-### Minimal Spirit Metrics
+### Placeholder Upgrade Catalogue
 
-- `spirit.growthLevel` exists and is displayed.
-- `milestones.unlockedCount` and `milestones.lastNotice` exist for future expansion.
+First-draft shop entries, for internal consistency while the loop is being built. Costs and
+magnitudes are not balanced yet.
+
+| Upgrade id | Effect | Repeatable |
+| --- | --- | --- |
+| `dahan_reinforcement` | +1 starting Dahan | Yes, stacking |
+| `blight_resilience` | +1 Blight threshold | Yes, stacking |
+| `swift_currents` | -5% to all ability cooldowns | Yes, stacking, diminishing |
+| `unlock_<ability_id>` | Unlocks a new ability for the ability bar | No, one-time |
+
+Costs scale with the tier already purchased so the shop stays a real choice instead of a
+flat checklist; the exact curve is a balancing task, not a loop mechanic.
 
 ## What Is Not Yet Progression
 
 - No additional spirit unlocks.
-- No legacy currency.
-- No reset loop.
-- No fear tier gameplay consequences beyond tracked fear value and display copy.
-- No presence track payoff from `presencesPlaced`.
-- No content unlocks tied to `powerCardsGained`.
+- No second meta-currency (a prestige layer above Fear, if one is ever wanted).
+- No content unlocks beyond the placeholder ability-unlock row above.
+- No mid-round progression of any kind — everything in-round resets at round setup.
 
 ## Current Design Constraint
 
-The prototype uses progression counters mainly as forward-compatible save fields so future work can add meaning without another schema reset.
+Every progression field is meant to be forward-compatible: `upgrades.purchased` can grow new
+keys without a schema change, and `meta` can grow new tracked totals the same way the
+turn-based build's `progression` object did.
 
 ## Acceptance
 
-- A reader can tell which progression systems are functional today.
-- Placeholder progression fields are documented so they are not mistaken for bugs.
-- Future progression work can extend the existing tracked totals rather than rename them.
+- A reader can tell which progression systems are functional today versus placeholder
+  content, per [Implementation Microtasks](../tasks/implementation-microtasks.md).
+- Fear earned in a round survives that round ending, regardless of outcome.
+- A purchased upgrade is still in effect after any number of further rounds, without being
+  re-purchased.
+- `meta.bestRoundReached` never decreases.
