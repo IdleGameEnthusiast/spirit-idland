@@ -332,10 +332,11 @@ function chipWaveMarkup(state, landId) {
 }
 
 // What every contested land wears: the Blight bar, which is what ends the round and so gets
-// the full width of the chip, and beside it a Dahan token that fills as its defenders near a
-// casualty - the same reading in a fraction of the space, so the two never compete. Both fill
-// continuously, so the fills themselves are written by patchLandMeters rather than baked in
-// here - a bar rebuilt ten times a second could never animate.
+// the full width of the chip, and beside it a Dahan token ringed by a clock that closes as
+// its defenders near a casualty - the same reading in a fraction of the space, so the two
+// never compete. Both fill continuously, so the fills themselves are written by
+// patchLandMeters rather than baked in here - a bar rebuilt ten times a second could never
+// animate.
 function chipMetersMarkup(state, landId) {
   if (state.pendingAbilityTarget) return "";
   const p = landPressure(state, landId);
@@ -345,8 +346,8 @@ function chipMetersMarkup(state, landId) {
   const dahanMark = p.dahan > 0
     ? `
       <span class="chip-dahan-mark" title="${t.dahanBarLabel}">
+        <span class="chip-dahan-ring" data-meter-land="${landId}" data-meter-kind="dahan"></span>
         ${tokenIcon("dahan")}
-        <span class="chip-dahan-fill" data-meter-land="${landId}" data-meter-kind="dahan">${tokenIcon("dahan")}</span>
       </span>
     `
     : "";
@@ -451,8 +452,13 @@ function patchLandMeters(state) {
   for (const el of dom.landChips.querySelectorAll("[data-meter-land]")) {
     const landId = el.getAttribute("data-meter-land");
     const p = landPressure(state, landId);
-    const value = el.getAttribute("data-meter-kind") === "dahan" ? p.dahanProgress : p.blightProgress;
-    el.style.width = `${Math.max(0, Math.min(100, value * 100))}%`;
+    const isDahan = el.getAttribute("data-meter-kind") === "dahan";
+    const value = Math.max(0, Math.min(1, isDahan ? p.dahanProgress : p.blightProgress));
+
+    // Two shapes, two dials: Blight is a bar and fills by width, the casualty clock is a
+    // conic ring and fills by the registered property its sweep is drawn from.
+    if (isDahan) el.style.setProperty("--dahan-progress", value);
+    else el.style.width = `${value * 100}%`;
   }
 
   for (const el of dom.landChips.querySelectorAll("[data-pressure-land]")) {

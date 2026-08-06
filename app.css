@@ -78,13 +78,6 @@ h3 {
   font-size: 1rem;
 }
 
-h4 {
-  margin: 0.55rem 0 0.25rem;
-  font-family: "Cinzel", "Times New Roman", serif;
-  font-size: 0.9rem;
-  color: var(--ink-1);
-}
-
 .topbar p {
   margin: 0.2rem 0 0;
   color: var(--ink-1);
@@ -133,9 +126,8 @@ h4 {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
 }
 
-/* The HUD spans the full width because nothing in it may need scrolling to: how close
-   Blight is to ending the round has to be readable at every moment. */
-.hud { grid-column: span 12; }
+/* The board leads the layout. The vitals used to span the full width above it, which is
+   exactly what pushed the island below the fold - they live on the map now. */
 .board { grid-column: span 8; }
 
 .rail {
@@ -146,34 +138,69 @@ h4 {
   align-content: start;
 }
 
-.hud-grid {
+/* The vitals, laid over the map's top edge. A scrim rather than a solid bar, so the island
+   reads as continuing underneath instead of being cropped by a header, and inert to the
+   pointer so the lands beneath stay clickable. Lands 7 and 8 sit at 15% from the top, well
+   clear of a strip this tall. */
+.board-hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.6rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem 0.75rem;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(4, 16, 23, 0.92) 0%,
+    rgba(4, 16, 23, 0.74) 60%,
+    transparent 100%
+  );
 }
 
-.hud-tile {
-  background: rgba(8, 30, 31, 0.55);
-  border: 1px solid rgba(247, 241, 222, 0.11);
-  border-radius: 10px;
-  padding: 0.6rem;
+.board-hud-tile {
+  min-width: 0;
 }
 
-.hud-tile h3 {
+.board-hud-tile h3 {
   margin: 0;
-  font-size: 0.68rem;
+  font-size: 0.56rem;
   font-weight: 700;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   font-family: "Manrope", "Segoe UI", sans-serif;
   color: var(--ink-1);
+  /* Five labels across a board that narrows with the viewport: clipping one is better than
+     letting it wrap and shove the number below the scrim. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.hud-tile small {
-  color: var(--ink-1);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
+/* A fraction of the old panel's 1.8rem. These are glanced at over a live board, not read. */
+.board-hud-tile .value {
+  font-size: 1.05rem;
+  line-height: 1.1;
+  margin: 0.04rem 0 0.14rem;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
 }
+
+.board-hud-tile small {
+  display: block;
+  font-size: 0.6rem;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board-hud .meter { height: 4px; }
+
+.board-hud .hud-dahan .value { color: var(--dahan-ink); }
 
 .value {
   font-size: 1.8rem;
@@ -620,9 +647,9 @@ button.reset {
 .chip-unit .tok { margin-right: -0.02em; }
 
 /* What a contested land wears. Blight is what ends the round, so it keeps the whole width of
-   the chip as a bar; the Dahan casualty clock rides beside it as a token barely taller than
-   the bar, filling left to right. Deliberately lopsided - two bars of equal weight read as
-   two equal threats, and only one of them is the loss condition.
+   the chip as a bar; the Dahan casualty clock rides beside it as a ring around a token,
+   taller than the bar but a sliver of its width. Deliberately lopsided - two bars of equal
+   weight read as two equal threats, and only one of them is the loss condition.
    Both are filled by patchLandMeters every frame, which is why the transition is short - a
    long one would lag behind its own value rather than smoothing it. */
 .chip-meters {
@@ -654,24 +681,47 @@ button.reset {
   background: linear-gradient(90deg, rgba(231, 103, 85, 0.75), #ff9d8a);
 }
 
-/* The token is drawn twice: a dim copy for the empty clock, and a lit copy clipped to the
-   progress width on top of it. Same width patch as a bar, so patchLandMeters does not care
-   which shape it is filling. */
+/* The casualty clock. The token itself stays fully lit and keeps the dark outline every
+   token wears - it is a Dahan standing there, not a gauge - and the clock is a red ring
+   drawn outside that outline, sweeping clockwise from twelve. One full circle is one dead
+   Dahan, which is exactly what resolveLandCombat does when dahanProgress crosses 1.
+   The earlier version filled the token itself left to right at 30% alpha, which meant the
+   empty clock - the state it sits in for most of a round - was an 8px glyph you could not
+   see against the terrain underneath. A ring reads at rest because its unfilled remainder
+   is drawn too. */
+@property --dahan-progress {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 .chip-dahan-mark {
   position: relative;
   flex: none;
-  width: 0.5rem;
-  height: 0.5rem;
-  color: rgba(242, 196, 90, 0.3);
+  display: grid;
+  place-items: center;
+  width: 0.92rem;
+  height: 0.92rem;
+  color: var(--dahan-ink);
 }
 
-.chip-dahan-fill {
+/* A conic sweep masked down to an annulus: the hole keeps the ring off the token, so the
+   wood colour inside is never tinted by the red outside. The hole is sized against the
+   token's drop-shadow rather than the 0.5rem glyph, so the ring starts where the dark
+   outline ends instead of sitting on top of it. Transitioning a conic-gradient is not
+   possible, but transitioning the registered property it is drawn from is - hence
+   @property above. */
+.chip-dahan-ring {
   position: absolute;
   inset: 0;
-  width: 0;
-  overflow: hidden;
-  color: #ffd98a;
-  transition: width 0.12s linear;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--accent-pressure) calc(var(--dahan-progress, 0) * 360deg),
+    rgba(3, 14, 20, 0.72) 0
+  );
+  -webkit-mask: radial-gradient(closest-side, transparent 0 66%, #000 68% 100%);
+  mask: radial-gradient(closest-side, transparent 0 66%, #000 68% 100%);
+  transition: --dahan-progress 0.12s linear;
 }
 
 .chip-dahan-mark .tok {
@@ -952,7 +1002,7 @@ button.reset {
   .chip-defeat,
   .chip-blight,
   .chip-meter-fill,
-  .chip-dahan-fill,
+  .chip-dahan-ring,
   .meter-fill,
   .ability-sweep { transition: none; animation: none; }
 
@@ -1010,9 +1060,17 @@ footer {
 }
 
 @media (max-width: 720px) {
-  /* Two tiles wide rather than four: the Blight meter has to stay wide enough to read as a
-     meter, and four across a phone reads as four numbers. */
-  .hud-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Stay one row. Wrapping to a second would push the strip down over lands 7 and 8, whose
+     chips sit only 15% from the top - on a phone that is the strip eating a quarter of the
+     island. So the row is shortened instead of widened: the secondary counts go, and the
+     values shrink. Labels clip to an ellipsis, which is affordable because the number and
+     its colour are what get glanced at; the label is read once. */
+  .board-hud {
+    gap: 0.3rem;
+    padding: 0.35rem 0.45rem 0.6rem;
   }
+
+  .board-hud-tile small { display: none; }
+
+  .board-hud-tile .value { font-size: 0.9rem; }
 }

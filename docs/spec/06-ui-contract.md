@@ -17,15 +17,21 @@ island board, and the between-round shop.
 
 ## Required Screen Sections
 
-1. Round HUD
+1. Round HUD — laid over the island's top edge, not in a panel of its own
+- Every vital is read against the board, so it sits on the board. A panel above the map put
+  the two halves of one judgement — how fast a land is losing, and how close Blight is to
+  ending the round — on separate screens, and made the player scroll between them
+- The strip must not take pointer events: the lands beneath it stay clickable
 - Round number, and best round reached
 - Blight meter: current value against `round.blightThreshold`, always visible, not hidden
   in a panel
 - Wave timer: seconds remaining until the next automatic wave
 - Dahan strike timer: seconds remaining until the next Dahan attack, shown separately from
   the wave timer because the two are separate clocks and will drift apart
-- Invader track: the Build and Discover terrains. There is no Ravage slot
 - Fear total (`meta.fear`)
+
+1b. Invader track — in the side rail
+- The Build and Discover terrains. There is no Ravage slot
 - Active spirit name and trait text
 
 2. Ability bar
@@ -44,9 +50,12 @@ island board, and the between-round shop.
   land, and a line naming the rate and the seconds to the next Blight. This is the primary
   read on the board — the fight is continuous, so a land's danger is a speed, not an event
 - On every land holding both invaders and Dahan: the **casualty clock**, `round.dahanProgress`
-  drawn as a Dahan token that fills rather than as a second bar, so a land about to stop
-  defending itself says so before it does. It is deliberately a fraction of the Blight bar's
-  size: two bars of equal weight read as two equal threats, and only Blight ends the round
+  drawn as a ring sweeping clockwise around a Dahan token rather than as a second bar, so a
+  land about to stop defending itself says so before it does. A closed circle is one dead
+  Dahan. It is deliberately a fraction of the Blight bar's size: two bars of equal weight
+  read as two equal threats, and only Blight ends the round. The token inside stays fully
+  lit and the ring's unfilled remainder is drawn, so the clock is legible at rest — an
+  empty clock that renders as nothing is the state a land sits in for most of a round
 - On a land the next wave will Build: a colour-coded banner naming the unit it will add. A
   land on the wave's list with nothing to build on wears a **quiet** variant of the same
   banner — neutral, not pressure-red. The loud frame means "this land gets worse"; wearing it

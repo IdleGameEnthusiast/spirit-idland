@@ -69,47 +69,45 @@
   </header>
 
   <main class="layout">
-    <!-- Round HUD: everything that decides whether the round is going badly, with no
-         panel to open first. -->
-    <section class="panel hud">
-      <div class="hud-grid">
-        <article class="hud-tile hud-blight">
-          <h3 id="blightLabel">Verderbnis</h3>
-          <p id="blightValue" class="value">0 / 10</p>
-          <div class="meter"><span id="blightFill" class="meter-fill"></span></div>
-        </article>
-        <article class="hud-tile hud-wave">
-          <h3 id="waveLabel">Naechste Welle</h3>
-          <p id="waveValue" class="value">10s</p>
-          <div class="meter"><span id="waveFill" class="meter-fill"></span></div>
-          <small><span id="dahanAttackLabel">Dahan-Angriff</span>: <span id="dahanAttackValue">-</span></small>
-        </article>
-        <article class="hud-tile hud-fear">
-          <h3 id="fearLabel">Furcht</h3>
-          <p id="fearValue" class="value">0</p>
-          <small><span id="waveCountLabel">Wellen</span>: <span id="waveCountValue">0</span></small>
-        </article>
-        <article class="hud-tile hud-round">
-          <h3 id="roundLabel">Runde</h3>
-          <p id="roundValue" class="value">1</p>
-          <small><span id="bestRoundLabel">Beste Runde</span>: <span id="bestRoundValue">0</span></small>
-        </article>
-      </div>
-
-      <h4 id="invaderTrackTitle">Invasorenleiste</h4>
-      <div class="track-strip">
-        <span class="track-slot-build"><strong id="buildLabel">Bauen:</strong> <span id="buildTerrain">-</span></span>
-        <span><strong id="discoverLabel">Entdecken:</strong> <span id="discoverTerrain">-</span></span>
-      </div>
-      <p id="spiritTraits" class="hint"></p>
-    </section>
-
     <section class="panel board">
       <h2 id="mapTitle">Die Insel</h2>
       <small id="mapPlanHint" class="action-info">Acht Gebiete, drei an der Kueste.</small>
       <div class="board-frame">
         <svg id="islandSvg" viewBox="0 0 760 500" role="group" aria-label="Inselkarte"></svg>
         <div id="landChips" class="board-overlay"></div>
+
+        <!-- The round's vitals, laid over the map's top edge instead of in a panel above it.
+             Every number here moves continuously and is read against the board itself - how
+             fast a land is losing only means something next to how close Blight is to ending
+             the round - so putting them on separate screens made the player scroll between
+             two halves of one thought. The strip takes no pointer events, so the lands
+             underneath it stay clickable. -->
+        <div class="board-hud">
+          <div class="board-hud-tile hud-blight">
+            <h3 id="blightLabel">Verderbnis</h3>
+            <p id="blightValue" class="value">0 / 10</p>
+            <div class="meter"><span id="blightFill" class="meter-fill"></span></div>
+          </div>
+          <div class="board-hud-tile hud-wave">
+            <h3 id="waveLabel">Naechste Welle</h3>
+            <p id="waveValue" class="value">10s</p>
+            <div class="meter"><span id="waveFill" class="meter-fill"></span></div>
+          </div>
+          <div class="board-hud-tile hud-dahan">
+            <h3 id="dahanAttackLabel">Dahan-Angriff</h3>
+            <p id="dahanAttackValue" class="value">-</p>
+          </div>
+          <div class="board-hud-tile hud-fear">
+            <h3 id="fearLabel">Furcht</h3>
+            <p id="fearValue" class="value">0</p>
+            <small><span id="waveCountLabel">Wellen</span>: <span id="waveCountValue">0</span></small>
+          </div>
+          <div class="board-hud-tile hud-round">
+            <h3 id="roundLabel">Runde</h3>
+            <p id="roundValue" class="value">1</p>
+            <small><span id="bestRoundLabel">Beste Runde</span>: <span id="bestRoundValue">0</span></small>
+          </div>
+        </div>
       </div>
       <div id="landDetail" class="land-detail"></div>
     </section>
@@ -117,6 +115,18 @@
     <!-- The rail sits beside the board rather than under it, so the shop can appear the
          instant a round ends without pushing the frozen board off screen. -->
     <div class="rail">
+      <!-- What the next wave brings, and who is bringing it. Beside the board rather than
+           above it: with the vitals now on the map, nothing needs the full-width row that
+           used to push the island below the fold. -->
+      <section class="panel track">
+        <h2 id="invaderTrackTitle">Invasorenleiste</h2>
+        <div class="track-strip">
+          <span class="track-slot-build"><strong id="buildLabel">Bauen:</strong> <span id="buildTerrain">-</span></span>
+          <span><strong id="discoverLabel">Entdecken:</strong> <span id="discoverTerrain">-</span></span>
+        </div>
+        <p id="spiritTraits" class="hint"></p>
+      </section>
+
       <section class="panel abilities">
         <h2 id="abilitiesTitle">Faehigkeiten</h2>
         <small id="abilitiesHint" class="action-info"></small>
