@@ -402,12 +402,11 @@ const I18N = {
     langToggle: "English",
 
     hudTitle: "Runde",
-    roundLabel: "Runde",
+    roundLabel: "Welle",
     bestRoundLabel: "Beste Runde",
     blightLabel: "Verderbnis",
     waveLabel: "Naechste Welle",
     fearLabel: "Furcht",
-    waveCountLabel: "Wellen",
     secondsShort: "{seconds}s",
     // The two readings the wave tile has that are not a countdown: a stopped clock, and a
     // wave standing due behind the gate waiting to be called.
@@ -585,12 +584,11 @@ const I18N = {
     langToggle: "Deutsch",
 
     hudTitle: "Round",
-    roundLabel: "Round",
+    roundLabel: "Wave",
     bestRoundLabel: "Best round",
     blightLabel: "Blight",
     waveLabel: "Next wave",
     fearLabel: "Fear",
-    waveCountLabel: "Waves",
     secondsShort: "{seconds}s",
     wavePausedValue: "Paused",
     waveHeldValue: "Waiting",

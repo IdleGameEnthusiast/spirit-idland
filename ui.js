@@ -27,8 +27,6 @@ const dom = {
   waveFill: document.getElementById("waveFill"),
   dahanAttackLabel: document.getElementById("dahanAttackLabel"),
   dahanAttackValue: document.getElementById("dahanAttackValue"),
-  waveCountLabel: document.getElementById("waveCountLabel"),
-  waveCountValue: document.getElementById("waveCountValue"),
   fearLabel: document.getElementById("fearLabel"),
   fearValue: document.getElementById("fearValue"),
 
@@ -806,10 +804,13 @@ function renderShop(state) {
 function patchHud(state) {
   const t = locale(state);
 
-  dom.roundValue.textContent = String(state.round.number);
+  // Which wave is live right now, not how many rounds have been played - the round number
+  // resets on every loss and the player never asked to track it. Waves resolved counts what
+  // is behind us, so the wave in front of us is one past that while the round still runs.
+  const currentWave = state.round.wavesResolved + (state.round.status === "running" ? 1 : 0);
+  dom.roundValue.textContent = String(currentWave);
   dom.bestRoundValue.textContent = String(state.meta.bestRoundReached);
   dom.fearValue.textContent = formatFear(state.meta.fear);
-  dom.waveCountValue.textContent = String(state.round.wavesResolved);
   // Energy is whole-numbered and rises mid-fight, so it is patched with the rest of the
   // per-tick readouts rather than waiting on an ability-bar rebuild.
   dom.energyValue.textContent = String(state.resources.energy);
@@ -922,7 +923,6 @@ function applyStaticLanguage(state) {
   dom.bestRoundLabel.textContent = t.bestRoundLabel;
   dom.blightLabel.textContent = t.blightLabel;
   dom.waveLabel.textContent = t.waveLabel;
-  dom.waveCountLabel.textContent = t.waveCountLabel;
   dom.fearLabel.textContent = t.fearLabel;
 
   dom.invaderTrackTitle.textContent = t.invaderTrackTitle;
