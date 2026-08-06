@@ -27,16 +27,17 @@ What remains is balance and content, not structure — see
   from sleep resolves no waves at all rather than a burst. Asserted.
 - Covered by `tests/wave.test.js`.
 
-### Task R3: Automatic Dahan Counterattack — *done*
+### Task R3: Automatic Dahan Strike — *done, reworked in Task C1*
 
 - The `ravageCounter` targeting queue is gone with no successor object. The pool is computed
   and spent inside the same step, highest tier first, one damage at a time.
-- Covered by `tests/ravage.test.js`.
+- Originally the survivors' counterattack at the end of a Ravage; now a periodic strike on
+  its own timer. The spending rule is unchanged.
+- Covered by `tests/combat.test.js`.
 
-### Task R4: Blight — *done*
+### Task R4: Blight — *done, reworked in Task C1*
 
-- Gain per Ravaged land, the undefended bonus on top, clamped at the threshold, round ends
-  the instant it is reached.
+- Clamped at the threshold, round ends the instant it is reached.
 - The per-land tally added here is what makes `wash_away` targetable and what puts "which
   land just cost me the round" on the board.
 - Covered by `tests/blight.test.js`.
@@ -75,8 +76,8 @@ What remains is balance and content, not structure — see
 
 ### Task R9: Regression Harness — *done*
 
-- 109 checks across nine files, runnable in a browser (`tests.html`), headlessly
-  (`tests\headless.ps1`), or under node if it is installed (`tests/run.js`).
+- Runnable in a browser (`tests.html`), headlessly (`tests\headless.ps1`), or under node if
+  it is installed (`tests/run.js`).
 - The engine takes its clock and RNG by injection, which is what makes a suite that plays
   dozens of rounds deterministic and instant.
 - The board's original 62 checks were re-derived rather than trusted, per
@@ -84,67 +85,112 @@ What remains is balance and content, not structure — see
 
 ---
 
+## Continuous Combat Redesign — Complete
+
+### Task C1: Replace the Ravage phase with a continuous fight — *done*
+
+The `4.0.0` rework. Damage is no longer an event on a named terrain; it is a rate in every
+land at once.
+
+- **Blight** accrues per land at `net * BLIGHT_PER_DAMAGE_SECOND` per second, where `net` is
+  gross invader damage minus 2 per Dahan standing there. A filled bar carries its remainder.
+- **Dahan casualties** accrue per land at `(gross / dahanCount) * DAHAN_LOSS_PER_DAMAGE_SECOND`
+  — gross, not net, and concentrated on the survivors so an under-defended land collapses
+  rather than declining evenly.
+- **The Dahan strike** moved onto `DAHAN_ATTACK_INTERVAL_SECONDS`, a constant of its own,
+  dealing `DAHAN_ATTACK_DAMAGE` per Dahan. It starts equal to the wave interval by choice,
+  not by derivation.
+- **The invader track lost a slot.** `invader.ravage` is gone; a wave is Build, Discover,
+  shift, and deals no damage.
+- **Two new per-land floats**, `round.blightProgress` and `round.dahanProgress`, are the only
+  fractional board state. They are deliberately excluded from the board's rebuild signature
+  and patched in place, or the board would rebuild ten times a second.
+- Covered by `tests/combat.test.js`; `tests/wave.test.js` and `tests/blight.test.js` were
+  rewritten around it, and `tests/ravage.test.js` is deleted.
+
+---
+
 ## What To Build Next
 
 Ordered by what most changes the game. The first item is the one that matters.
 
-### 1. Balance: make an unattended round earn something *(bug-shaped)*
+### 1. Balance: settle the casualty rate
 
-An idle round currently earns **zero** Fear. One Dahan has 2 health; a land that is Ravaged
-holds 3+ damage worth of invaders by then, so the Dahan die before they can counterattack —
-reliably, in every land, every round. Fear only ever comes from abilities.
+`DAHAN_LOSS_PER_DAMAGE_SECOND` was raised from 0.02 to 0.05 during Task C1 and is explicitly
+under playtest. At 0.02 no Dahan ever died and the whole casualty system was dead code; at
+0.05 a round costs 2-4 of the starting 6, which is what puts the death spiral on screen. That
+is one measurement, not a tuned number — play it and see whether losing Dahan feels like
+something the player can act against or just weather.
 
-The meta loop technically works, but a player who does not act buys nothing, and the first
-round is exactly when they do not yet know what to do. Options, cheapest first:
+### 2. Balance: are Dahan too strong once they survive? (braked, needs playtest)
 
-- Raise `roundStartDahan` to 2 in the coastal lands, so the first Ravage leaves a survivor.
-- Lower the wave interval's ramp so the third wave hits with fewer units.
-- Award a little Fear per wave survived, decoupling the meta loop from combat entirely.
+Casualty damage divided by the stack size gave a stack quadratic lifetime, and defence
+cancelling Blight outright gave it a hard cliff to zero. Together, one fortified land beat six
+defended ones and `rivers_bounty` was the only ability worth casting.
 
-The first is the smallest change and the most in keeping with Dahan being the point.
+Two brakes are in, both in `landPressure`:
 
-### 2. Balance: round length
+- `BLIGHT_FLOOR_FRACTION = 0.25` — a held land seeps a quarter of its gross instead of sitting
+  at zero. Defence buys time, not immunity.
+- `DAHAN_CONCENTRATION_CAP = 2` — concentration stops past two survivors, so a stack's
+  lifetime is linear in its size rather than quadratic.
 
-Eight waves, about 64 seconds. Long enough to demonstrate the loop, short enough that the
-shop arrives before the board is readable. Try `BLIGHT_THRESHOLD_BASE` at 14-16 and see
-whether the round becomes legible or merely longer.
+Both numbers are guesses. What to watch: whether holding a land still feels worth doing at
+all (if not, the floor is too high), and whether `rivers_bounty` is now merely one option
+among four rather than useless. `dahan_reinforcement` and `rivers_bounty` still have not been
+repriced against the brakes.
 
-### 3. Balance: the shop's first purchase
+### 3. Balance: the first Blight arrives on a wide spread
 
-`dahan_reinforcement` costs 4 Fear, which is a bit under six defeated explorers. Whether
-that is one round's work or four is unknown until item 1 is fixed, because right now it is
-infinite.
+33s in one traced round, 74s in another, depending on whether the early Discover draws land on
+`3` and `8` — the two lands `roundStartDahan` leaves empty. The rates are not the variance;
+the terrain draw is. Two players' first rounds can therefore read very differently, which is
+the worst place for that to happen.
 
-### 4. A fifth ability, so `unlock_` has content
+Partly addressed since: the opening Discover puts invaders ashore at second zero rather than
+at wave 1, which removes the free first interval and the spread that came with it, and the
+Blight floor means even a defended landing site contributes. Whether the remaining spread is
+acceptable needs a fresh trace — the measured numbers in
+[04-economy-formulas.md](../spec/04-economy-formulas.md#measured-behaviour) predate all of it.
+
+### 4. Balance: the shop's first purchase
+
+`dahan_reinforcement` costs 4 Fear against 1.05-1.75 earned per unattended round, so roughly
+three rounds for the first tier. Whether that is the right pace depends on item 2 — a tier
+that buys both defence and survival time may be worth more than three rounds even so.
+
+### 5. A fifth ability, so `unlock_` has content
 
 The unlock path is built and untested against real content. One new ability — something that
 removes invaders from a land outright, since that is the lever the player actually has —
 would exercise it and give the shop a non-numeric reward.
 
-### 5. `wash_away` is dead for the first two waves
+### 6. `wash_away` is dead for the first half-minute
 
-It needs a Blighted land, and nothing is Blighted until the third wave. An ability that
-cannot be used at the moment the player first reads the bar teaches the wrong thing about
-the bar. Either give it an early-game fallback target or move it behind an unlock.
+It needs a land with Blight already on it, and the traced first Blight lands between 33 and
+74 seconds in. An ability that cannot be used at the moment the player first reads the bar
+teaches the wrong thing about the bar. Either give it an early-game fallback target or move it
+behind an unlock — and note that item 3 moves this number too.
 
-### 6. Keyboard shortcuts for the ability bar
+### 7. Keyboard shortcuts for the ability bar
 
 Real-time and mouse-only is a bad combination. Digits 1-4 mapped to the bar, Escape to
 cancel an armed ability. Small, and it changes how the round feels to play.
 
-### 7. Make the click wiring a standing test
+### 8. Make the click wiring a standing test
 
 The arm / dim / illegal-click / legal-click / cancel path was verified end to end in a
 headless browser, but as a throwaway probe. It should be a test file that builds the DOM it
-needs, so a refactor of `ui.js` cannot break targeting silently.
+needs, so a refactor of `ui.js` cannot break targeting silently. The per-land bars want the
+same treatment: nothing currently asserts that they patch in place rather than rebuilding.
 
-### 8. Answer the Energy question
+### 9. Answer the Energy question
 
 `resources.energy` is parked in the schema with no reader or writer. Either give abilities a
 resource cost and something that feeds it, or delete the field. Leaving it is the only
 option that costs something every time someone reads the state contract.
 
-### 9. Accessibility pass
+### 10. Accessibility pass
 
 The board is focusable and activates on Enter and Space, but the ability bar has no live
 region, the log is not announced, and the HUD's meters carry no text alternative beyond
@@ -179,10 +225,10 @@ was deleted with `app.js`; it remains in git history.
 - Boon of Vigor, Flash Floods, River's Bounty and Wash Away carried forward by name only, as
   abilities with redesigned effects.
 
-### Task 05: Invader Phase Track — *reused, retrigger landed in Task R2*
+### Task 05: Invader Phase Track — *partly reused; Ravage retired in Task C1*
 
-- The Ravage/Build/Discover rules and the terrain track reused directly; only the trigger
-  changed, from a click to a timer.
+- The Build/Discover rules and the terrain track reused directly; their trigger changed from
+  a click to a timer in Task R2. The Ravage phase was removed entirely in Task C1.
 
 ### Task 06: Dahan Layer — *reused*
 
@@ -209,9 +255,11 @@ was deleted with `app.js`; it remains in git history.
 - Superseded by Fear becoming the shop's currency outright, which is a stronger payoff than a
   threshold effect would have been.
 
-### Task 11: Ravage Resolution — *reused, auto-counterattack landed in Task R3*
+### Task 11: Ravage Resolution — *retired by Task C1*
 
-- The combat math reused directly; only who assigns the counterattack changed.
+- The per-Ravage combat math survived Task R3 (only who assigned the counterattack changed)
+  but not Task C1. Whole-point damage on a schedule has no successor: damage is a rate now,
+  and the only thing carried over is how a damage pool is spent on invader types.
 
 ### Task 12: Automated Regression Harness — *superseded by Task R9*
 

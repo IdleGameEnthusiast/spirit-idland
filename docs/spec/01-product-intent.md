@@ -51,7 +51,7 @@ structural one — see [index.md](./index.md#known-balance-problems).
 ## Non-Goals For This Slice
 
 - No presence placement, presence tracks, or spatial reach growth.
-- No manually-resolved invader phases or hand-assigned counterattacks.
+- No manually-resolved invader phases or hand-assigned Dahan strikes.
 - No per-land Essence generation; Essence is parked, not deleted.
 - No multi-spirit support yet.
 - No AI opponent behavior beyond the automatic wave cycle.

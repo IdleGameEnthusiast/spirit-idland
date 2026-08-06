@@ -21,14 +21,14 @@ const dom = {
   waveLabel: document.getElementById("waveLabel"),
   waveValue: document.getElementById("waveValue"),
   waveFill: document.getElementById("waveFill"),
+  dahanAttackLabel: document.getElementById("dahanAttackLabel"),
+  dahanAttackValue: document.getElementById("dahanAttackValue"),
   waveCountLabel: document.getElementById("waveCountLabel"),
   waveCountValue: document.getElementById("waveCountValue"),
   fearLabel: document.getElementById("fearLabel"),
   fearValue: document.getElementById("fearValue"),
 
   invaderTrackTitle: document.getElementById("invaderTrackTitle"),
-  ravageLabel: document.getElementById("ravageLabel"),
-  ravageTerrain: document.getElementById("ravageTerrain"),
   buildLabel: document.getElementById("buildLabel"),
   buildTerrain: document.getElementById("buildTerrain"),
   discoverLabel: document.getElementById("discoverLabel"),
@@ -311,17 +311,54 @@ function fmtSeconds(value) {
   return String(Math.max(0, Math.ceil(value)));
 }
 
-// The banner naming what the incoming wave will do here. Without it, the outline says
+// The banner naming what the incoming wave will build here. Without it, the outline says
 // "something happens in this land" and nothing more.
+//
+// A land the wave will visit and find nothing gets the quiet variant. The loud frame is the
+// same warning colour as the pulsing wave ring, so wearing it while announcing that nothing
+// happens pulls the eye to the one land on the list that needs no attention.
 function chipWaveMarkup(state, landId) {
   if (state.pendingAbilityTarget) return "";
   if (!waveLands(state).includes(landId)) return "";
 
+  const quiet = buildOutcomeInLand(state, landId) === null;
+
   return `
-    <div class="chip-wave">
-      <span class="chip-wave-name">${locale(state).ravageWord}</span>
-      <span class="chip-wave-text">${waveChipText(state, landId)}</span>
+    <div class="chip-wave${quiet ? " is-quiet" : ""}">
+      <span class="chip-wave-name">${locale(state).buildWord}</span>
+      <span class="chip-wave-text">${buildChipText(state, landId)}</span>
     </div>
+  `;
+}
+
+// What every contested land wears: the Blight bar, which is what ends the round and so gets
+// the full width of the chip, and beside it a Dahan token that fills as its defenders near a
+// casualty - the same reading in a fraction of the space, so the two never compete. Both fill
+// continuously, so the fills themselves are written by patchLandMeters rather than baked in
+// here - a bar rebuilt ten times a second could never animate.
+function chipMetersMarkup(state, landId) {
+  if (state.pendingAbilityTarget) return "";
+  const p = landPressure(state, landId);
+  if (p.gross <= 0) return "";
+
+  const t = locale(state);
+  const dahanMark = p.dahan > 0
+    ? `
+      <span class="chip-dahan-mark" title="${t.dahanBarLabel}">
+        ${tokenIcon("dahan")}
+        <span class="chip-dahan-fill" data-meter-land="${landId}" data-meter-kind="dahan">${tokenIcon("dahan")}</span>
+      </span>
+    `
+    : "";
+
+  return `
+    <div class="chip-meters">
+      <span class="chip-meter is-blight" title="${t.blightBarLabel}">
+        <span class="chip-meter-fill" data-meter-land="${landId}" data-meter-kind="blight"></span>
+      </span>
+      ${dahanMark}
+    </div>
+    <div class="chip-pressure" data-pressure-land="${landId}"></div>
   `;
 }
 
@@ -397,6 +434,7 @@ function renderBoard(state) {
       </div>
       ${invaderBits.length ? `<div class="chip-row invaders">${invaderBits.join("")}</div>` : ""}
       ${allyBits.length ? `<div class="chip-row allies">${allyBits.join("")}</div>` : ""}
+      ${chipMetersMarkup(state, landId)}
       ${chipWaveMarkup(state, landId)}
       ${defeatMarkup}
       ${blightMarkup}
@@ -404,6 +442,25 @@ function renderBoard(state) {
 
     dom.landChips.appendChild(chip);
   }
+}
+
+// Per-frame patch for everything that moves continuously: the two land bars and the sentence
+// counting down beside them. Nothing here creates or replaces a node, which is what lets the
+// bars fill smoothly instead of restarting on every render.
+function patchLandMeters(state) {
+  for (const el of dom.landChips.querySelectorAll("[data-meter-land]")) {
+    const landId = el.getAttribute("data-meter-land");
+    const p = landPressure(state, landId);
+    const value = el.getAttribute("data-meter-kind") === "dahan" ? p.dahanProgress : p.blightProgress;
+    el.style.width = `${Math.max(0, Math.min(100, value * 100))}%`;
+  }
+
+  for (const el of dom.landChips.querySelectorAll("[data-pressure-land]")) {
+    el.textContent = pressureChipText(state, el.getAttribute("data-pressure-land"));
+  }
+
+  const detail = dom.landDetail.querySelector("[data-pressure-detail]");
+  if (detail) detail.textContent = pressureDetailText(state, detail.getAttribute("data-pressure-detail"));
 }
 
 /* ------------------------------------------------------------------ *
@@ -433,9 +490,12 @@ function renderLandDetail(state) {
     .map((other) => `<button class="neighbour-chip" data-goto-land="${other}" style="--terrain-rgb:${TERRAIN_RGB[landTerrain(other)]}">${other}</button>`)
     .join("");
 
-  // The panel explains rather than asks: every choice lives on the board itself.
+  // The panel explains rather than asks: every choice lives on the board itself. The fight
+  // line is always here, because there is always a fight now; the Build line only when this
+  // land is on the track.
+  const pressureNote = `<div class="detail-wave"><strong>${t.blightBarLabel}</strong><span data-pressure-detail="${landId}"></span></div>`;
   const waveNote = waveLands(state).includes(landId)
-    ? `<div class="detail-wave"><strong>${t.ravageWord}</strong><span>${waveDetailText(state, landId)}</span></div>`
+    ? `<div class="detail-wave"><strong>${t.buildWord}</strong><span>${buildChipText(state, landId)}</span></div>`
     : "";
 
   dom.landDetail.style.setProperty("--terrain-rgb", TERRAIN_RGB[terrain]);
@@ -446,6 +506,7 @@ function renderLandDetail(state) {
       <span class="detail-tag ${landIsCoastal(landId) ? "coastal" : ""}">${landIsCoastal(landId) ? t.coastalLabel : t.inlandLabel}</span>
     </div>
     <div class="detail-body">
+      ${pressureNote}
       ${waveNote}
       <div class="detail-block">
         <div class="detail-label">${t.invadersLabel}</div>
@@ -604,7 +665,12 @@ function patchHud(state) {
     ? `${Math.max(0, Math.min(100, (state.round.waveTimerRemaining / WAVE_INTERVAL_SECONDS) * 100))}%`
     : "0%";
 
-  dom.ravageTerrain.textContent = terrainName(state, state.invader.ravage);
+  // The Dahan swing on their own clock, so it gets its own countdown rather than being read
+  // off the wave timer - the two will drift apart the moment the shop can shorten one.
+  dom.dahanAttackValue.textContent = running
+    ? template(t.secondsShort, { seconds: fmtSeconds(state.round.dahanAttackRemaining) })
+    : "-";
+
   dom.buildTerrain.textContent = terrainName(state, state.invader.build);
   dom.discoverTerrain.textContent = terrainName(state, state.invader.explore);
 
@@ -626,7 +692,7 @@ function patchMapHint(state) {
   const pending = waveLands(state);
   if (state.round.status === "running" && pending.length > 0) {
     dom.mapPlanHint.textContent = template(t.mapHintWave, {
-      terrain: terrainName(state, state.invader.ravage),
+      terrain: terrainName(state, state.invader.build),
       lands: pending.map((id) => template(t.landShort, { id })).join(", ")
     });
     return;
@@ -652,9 +718,9 @@ function applyStaticLanguage(state) {
   dom.fearLabel.textContent = t.fearLabel;
 
   dom.invaderTrackTitle.textContent = t.invaderTrackTitle;
-  dom.ravageLabel.textContent = t.ravageLabel;
   dom.buildLabel.textContent = t.buildLabel;
   dom.discoverLabel.textContent = t.discoverLabel;
+  dom.dahanAttackLabel.textContent = t.dahanAttackLabel;
 
   dom.activeSpiritLabel.textContent = t.activeSpiritLabel;
   dom.spiritName.textContent = currentLang(state) === "en"
@@ -687,7 +753,7 @@ function mapSignature(state) {
     currentLang(state),
     `sel:${effectiveSelectedLand(state)}`,
     `armed:${state.pendingAbilityTarget || "-"}`,
-    `wave:${state.invader.ravage || "-"}`,
+    `wave:${state.invader.build || "-"}`,
     `status:${state.round.status}`
   ];
 
@@ -733,6 +799,9 @@ function updateUI(state) {
     renderLandDetail(state);
     renderCache.map = nextMapSig;
   }
+  // Always, even when the board itself did not change: the bars and their countdowns move
+  // between renders, and that motion is the only thing telling the player time is passing.
+  patchLandMeters(state);
 
   const nextShopSig = shopSignature(state);
   if (renderCache.shop !== nextShopSig) {

@@ -24,18 +24,35 @@
     assertEqual(total, engine.DAHAN_PER_ROUND_START_BASE, "baseline total");
   });
 
-  test("setup: dahan_reinforcement tiers add on top, capped per land", () => {
+  test("setup: every dahan_reinforcement tier is placed, however many are bought", () => {
     const { state } = newGame();
-    state.upgrades.purchased.dahan_reinforcement = 5;
-    engine.startRound(state);
+    for (const tiers of [5, 40]) {
+      state.upgrades.purchased.dahan_reinforcement = tiers;
+      engine.startRound(state);
 
-    const spirit = engine.activeSpirit(state);
-    const total = engine.LAND_IDS.reduce((sum, id) => sum + state.dahan[id], 0);
-    assertEqual(total, engine.DAHAN_PER_ROUND_START_BASE + 5, "total with upgrades");
+      const total = engine.LAND_IDS.reduce((sum, id) => sum + state.dahan[id], 0);
+      assertEqual(total, engine.DAHAN_PER_ROUND_START_BASE + tiers, `total at ${tiers} tiers`);
+    }
+  });
 
-    for (const landId of engine.LAND_IDS) {
-      const added = state.dahan[landId] - (spirit.roundStartDahan[landId] || 0);
-      assert(added <= engine.DAHAN_MAX_ADD_PER_LAND, `land ${landId} took ${added}, cap is ${engine.DAHAN_MAX_ADD_PER_LAND}`);
+  test("setup: no two lands finish more than DAHAN_MAX_SPREAD apart", () => {
+    const { state } = newGame();
+
+    // Walk the tiers one at a time: the invariant has to hold at every depth, not only at
+    // the round numbers where the spread happens to come out even.
+    for (let tiers = 0; tiers <= 24; tiers += 1) {
+      state.upgrades.purchased.dahan_reinforcement = tiers;
+      engine.startRound(state);
+
+      const counts = engine.LAND_IDS.map((id) => state.dahan[id]);
+      const spread = Math.max(...counts) - Math.min(...counts);
+      assert(
+        spread <= engine.DAHAN_MAX_SPREAD,
+        `at ${tiers} tiers the spread is ${spread}, cap is ${engine.DAHAN_MAX_SPREAD} (${counts.join(",")})`
+      );
+
+      // The stated reading of the rule: nothing stands at 3 while a land is still empty.
+      if (Math.max(...counts) >= 3) assert(Math.min(...counts) >= 1, `a land reached 3 with an empty land left (${counts.join(",")})`);
     }
   });
 
@@ -84,16 +101,65 @@
     state.invaderDamage["5"].cities = 2;
     engine.startRound(state);
 
+    // Everything the last round built is gone. What survives setup is the opening Discover's
+    // explorers, which is the only thing that may stand on the board at second zero.
     for (const landId of engine.LAND_IDS) {
-      assertEqual(engine.invaderCountInLand(state.invaders[landId]), 0, `land ${landId} invaders`);
+      const slot = state.invaders[landId];
+      assertEqual(slot.towns, 0, `land ${landId} towns`);
+      assertEqual(slot.cities, 0, `land ${landId} cities`);
+      assert(slot.explorers <= 1, `land ${landId} holds ${slot.explorers} explorers`);
       for (const type of engine.INVADER_TYPES) {
         assertEqual(state.invaderDamage[landId][type], 0, `land ${landId} ${type} carried damage`);
       }
     }
     assertEqual(state.round.wavesResolved, 0, "wave counter");
-    assertEqual(state.invader.ravage, null, "ravage slot starts empty");
-    assertEqual(state.invader.build, null, "build slot starts empty");
+    assert(engine.INVADER_TERRAINS.includes(state.invader.build), "build slot holds what was just discovered");
     assert(engine.INVADER_TERRAINS.includes(state.invader.explore), "explore slot is drawn");
+    assert(state.invader.explore !== state.invader.build, "the two slots differ");
+  });
+
+  test("setup: an opening Discover puts the invaders ashore before wave 1", () => {
+    const { state } = newGame();
+
+    // The track shift at the end of setup moves what was just discovered into Build, so the
+    // Build slot names the terrain the explorers landed in.
+    const landed = engine.LAND_IDS.filter((id) => state.invaders[id].explorers > 0);
+    assert(landed.length > 0, "the island must not start empty");
+
+    for (const landId of landed) {
+      assertEqual(engine.landTerrain(landId), state.invader.build, `land ${landId} matches the discovered terrain`);
+      assertEqual(state.invaders[landId].explorers, 1, `land ${landId} took exactly one explorer`);
+    }
+
+    // Every coastal land of that terrain took one: on an empty board, coastal is the whole
+    // of "reachable".
+    for (const landId of engine.LAND_IDS) {
+      if (engine.landTerrain(landId) !== state.invader.build) continue;
+      const expected = engine.landIsCoastal(landId) ? 1 : 0;
+      assertEqual(state.invaders[landId].explorers, expected, `land ${landId} explorers`);
+    }
+  });
+
+  test("setup: the opening Discover is not a wave and does not touch the clock", () => {
+    const { state } = newGame();
+    assertEqual(state.round.wavesResolved, 0, "no wave has resolved");
+    assertEqual(state.round.waveTimerRemaining, engine.WAVE_INTERVAL_SECONDS, "the wave timer is untouched");
+    assertEqual(state.round.elapsedSeconds, 0, "no round time spent");
+    assertEqual(state.round.blight, 0, "no Blight from coming ashore");
+  });
+
+  test("setup: the opening Discover never draws a terrain it cannot reach", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+
+    // Mountains has no coastal land, so on an empty board it can seed nothing. Run enough
+    // rounds that a uniform draw would almost certainly have hit it.
+    for (let i = 0; i < 40; i += 1) {
+      engine.startRound(state);
+      assert(state.invader.build !== "mountains", "mountains cannot be the opening Discover");
+      const landed = engine.LAND_IDS.filter((id) => state.invaders[id].explorers > 0);
+      assert(landed.length > 0, `round ${i}: the opening Discover seeded nothing`);
+    }
   });
 
   test("setup: a second round with upgrades starts stronger than the first", () => {

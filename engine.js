@@ -10,25 +10,56 @@
  * ==================================================================== */
 
 const SAVE_KEY = "spirit-idland-save-v1";
-const VERSION = "3.0.0";
+const VERSION = "4.0.0";
 
 /* ------------------------------------------------------------------ *
  * Constants (04-economy-formulas.md)                                   *
  * ------------------------------------------------------------------ */
 
-const WAVE_INTERVAL_SECONDS = 8;
+const WAVE_INTERVAL_SECONDS = 10;
 const BLIGHT_THRESHOLD_BASE = 10;
-const BLIGHT_PER_RAVAGED_LAND = 1;
-const BLIGHT_BONUS_UNDEFENDED_LAND = 1;
 const DAHAN_PER_ROUND_START_BASE = 6;
-const DAHAN_MAX_ADD_PER_LAND = 2;
+// Reinforcement is no longer capped per land - the shop can be pushed far past the sixteen
+// a +2 cap allowed, and the extra tiers have to land somewhere. What is capped instead is
+// the gap: no land may stand more than two Dahan above another, so nothing reaches 3 while
+// a land is still empty.
+const DAHAN_MAX_SPREAD = 2;
 const DEFEAT_FX_MS = 1200;
 const MAX_TICK_SECONDS = 5;
+
+// The whole fight runs on one currency: a damage-second. One point of damage sustained for
+// one second is 2% of a Blight, and 5% of a Dahan casualty - 50 damage-seconds buys a Blight,
+// 20 buys a casualty. The two rates were equal until the Dahan proved too durable to pressure;
+// they are now deliberately apart, and the casualty clock is the one under playtest.
+const BLIGHT_PER_DAMAGE_SECOND = 0.02;
+const DAHAN_LOSS_PER_DAMAGE_SECOND = 0.05;
+
+// Two brakes on stacking Dahan into one land. Without them a stack's value grew with the
+// square of its size (each Dahan slows attrition for every Dahan behind it) on top of a hard
+// cliff to zero Blight, so one fortified land beat six defended ones by a wide margin.
+//
+// The floor: a land never cancels all of its Blight, only the share above this fraction of
+// gross. Defence buys time, not immunity, so a stack has to be spent rather than parked.
+const BLIGHT_FLOOR_FRACTION = 0.25;
+// The concentration cap: casualties still concentrate on the survivors - the death spiral
+// downward is the point - but only down to this many. Past it, attrition stops slowing, so
+// a stack's lifetime grows linearly with its size instead of quadratically.
+const DAHAN_CONCENTRATION_CAP = 2;
+
+// The Dahan's periodic strike against the invaders, on its own clock rather than the wave's.
+// It starts at the wave interval only so the two read as one rhythm at round one; the shop
+// is expected to shorten this later, and nothing should re-couple it to WAVE_INTERVAL_SECONDS.
+const DAHAN_ATTACK_INTERVAL_SECONDS = 10;
+const DAHAN_ATTACK_DAMAGE = 1;
 
 // Fear per point of defeated invader power. An explorer is worth 1 power, a town 2,
 // a city 3 - the same numbers as their damage, so a unit's threat and its worth agree.
 const FEAR_PER_POWER = 0.35;
 
+// `damage` is now a rate: what the unit deals every second it stands in a land. A Dahan's 2
+// is what it cancels out of the invader total, which is why one Dahan holds off two
+// explorers exactly. `health` still only matters to invaders, who are killed in whole
+// points; Dahan die to the casualty bar instead - see resolveContinuousCombat.
 const UNIT_STATS = {
   explorers: { health: 1, damage: 1 },
   towns: { health: 2, damage: 2 },
@@ -38,7 +69,7 @@ const UNIT_STATS = {
 
 const INVADER_TYPES = ["explorers", "towns", "cities"];
 
-// Counterattacks and untargeted ability damage both spend on the biggest thing standing.
+// The Dahan strike and untargeted ability damage both spend on the biggest thing standing.
 const INVADER_TYPES_BY_TIER = ["cities", "towns", "explorers"];
 
 /* ------------------------------------------------------------------ *
@@ -272,7 +303,7 @@ const I18N = {
     mapTitle: "Die Insel",
     mapPlanHint: "Acht Gebiete, drei an der Kueste. Waehle ein Gebiet fuer Details.",
     mapHintArmed: "{ability}: {requirement}",
-    mapHintWave: "Naechste Welle verwuestet {terrain} ({lands}).",
+    mapHintWave: "Naechste Welle baut in {terrain} ({lands}).",
     abilityNeedInvaders: "waehle ein Gebiet mit Invasoren.",
     abilityNeedAnyLand: "waehle ein beliebiges Gebiet.",
 
@@ -319,16 +350,21 @@ const I18N = {
     defeatHint: "Besiegt: -{count} {unit}",
     blightHint: "+{amount} Verderbnis",
 
-    waveChipRavage: "{damage} Schaden - {dahanLost} Dahan - Antwort {counter}",
-    waveChipRavageNone: "keine Invasoren",
-    waveDetailRavage: "Naechste Welle: {damage} Schaden, -{dahanLost} Dahan, Gegenangriff {counter}.",
-    waveDetailRavageNone: "Naechste Welle: keine Invasoren hier.",
+    etaNever: "nie",
+    pressureNoInvaders: "keine Invasoren",
+    pressureHeld: "gehalten - {line}",
+    pressureChip: "+{rate}% / s - naechste in {eta}",
+    pressureDetail: "{gross} Schaden - {defence} Dahan = {net}/s. +{rate}% Verderbnis pro Sekunde, naechste in {eta}.",
+    pressureDetailHeld: "{gross} Schaden gegen {defence} Dahan-Abwehr: aufgehalten, aber {net}/s sickern durch. +{rate}% Verderbnis pro Sekunde, naechste in {eta}.",
+    buildChip: "+1 {unit}",
+    buildChipNone: "nichts hier",
+    blightBarLabel: "Verderbnis",
+    dahanBarLabel: "Dahan-Verluste",
 
     invaderTrackTitle: "Invasorenleiste",
-    ravageLabel: "Verwuesten:",
     buildLabel: "Bauen:",
     discoverLabel: "Entdecken:",
-    ravageWord: "Verwuesten",
+    dahanAttackLabel: "Dahan-Angriff",
     buildWord: "Bauen",
     discoverWord: "Entdecken",
     invaderNone: "-",
@@ -344,16 +380,11 @@ const I18N = {
     roundStarted: "Runde {round} beginnt. Verderbnisgrenze {threshold}.",
     roundEnded: "Runde {round} verloren: Verderbnis {blight}/{threshold}. {fear} Furcht erbeutet.",
     waveResolved: "Welle {wave} aufgeloest.",
-    waveIncoming: "Invasorenleiste - Verwuesten: {ravage}, Bauen: {build}, Entdecken: {discover}.",
-    ravageNothing: "Verwuesten: noch kein Gebiet auf der Leiste.",
-    ravageNoInvaders: "Verwuesten in {land}: keine Invasoren, nichts passiert.",
-    ravageResolved: "Verwuesten in {land}: {damage} Schaden, {dahanLost} Dahan verloren.",
-    ravageNoSurvivors: "Kein Dahan ueberlebt in {land}. Kein Gegenangriff.",
-    ravageCounterResolved: "Dahan-Gegenangriff in {land}: {damage} Schaden, {defeated} Invasoren besiegt.",
-    ravageCounterNoTargets: "Gegenangriff in {land}: keine Invasoren mehr uebrig.",
-    blightGained: "Verderbnis in {land}: +{amount} ({reason}). Gesamt {total}/{threshold}.",
-    blightReasonRavaged: "verwuestet",
-    blightReasonUndefended: "verwuestet und unverteidigt",
+    waveIncoming: "Invasorenleiste - Bauen: {build}, Entdecken: {discover}.",
+    dahanAttackResolved: "Dahan greifen in {land} an: {damage} Schaden, {defeated} Invasoren besiegt.",
+    dahanAttackNoTargets: "Dahan-Angriff: kein Gebiet mit Invasoren und Dahan.",
+    dahanFell: "{count} Dahan fallen in {land}. Noch {left} uebrig.",
+    blightGained: "Verderbnis in {land}: +{amount}. Gesamt {total}/{threshold}.",
     buildNothing: "Bauen: noch kein Gebiet auf der Leiste.",
     buildNoInvaders: "Bauen in {land}: keine Invasoren, nichts wird gebaut.",
     buildResolved: "Bauen in {land}: +1 {unit}.",
@@ -361,6 +392,7 @@ const I18N = {
     exploreResolved: "Entdecken in {land}: +1 Entdecker.",
     exploreBlocked: "Entdecken in {land}: kein Zugang, keine Kueste und kein Dorf/keine Stadt daneben.",
     exploreNoneReachable: "Entdecken in {terrain}: kein Gebiet erreichbar.",
+    setupExplore: "Die Invasoren gehen an Land.",
     dahanRoundLog: "Dahan versammeln sich: {summary}.",
 
     abilityOnCooldown: "{ability} klingt noch {seconds}s ab.",
@@ -419,7 +451,7 @@ const I18N = {
     mapTitle: "The Island",
     mapPlanHint: "Eight lands, three of them coastal. Pick a land for details.",
     mapHintArmed: "{ability}: {requirement}",
-    mapHintWave: "Next wave ravages {terrain} ({lands}).",
+    mapHintWave: "Next wave builds in {terrain} ({lands}).",
     abilityNeedInvaders: "pick a land holding invaders.",
     abilityNeedAnyLand: "pick any land.",
 
@@ -465,16 +497,21 @@ const I18N = {
     defeatHint: "Defeated: -{count} {unit}",
     blightHint: "+{amount} Blight",
 
-    waveChipRavage: "{damage} damage - {dahanLost} Dahan - answer {counter}",
-    waveChipRavageNone: "no invaders",
-    waveDetailRavage: "Next wave: {damage} damage, -{dahanLost} Dahan, counterattack {counter}.",
-    waveDetailRavageNone: "Next wave: no invaders here.",
+    etaNever: "never",
+    pressureNoInvaders: "no invaders",
+    pressureHeld: "held - {line}",
+    pressureChip: "+{rate}% / s - next in {eta}",
+    pressureDetail: "{gross} damage - {defence} Dahan = {net}/s. +{rate}% Blight per second, next in {eta}.",
+    pressureDetailHeld: "{gross} damage against {defence} Dahan defence: held, but {net}/s seeps through. +{rate}% Blight per second, next in {eta}.",
+    buildChip: "+1 {unit}",
+    buildChipNone: "nothing here",
+    blightBarLabel: "Blight",
+    dahanBarLabel: "Dahan losses",
 
     invaderTrackTitle: "Invader track",
-    ravageLabel: "Ravage:",
     buildLabel: "Build:",
     discoverLabel: "Discover:",
-    ravageWord: "Ravage",
+    dahanAttackLabel: "Dahan attack",
     buildWord: "Build",
     discoverWord: "Discover",
     invaderNone: "-",
@@ -490,16 +527,11 @@ const I18N = {
     roundStarted: "Round {round} begins. Blight threshold {threshold}.",
     roundEnded: "Round {round} lost: Blight {blight}/{threshold}. {fear} Fear earned.",
     waveResolved: "Wave {wave} resolved.",
-    waveIncoming: "Invader track - Ravage: {ravage}, Build: {build}, Discover: {discover}.",
-    ravageNothing: "Ravage: no terrain on the track yet.",
-    ravageNoInvaders: "Ravage in {land}: no invaders, nothing happens.",
-    ravageResolved: "Ravage in {land}: {damage} damage, {dahanLost} Dahan lost.",
-    ravageNoSurvivors: "No Dahan survive in {land}. No counterattack.",
-    ravageCounterResolved: "Dahan counterattack in {land}: {damage} damage, {defeated} invaders defeated.",
-    ravageCounterNoTargets: "Counterattack in {land}: no invaders left.",
-    blightGained: "Blight in {land}: +{amount} ({reason}). Total {total}/{threshold}.",
-    blightReasonRavaged: "ravaged",
-    blightReasonUndefended: "ravaged and undefended",
+    waveIncoming: "Invader track - Build: {build}, Discover: {discover}.",
+    dahanAttackResolved: "The Dahan strike in {land}: {damage} damage, {defeated} invaders defeated.",
+    dahanAttackNoTargets: "Dahan attack: no land holds both invaders and Dahan.",
+    dahanFell: "{count} Dahan fall in {land}. {left} still standing.",
+    blightGained: "Blight in {land}: +{amount}. Total {total}/{threshold}.",
     buildNothing: "Build: no terrain on the track yet.",
     buildNoInvaders: "Build in {land}: no invaders, nothing is built.",
     buildResolved: "Build in {land}: +1 {unit}.",
@@ -507,6 +539,7 @@ const I18N = {
     exploreResolved: "Discover in {land}: +1 explorer.",
     exploreBlocked: "Discover in {land}: no way in, not coastal and no town or city adjacent.",
     exploreNoneReachable: "Discover in {terrain}: no land reachable.",
+    setupExplore: "The invaders come ashore.",
     dahanRoundLog: "The Dahan gather: {summary}.",
 
     abilityOnCooldown: "{ability} is still {seconds}s from ready.",
@@ -620,30 +653,104 @@ function abilityRequirementText(state, abilityId) {
   return record.effect === "damage_one_type" ? t.abilityNeedInvaders : t.abilityNeedAnyLand;
 }
 
-// What the next wave's Ravage would do to this land, if it fired right now. Both the board
-// chip and the detail panel read it, so the short and long forms can never disagree.
-function waveOutcomeInLand(state, landId) {
+// Everything a land's fight is doing right now, in one object. The chip, the detail panel,
+// and the tests all read this, so no two of them can disagree about how bad a land is.
+//
+// Two rates come out of the same invader damage:
+//   Blight  - net of what the Dahan standing there cancel, but never below
+//             BLIGHT_FLOOR_FRACTION of gross: a held land seeps instead of sitting at 0.
+//   Dahan   - gross, and concentrated on the survivors: the fewer defenders are left, the
+//             faster the next one falls. That is the death spiral, and it is deliberate.
+//             It stops concentrating past DAHAN_CONCENTRATION_CAP, so the spiral only runs
+//             downward - a big stack no longer buys itself slower attrition.
+function landPressure(state, landId) {
   const slot = state.invaders[landId] || { explorers: 0, towns: 0, cities: 0 };
-  const damage = invaderDamageInLand(slot);
-  if (damage <= 0) return { damage: 0, dahanLost: 0, counter: 0 };
+  const gross = invaderDamageInLand(slot);
+  const dahan = Math.max(0, state.dahan[landId] || 0);
+  const defence = dahan * UNIT_STATS.dahan.damage;
+  const held = gross > 0 && defence >= gross;
+  const net = Math.max(gross - defence, gross * BLIGHT_FLOOR_FRACTION);
 
-  const dahan = state.dahan[landId] || 0;
-  const dahanLost = Math.min(dahan, Math.floor(damage / UNIT_STATS.dahan.health));
-  return { damage, dahanLost, counter: (dahan - dahanLost) * UNIT_STATS.dahan.damage };
+  const blightPerSecond = net * BLIGHT_PER_DAMAGE_SECOND;
+  const concentration = Math.min(dahan, DAHAN_CONCENTRATION_CAP);
+  const dahanPerSecond = dahan > 0 ? (gross / concentration) * DAHAN_LOSS_PER_DAMAGE_SECOND : 0;
+
+  const blightProgress = (state.round.blightProgress || {})[landId] || 0;
+  const dahanProgress = (state.round.dahanProgress || {})[landId] || 0;
+
+  return {
+    gross,
+    dahan,
+    defence,
+    // The Dahan are cancelling everything they can. Not the same as safe any more, which is
+    // why it is its own flag rather than a `net === 0` test.
+    held,
+    net,
+    blightPerSecond,
+    dahanPerSecond,
+    blightProgress,
+    dahanProgress,
+    // Infinity, not null: "never" sorts correctly against a real countdown.
+    blightEta: blightPerSecond > 0 ? (1 - blightProgress) / blightPerSecond : Infinity,
+    dahanEta: dahanPerSecond > 0 ? (1 - dahanProgress) / dahanPerSecond : Infinity
+  };
 }
 
-function waveChipText(state, landId) {
-  const t = locale(state);
-  const outcome = waveOutcomeInLand(state, landId);
-  if (outcome.damage <= 0) return t.waveChipRavageNone;
-  return template(t.waveChipRavage, outcome);
+// What the next Build would put in this land, or null when it would find nothing to build on.
+function buildOutcomeInLand(state, landId) {
+  const slot = state.invaders[landId];
+  if (!slot || invaderCountInLand(slot) <= 0) return null;
+  return (slot.towns || 0) > (slot.cities || 0) ? "cities" : "towns";
 }
 
-function waveDetailText(state, landId) {
+function pctText(rate) {
+  return String(Math.round(rate * 1000) / 10);
+}
+
+// One decimal, with no trailing ".0". Needed wherever a readout can be fractional - the net
+// damage rate is, now that BLIGHT_FLOOR_FRACTION can be the thing setting it.
+function formatAmount(value) {
+  const number = Number(value) || 0;
+  return Math.abs(number - Math.round(number)) < 0.001
+    ? String(Math.round(number))
+    : number.toFixed(1);
+}
+
+function etaText(state, seconds) {
   const t = locale(state);
-  const outcome = waveOutcomeInLand(state, landId);
-  if (outcome.damage <= 0) return t.waveDetailRavageNone;
-  return template(t.waveDetailRavage, outcome);
+  if (!Number.isFinite(seconds)) return t.etaNever;
+  return template(t.secondsShort, { seconds: Math.max(0, Math.ceil(seconds)) });
+}
+
+// The one-line version, for the board chip: how fast Blight is rising here and when it lands.
+function pressureChipText(state, landId) {
+  const t = locale(state);
+  const p = landPressure(state, landId);
+  if (p.gross <= 0) return t.pressureNoInvaders;
+  const line = template(t.pressureChip, { rate: pctText(p.blightPerSecond), eta: etaText(state, p.blightEta) });
+  return p.held ? template(t.pressureHeld, { line }) : line;
+}
+
+// The long version, for the detail panel: both bars, with the arithmetic shown.
+function pressureDetailText(state, landId) {
+  const t = locale(state);
+  const p = landPressure(state, landId);
+  if (p.gross <= 0) return t.pressureNoInvaders;
+  const parts = {
+    gross: p.gross,
+    defence: p.defence,
+    net: formatAmount(p.net),
+    rate: pctText(p.blightPerSecond),
+    eta: etaText(state, p.blightEta)
+  };
+  return template(p.held ? t.pressureDetailHeld : t.pressureDetail, parts);
+}
+
+function buildChipText(state, landId) {
+  const t = locale(state);
+  const built = buildOutcomeInLand(state, landId);
+  if (!built) return t.buildChipNone;
+  return template(t.buildChip, { unit: unitLabelOne(state, built) });
 }
 
 function upgradeName(state, upgradeId) {
@@ -664,6 +771,17 @@ function drawInvaderTerrain() {
   return INVADER_TERRAINS[Math.floor(rng() * INVADER_TERRAINS.length)];
 }
 
+// The opening Discover draws only from terrains that can actually take an explorer on an
+// empty board, which means terrains with a coastal land. Mountains has none, so drawing it
+// at setup would seed nothing and hand the player a silent island for the whole first wave -
+// exactly what the opening Discover exists to prevent.
+function drawOpeningTerrain(state) {
+  const shut = INVADER_TERRAINS.filter(
+    (terrain) => !landsOfTerrain(terrain).some((landId) => landAcceptsExplorer(state, landId))
+  );
+  return drawInvaderTerrainExcluding(shut);
+}
+
 function drawInvaderTerrainExcluding(excludedTerrains) {
   const excluded = new Set((excludedTerrains || []).filter((terrain) => INVADER_TERRAINS.includes(terrain)));
   const choices = INVADER_TERRAINS.filter((terrain) => !excluded.has(terrain));
@@ -671,17 +789,16 @@ function drawInvaderTerrainExcluding(excludedTerrains) {
   return choices[Math.floor(rng() * choices.length)];
 }
 
+// Two slots, not three. Ravaging is no longer a phase that picks a terrain - invaders damage
+// the land they stand in, continuously, everywhere at once (02-core-loop.md#the-fight).
 function normalizeInvaderPhases(invader) {
-  const ravage = INVADER_TERRAINS.includes(invader && invader.ravage) ? invader.ravage : null;
   const build = INVADER_TERRAINS.includes(invader && invader.build) ? invader.build : null;
   const exploreRaw = INVADER_TERRAINS.includes(invader && invader.explore) ? invader.explore : null;
 
   let explore = exploreRaw;
-  if (!explore || explore === build || explore === ravage) {
-    explore = drawInvaderTerrainExcluding([ravage, build]);
-  }
+  if (!explore || explore === build) explore = drawInvaderTerrainExcluding([build]);
 
-  return { ravage, build, explore };
+  return { build, explore };
 }
 
 function createInvaderCounts() {
@@ -755,6 +872,21 @@ function createBlightByLand() {
 function normalizeBlightByLand(blightByLand) {
   const merged = blightByLand || {};
   return createLandMap((landId) => Math.max(0, Math.floor(merged[landId] || 0)));
+}
+
+// The two per-land bars, each a fraction of the next whole thing: 0 is a clean land, 1 is
+// the moment a Blight lands or a Dahan falls. Floats on purpose - they fill every tick, and
+// rounding them to whole points is what the old per-wave Ravage did wrong.
+function createProgressByLand() {
+  return createLandMap(() => 0);
+}
+
+function normalizeProgressByLand(progress) {
+  const merged = progress || {};
+  return createLandMap((landId) => {
+    const raw = Number(merged[landId]);
+    return Number.isFinite(raw) ? clamp(raw, 0, 1) : 0;
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -888,10 +1020,7 @@ function purchaseUpgrade(state, upgradeId) {
 // Fear accrues in 0.35 steps, so it is fractional by nature. One decimal is enough to see
 // a single explorer land, and integer costs stay readable against it.
 function formatFear(value) {
-  const number = Number(value) || 0;
-  return Math.abs(number - Math.round(number)) < 0.001
-    ? String(Math.round(number))
-    : number.toFixed(1);
+  return formatAmount(value);
 }
 
 /* ------------------------------------------------------------------ *
@@ -954,8 +1083,8 @@ function tickCooldowns(state, dt) {
   }
 }
 
-// The strongest invader type standing in a land, or null. Both the Dahan counterattack and
-// Flash Floods pick this way, so "hits the biggest thing" is one rule, not two.
+// The strongest invader type standing in a land, or null. Both the Dahan strike and Flash
+// Floods pick this way, so "hits the biggest thing" is one rule, not two.
 function strongestInvaderType(state, landId) {
   const slot = state.invaders[landId];
   if (!slot) return null;
@@ -1184,11 +1313,11 @@ function resolveAbilityTarget(state, landId) {
  * with everything else the board promises.                             *
  * ------------------------------------------------------------------ */
 
-// The lands the next wave's Ravage will hit. The wave resolves atomically, so what the
-// player can act on is always the wave being counted down to, never one mid-resolution.
+// The lands the next wave will reinforce. Damage is everywhere now, so the wave marks where
+// the island is about to get *worse* rather than where it is about to be hit.
 function waveLands(state) {
   if (state.round.status !== "running") return [];
-  return landsOfTerrain(state.invader.ravage);
+  return landsOfTerrain(state.invader.build);
 }
 
 // The detail panel is never empty: it falls back to the land the next wave will hit, so
@@ -1288,21 +1417,9 @@ function invaderDamageInLand(slot) {
     + (slot.cities || 0) * UNIT_STATS.cities.damage;
 }
 
-// Dahan absorb damage in whole units: each one soaks its full health before the next falls,
-// and anything below a full 2 is discarded rather than carried.
-function applyDamageToDahan(state, land, damage) {
-  const available = state.dahan[land] || 0;
-  const health = UNIT_STATS.dahan.health;
-  if (available <= 0 || damage <= 0) return 0;
-
-  const destroyed = Math.min(available, Math.floor(damage / health));
-  state.dahan[land] = available - destroyed;
-  return destroyed;
-}
-
-// The counterattack, spent automatically: 1 damage at a time on the highest tier standing,
+// The Dahan strike, spent automatically: 1 damage at a time on the highest tier standing,
 // until the pool or the invaders run out. No player input, nothing left pending.
-function spendCounterattack(state, land, pool) {
+function spendDahanAttack(state, land, pool) {
   let remaining = Math.max(0, Math.floor(pool));
   let defeated = 0;
   let lastDefeatedType = null;
@@ -1348,6 +1465,108 @@ function blightReached(state) {
 }
 
 /* ------------------------------------------------------------------ *
+ * The fight, resolved continuously (02-core-loop.md#the-fight)         *
+ *                                                                      *
+ * There is no Ravage phase and no damage tick any more. Every land      *
+ * holding invaders is under attack every moment of the round, and both  *
+ * consequences - Blight rising, Dahan falling - accrue as fractions      *
+ * that only ever land on a whole number when a bar fills.               *
+ * ------------------------------------------------------------------ */
+
+// One land, one slice of time. Both bars advance from the same snapshot of the land, so a
+// Dahan that falls this slice still defended against Blight for the whole of it.
+function resolveLandCombat(state, land, dt) {
+  const p = landPressure(state, land);
+  const out = { blightGained: 0, dahanLost: 0 };
+  if (p.gross <= 0) return out;
+
+  if (p.blightPerSecond > 0) {
+    let progress = state.round.blightProgress[land] + p.blightPerSecond * dt;
+    // The remainder carries rather than resetting, so a bar that overshoots by 3% starts the
+    // next Blight at 3% instead of throwing it away. Over a round that drift is whole Blight.
+    while (progress >= 1 && !blightReached(state)) {
+      progress -= 1;
+      out.blightGained += addBlight(state, land, 1);
+    }
+    state.round.blightProgress[land] = blightReached(state) ? 0 : clamp(progress, 0, 1);
+  }
+
+  if (p.dahanPerSecond > 0) {
+    let progress = state.round.dahanProgress[land] + p.dahanPerSecond * dt;
+    while (progress >= 1 && state.dahan[land] > 0) {
+      progress -= 1;
+      state.dahan[land] -= 1;
+      out.dahanLost += 1;
+    }
+    // Nothing left to wound, so nothing carries: reinforcements arrive at a full bar.
+    state.round.dahanProgress[land] = state.dahan[land] > 0 ? clamp(progress, 0, 1) : 0;
+  }
+
+  return out;
+}
+
+function resolveContinuousCombat(state, dt) {
+  if (dt <= 0) return;
+  const t = locale(state);
+
+  state.invaders = normalizeInvaderCounts(state.invaders);
+
+  const blightedLands = [];
+  let blightTotal = 0;
+
+  for (const land of LAND_IDS) {
+    const result = resolveLandCombat(state, land, dt);
+
+    if (result.dahanLost > 0) {
+      markDefeatFx(state, land, "dahan", result.dahanLost);
+      addLog(state, template(t.dahanFell, {
+        count: result.dahanLost,
+        land: landName(state, land),
+        left: state.dahan[land]
+      }));
+    }
+
+    if (result.blightGained > 0) {
+      blightedLands.push(land);
+      blightTotal = Math.max(blightTotal, result.blightGained);
+      addLog(state, template(t.blightGained, {
+        land: landName(state, land),
+        amount: result.blightGained,
+        total: state.round.blight,
+        threshold: state.round.blightThreshold
+      }));
+    }
+  }
+
+  if (blightedLands.length > 0) markBlightFx(state, blightedLands, blightTotal);
+  if (blightReached(state)) endRound(state);
+}
+
+// Every Dahan on the island swings at once, on their own timer. A land with no invaders is
+// skipped rather than logged, or the log would be nothing but empty-land lines.
+function resolveDahanAttack(state) {
+  const t = locale(state);
+  state.invaders = normalizeInvaderCounts(state.invaders);
+
+  let landsThatStruck = 0;
+
+  for (const land of LAND_IDS) {
+    const dahan = Math.max(0, state.dahan[land] || 0);
+    if (dahan <= 0 || invaderCountInLand(state.invaders[land]) <= 0) continue;
+
+    const result = spendDahanAttack(state, land, dahan * DAHAN_ATTACK_DAMAGE);
+    landsThatStruck += 1;
+    addLog(state, template(t.dahanAttackResolved, {
+      land: landName(state, land),
+      damage: result.spent,
+      defeated: result.defeated
+    }));
+  }
+
+  if (landsThatStruck === 0) addLog(state, t.dahanAttackNoTargets);
+}
+
+/* ------------------------------------------------------------------ *
  * Invader phases (09-island-board.md)                                  *
  * ------------------------------------------------------------------ */
 
@@ -1359,74 +1578,6 @@ function landAcceptsExplorer(state, landId) {
     const slot = state.invaders[neighbour];
     return Boolean(slot) && ((slot.towns || 0) > 0 || (slot.cities || 0) > 0);
   });
-}
-
-function resolveRavagePhase(state) {
-  const t = locale(state);
-  const terrain = state.invader.ravage;
-
-  if (!terrain) {
-    addLog(state, t.ravageNothing);
-    return;
-  }
-
-  state.invaders = normalizeInvaderCounts(state.invaders);
-
-  const blightedLands = [];
-  let blightTotal = 0;
-
-  // A phase names a terrain, so every land of that terrain ravages, lowest id first.
-  for (const land of landsOfTerrain(terrain)) {
-    const damage = invaderDamageInLand(state.invaders[land]);
-
-    if (damage <= 0) {
-      addLog(state, template(t.ravageNoInvaders, { land: landName(state, land) }));
-      continue;
-    }
-
-    // Invaders strike first. Only the Dahan still standing afterwards counterattack, so
-    // enough damage can wipe a land's defenders out before they land a blow.
-    const dahanBefore = state.dahan[land] || 0;
-    const dahanLost = applyDamageToDahan(state, land, damage);
-    const survivors = state.dahan[land] || 0;
-    if (dahanLost > 0) markDefeatFx(state, land, "dahan", dahanLost);
-
-    addLog(state, template(t.ravageResolved, { land: landName(state, land), damage, dahanLost }));
-
-    const counterPool = survivors * UNIT_STATS.dahan.damage;
-    if (counterPool <= 0) {
-      if (dahanLost > 0) addLog(state, template(t.ravageNoSurvivors, { land: landName(state, land) }));
-    } else if (invaderCountInLand(state.invaders[land]) <= 0) {
-      addLog(state, template(t.ravageCounterNoTargets, { land: landName(state, land) }));
-    } else {
-      const counter = spendCounterattack(state, land, counterPool);
-      addLog(state, template(t.ravageCounterResolved, {
-        land: landName(state, land),
-        damage: counter.spent,
-        defeated: counter.defeated
-      }));
-    }
-
-    // An undefended land degrades twice as fast. That is what the Dahan are actually worth,
-    // beyond the counterattack itself.
-    const undefended = dahanBefore === 0;
-    const gain = BLIGHT_PER_RAVAGED_LAND + (undefended ? BLIGHT_BONUS_UNDEFENDED_LAND : 0);
-    const applied = addBlight(state, land, gain);
-
-    if (applied > 0) {
-      blightedLands.push(land);
-      blightTotal = Math.max(blightTotal, applied);
-      addLog(state, template(t.blightGained, {
-        land: landName(state, land),
-        amount: applied,
-        reason: undefended ? t.blightReasonUndefended : t.blightReasonRavaged,
-        total: state.round.blight,
-        threshold: state.round.blightThreshold
-      }));
-    }
-  }
-
-  if (blightedLands.length > 0) markBlightFx(state, blightedLands, blightTotal);
 }
 
 function resolveBuildPhase(state) {
@@ -1484,22 +1635,17 @@ function resolveExplorePhase(state) {
   }
 }
 
-// The track slides forward. What was discovered this wave is built next wave and ravaged
-// the wave after, so the player can see pressure coming.
+// The track slides forward. What was discovered this wave is built on the next one, so the
+// player can see a terrain thicken one wave before it does.
 function shiftInvaderTrack(state) {
   state.invader = normalizeInvaderPhases(state.invader);
 
-  const shiftedToRavage = state.invader.build;
   const shiftedToBuild = state.invader.explore;
-  const nextDiscover = drawInvaderTerrainExcluding([shiftedToRavage, shiftedToBuild]);
-
-  state.invader.ravage = shiftedToRavage;
   state.invader.build = shiftedToBuild;
-  state.invader.explore = nextDiscover;
+  state.invader.explore = drawInvaderTerrainExcluding([shiftedToBuild]);
 
   const t = locale(state);
   addLog(state, template(t.waveIncoming, {
-    ravage: terrainName(state, state.invader.ravage),
     build: terrainName(state, state.invader.build),
     discover: terrainName(state, state.invader.explore)
   }));
@@ -1509,18 +1655,15 @@ function shiftInvaderTrack(state) {
  * The round (02-core-loop.md)                                          *
  * ------------------------------------------------------------------ */
 
-// One wave: the whole invader sequence, self-triggered by the timer. The round-end check
-// happens after the full wave, so the wave that crosses the threshold still finishes.
+// One wave: reinforcement only. A wave no longer deals a point of damage - it just adds to
+// what is already grinding the island down between waves.
 function resolveWave(state) {
-  resolveRavagePhase(state);
   resolveBuildPhase(state);
   resolveExplorePhase(state);
   shiftInvaderTrack(state);
 
   state.round.wavesResolved += 1;
   addLog(state, template(locale(state).waveResolved, { wave: state.round.wavesResolved }));
-
-  if (blightReached(state)) endRound(state);
 }
 
 function endRound(state) {
@@ -1529,6 +1672,7 @@ function endRound(state) {
 
   state.round.status = "ended";
   state.round.waveTimerRemaining = 0;
+  state.round.dahanAttackRemaining = 0;
   state.pendingAbilityTarget = null;
 
   state.meta.totalRoundsPlayed += 1;
@@ -1543,26 +1687,23 @@ function endRound(state) {
 }
 
 // Seeds the Dahan for a round: the spirit's fixed baseline, then any purchased
-// reinforcement spread over the emptiest lands, at most two added to any one land.
+// reinforcement, one at a time into whichever land is emptiest.
 function seedRoundDahan(state) {
   const spirit = activeSpirit(state);
   state.dahan = normalizeDahanCounts(spirit.roundStartDahan);
 
-  const added = createDahanCounts();
   let remaining = upgradeTotals(state).dahanBonus;
 
   while (remaining > 0) {
-    const eligible = LAND_IDS.filter((landId) => added[landId] < DAHAN_MAX_ADD_PER_LAND);
-    if (eligible.length === 0) break;
-
     // Emptiest land first, ties on the lowest id: deterministic, so a round setup can be
-    // asserted in a test rather than sampled.
-    let target = eligible[0];
-    for (const landId of eligible) {
+    // asserted in a test rather than sampled. Always filling the emptiest land is also what
+    // holds the DAHAN_MAX_SPREAD invariant - a land can only rise to n+1 once every land
+    // has reached n - and it is the fastest repair if a spirit's baseline starts lopsided.
+    let target = LAND_IDS[0];
+    for (const landId of LAND_IDS) {
       if (state.dahan[landId] < state.dahan[target]) target = landId;
     }
 
-    added[target] += 1;
     state.dahan[target] += 1;
     remaining -= 1;
   }
@@ -1584,15 +1725,18 @@ function startRound(state) {
   state.round.elapsedSeconds = 0;
   state.round.blight = 0;
   state.round.blightByLand = createBlightByLand();
+  state.round.blightProgress = createProgressByLand();
+  state.round.dahanProgress = createProgressByLand();
   state.round.blightThreshold = BLIGHT_THRESHOLD_BASE + totals.blightThresholdBonus;
   state.round.waveTimerRemaining = WAVE_INTERVAL_SECONDS;
+  state.round.dahanAttackRemaining = DAHAN_ATTACK_INTERVAL_SECONDS;
   state.round.wavesResolved = 0;
   state.round.fearEarned = 0;
   state.round.abilityCooldownMult = 1 - totals.cooldownReductionPct;
 
   state.invaders = createInvaderCounts();
   state.invaderDamage = createInvaderDamage();
-  state.invader = normalizeInvaderPhases({ ravage: null, build: null, explore: drawInvaderTerrain() });
+  state.invader = normalizeInvaderPhases({ build: null, explore: drawOpeningTerrain(state) });
 
   state.pendingAbilityTarget = null;
   state.abilities = createAbilityState(state);
@@ -1606,7 +1750,21 @@ function startRound(state) {
   }));
 
   seedRoundDahan(state);
+  seedRoundExplore(state);
   return state;
+}
+
+// The opening Discover, run at setup rather than on the first wave. Without it the island
+// stands empty for the whole first wave interval: nothing to fight, no Blight accruing, and
+// a Build phase at wave 1 with nothing to build on. Now the invaders are ashore from second
+// zero, and the terrain they landed in is what wave 1 builds up - the track shift below is
+// what puts it in the Build slot, so wave 1 reads the same as every wave after it.
+//
+// It is not a wave: `wavesResolved` stays at 0 and no timer is touched.
+function seedRoundExplore(state) {
+  addLog(state, locale(state).setupExplore);
+  resolveExplorePhase(state);
+  shiftInvaderTrack(state);
 }
 
 // Leaving the shop. The round number only moves here, so a reload inside the shop cannot
@@ -1631,6 +1789,24 @@ function tick(state, dt) {
 
   state.round.elapsedSeconds += step;
   tickCooldowns(state, step);
+
+  // The fight first: it is what actually ends the round, and resolving it before the wave
+  // means a land cannot be reinforced out from under damage it had already taken this tick.
+  resolveContinuousCombat(state, step);
+  if (state.round.status !== "running") {
+    state.round.waveTimerRemaining = 0;
+    state.round.dahanAttackRemaining = 0;
+    return;
+  }
+
+  state.round.dahanAttackRemaining -= step;
+  let dahanGuard = 0;
+  while (state.round.dahanAttackRemaining <= 0 && dahanGuard < 16) {
+    state.round.dahanAttackRemaining += DAHAN_ATTACK_INTERVAL_SECONDS;
+    resolveDahanAttack(state);
+    dahanGuard += 1;
+  }
+
   state.round.waveTimerRemaining -= step;
 
   // A capped tick is shorter than a wave interval today, but the loop is written to survive
@@ -1642,7 +1818,10 @@ function tick(state, dt) {
     guard += 1;
   }
 
-  if (state.round.status !== "running") state.round.waveTimerRemaining = 0;
+  if (state.round.status !== "running") {
+    state.round.waveTimerRemaining = 0;
+    state.round.dahanAttackRemaining = 0;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1681,13 +1860,16 @@ function createInitialState() {
       elapsedSeconds: 0,
       blight: 0,
       blightByLand: createBlightByLand(),
+      blightProgress: createProgressByLand(),
+      dahanProgress: createProgressByLand(),
       blightThreshold: BLIGHT_THRESHOLD_BASE,
       waveTimerRemaining: WAVE_INTERVAL_SECONDS,
+      dahanAttackRemaining: DAHAN_ATTACK_INTERVAL_SECONDS,
       wavesResolved: 0,
       fearEarned: 0,
       abilityCooldownMult: 1
     },
-    invader: { ravage: null, build: null, explore: null },
+    invader: { build: null, explore: null },
     invaders: createInvaderCounts(),
     invaderDamage: createInvaderDamage(),
     dahan: createDahanCounts(),
@@ -1760,10 +1942,17 @@ function normalizeState(raw) {
   merged.round.blightThreshold = Math.max(1, Math.floor(merged.round.blightThreshold || BLIGHT_THRESHOLD_BASE));
   merged.round.blight = clamp(Math.floor(Number(merged.round.blight) || 0), 0, merged.round.blightThreshold);
   merged.round.blightByLand = normalizeBlightByLand(merged.round.blightByLand);
+  merged.round.blightProgress = normalizeProgressByLand(merged.round.blightProgress);
+  merged.round.dahanProgress = normalizeProgressByLand(merged.round.dahanProgress);
   merged.round.waveTimerRemaining = clamp(
     Number(merged.round.waveTimerRemaining) || 0,
     0,
     WAVE_INTERVAL_SECONDS
+  );
+  merged.round.dahanAttackRemaining = clamp(
+    Number(merged.round.dahanAttackRemaining) || 0,
+    0,
+    DAHAN_ATTACK_INTERVAL_SECONDS
   );
   const mult = Number(merged.round.abilityCooldownMult);
   merged.round.abilityCooldownMult = Number.isFinite(mult) && mult > 0 ? Math.min(mult, 1) : 1;
@@ -1853,10 +2042,14 @@ const ENGINE_EXPORTS = {
   VERSION,
   WAVE_INTERVAL_SECONDS,
   BLIGHT_THRESHOLD_BASE,
-  BLIGHT_PER_RAVAGED_LAND,
-  BLIGHT_BONUS_UNDEFENDED_LAND,
+  BLIGHT_PER_DAMAGE_SECOND,
+  DAHAN_LOSS_PER_DAMAGE_SECOND,
+  BLIGHT_FLOOR_FRACTION,
+  DAHAN_CONCENTRATION_CAP,
+  DAHAN_ATTACK_INTERVAL_SECONDS,
+  DAHAN_ATTACK_DAMAGE,
   DAHAN_PER_ROUND_START_BASE,
-  DAHAN_MAX_ADD_PER_LAND,
+  DAHAN_MAX_SPREAD,
   DEFEAT_FX_MS,
   MAX_TICK_SECONDS,
   FEAR_PER_POWER,
@@ -1892,9 +2085,12 @@ const ENGINE_EXPORTS = {
   abilityName,
   abilityText,
   abilityRequirementText,
-  waveOutcomeInLand,
-  waveChipText,
-  waveDetailText,
+  landPressure,
+  buildOutcomeInLand,
+  pressureChipText,
+  pressureDetailText,
+  buildChipText,
+  etaText,
   upgradeName,
   upgradeText,
   formatFear,
@@ -1919,13 +2115,15 @@ const ENGINE_EXPORTS = {
   triggerAbility,
   resolveAbilityTarget,
   applyDamageToInvaderType,
-  applyDamageToDahan,
-  spendCounterattack,
+  spendDahanAttack,
   gainFearFromDefeat,
   addBlight,
   blightReached,
+  resolveLandCombat,
+  resolveContinuousCombat,
+  resolveDahanAttack,
   landAcceptsExplorer,
-  resolveRavagePhase,
+  drawOpeningTerrain,
   resolveBuildPhase,
   resolveExplorePhase,
   shiftInvaderTrack,
@@ -1934,6 +2132,7 @@ const ENGINE_EXPORTS = {
   startNextRound,
   endRound,
   seedRoundDahan,
+  seedRoundExplore,
   tick,
   createInitialState,
   createFreshGameState,
@@ -1941,6 +2140,7 @@ const ENGINE_EXPORTS = {
   createInvaderDamage,
   createDahanCounts,
   createBlightByLand,
+  createProgressByLand,
   normalizeState,
   migrateSave,
   loadState,

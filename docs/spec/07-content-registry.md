@@ -80,8 +80,8 @@ for the numbers.
 - Cooldown: 12s
 - Needs target: yes, one land holding at least one invader
 - Effect: 2 damage to the **highest tier present** in the clicked land — cities, then towns,
-  then explorers. The one-click model has no room to ask which type, and reusing the
-  counterattack's rule means "hits the biggest thing standing" is one rule in the game
+  then explorers. The one-click model has no room to ask which type, and reusing the Dahan
+  strike's rule means "hits the biggest thing standing" is one rule in the game
   rather than two. (The turn-based wetlands damage bonus is dropped for now — pending a
   decision on whether terrain should still matter to abilities.)
 

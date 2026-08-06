@@ -8,7 +8,11 @@
   state.round.blight = 7;
   state.round.blightThreshold = 11;
   state.round.blightByLand = { "1": 2, "2": 1, "3": 0, "4": 0, "5": 3, "6": 1, "7": 0, "8": 0 };
+  // Part-filled bars, so the land meters can be judged at something other than empty.
+  state.round.blightProgress = { "1": 0.4, "2": 0.72, "3": 0.1, "4": 0, "5": 0.25, "6": 0.88, "7": 0, "8": 0.55 };
+  state.round.dahanProgress = { "1": 0.62, "2": 0, "3": 0.3, "4": 0, "5": 0.81, "6": 0, "7": 0, "8": 0 };
   state.round.waveTimerRemaining = 3;
+  state.round.dahanAttackRemaining = 6;
   state.round.wavesResolved = 9;
   state.round.fearEarned = 4.2;
   state.meta.fear = 12.6;
@@ -29,7 +33,6 @@
   state.dahan = createDahanCounts();
   state.dahan["1"] = 1; state.dahan["3"] = 2; state.dahan["4"] = 1; state.dahan["5"] = 1; state.dahan["7"] = 2;
 
-  state.invader.ravage = "jungle";
   state.invader.build = "desert";
   state.invader.explore = "mountains";
 

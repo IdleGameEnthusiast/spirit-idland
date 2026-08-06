@@ -22,6 +22,9 @@ island board, and the between-round shop.
 - Blight meter: current value against `round.blightThreshold`, always visible, not hidden
   in a panel
 - Wave timer: seconds remaining until the next automatic wave
+- Dahan strike timer: seconds remaining until the next Dahan attack, shown separately from
+  the wave timer because the two are separate clocks and will drift apart
+- Invader track: the Build and Discover terrains. There is no Ravage slot
 - Fear total (`meta.fear`)
 - Active spirit name and trait text
 
@@ -37,10 +40,20 @@ island board, and the between-round shop.
   the others
 - Per land, on the board: land number, terrain, invader glyphs with counts (nonzero only),
   Dahan pips, and the Blight already taken there when it is nonzero
-- On a land the next wave will Ravage: a colour-coded banner naming the damage it will take,
-  the Dahan it will cost, and the counterattack that would answer
+- On every land holding invaders: a **Blight bar** showing `round.blightProgress` for that
+  land, and a line naming the rate and the seconds to the next Blight. This is the primary
+  read on the board — the fight is continuous, so a land's danger is a speed, not an event
+- On every land holding both invaders and Dahan: the **casualty clock**, `round.dahanProgress`
+  drawn as a Dahan token that fills rather than as a second bar, so a land about to stop
+  defending itself says so before it does. It is deliberately a fraction of the Blight bar's
+  size: two bars of equal weight read as two equal threats, and only Blight ends the round
+- On a land the next wave will Build: a colour-coded banner naming the unit it will add. A
+  land on the wave's list with nothing to build on wears a **quiet** variant of the same
+  banner — neutral, not pressure-red. The loud frame means "this land gets worse"; wearing it
+  to announce that nothing happens pulls the eye to the one land needing no attention
 - On the land a pending ability target applies to: highlight it as a legal click
-- A land detail panel for one selected land: invader counts with partial-HP hints, Dahan,
+- A land detail panel for one selected land: the same fight readout in long form (gross
+  damage, Dahan defence, net, rate, ETA), invader counts with partial-HP hints, Dahan,
   Blight taken here, and its neighbours
 
 4. Between-round shop (visible only while `round.status` is `ended`)
@@ -66,8 +79,8 @@ island board, and the between-round shop.
 - Default hint names the board: eight lands, three of them coastal.
 - While an ability is armed, the hint names which ability is waiting and what land property
   it needs (holds invaders, is the most-Blighted, etc.).
-- While a wave is actively resolving (Ravage/Build/Discover for that tick), the hint names
-  the current step and which lands it's acting on.
+- Otherwise, while a round runs, the hint names the terrain the next wave will Build in and
+  the lands that means.
 
 ## Interaction Rules
 
@@ -85,7 +98,7 @@ A land renders in at most one state, listed by precedence:
 | State | Meaning |
 | --- | --- |
 | `legal` | A valid click for the currently armed ability. |
-| `wave-active` | A land the next wave's Ravage will act on. |
+| `wave-active` | A land the next wave's Build will act on. |
 | `selected` | Open in the detail panel. |
 | `out` | Dimmed. Not a legal target for the armed ability. |
 | `idle` | Nothing pending here. |
@@ -97,8 +110,18 @@ Two clarifications the implementation forced:
 
 - **`wave-active` means the *next* wave, not one mid-resolution.** A wave resolves
   atomically inside a single tick, so there is no interval during which the player could see
-  a Ravage "in progress". What is worth showing is the wave being counted down to, which is
+  a Build "in progress". What is worth showing is the wave being counted down to, which is
   also the only one the player can still act against.
+- **`wave-active` is no longer where the damage is.** Under the old design it marked the two
+  lands about to be hit; now every land with invaders is being hit, continuously, and the
+  per-land bars carry that. The wave outline marks where the island is about to get *worse*,
+  which is a different and lesser urgency — the bars are the primary read.
+- **Chip text needs its own backing.** The chips float over terrain fills that run from slate
+  to bright desert, so every line on a chip carries either a dark pill behind it or a
+  `text-shadow`, and none sit below weight 700. The wave banner was the exception and read at
+  roughly 3:1 over desert; its warning colour now rides on a dark base rather than washing
+  straight over the land. Anything new on a chip inherits this rule — at 9px there is no
+  terrain fill that near-white survives unaided.
 - **Arming an ability is exclusive.** While `pendingAbilityTarget` is set, every land reads
   as either `legal` or `out` — a wave target that is not a legal click still dims. Legality
   is the only question on screen at that moment, and a second highlight competing with it
@@ -107,8 +130,13 @@ Two clarifications the implementation forced:
 
 ## Live Update Rules
 
-- Values that change every second (wave timer, ability cooldowns, Blight) must be patched in
-  place rather than triggering a map rebuild.
+- Values that change every second (wave timer, Dahan strike timer, ability cooldowns, Blight)
+  must be patched in place rather than triggering a map rebuild.
+- The per-land bars change every *tick*, not every second, so they are patched hardest of
+  all: the board's rebuild signature deliberately excludes `blightProgress` and
+  `dahanProgress`, or the board would rebuild ten times a second and no bar could animate.
+  Their fills and the countdown text beside them are written every frame by a patch pass that
+  creates no nodes.
 - The island's shapes are drawn once at startup. Only fills, outlines, and the overlay chips
   are repainted.
 - Rebuilding the board on a per-second cadence would destroy in-progress hover/focus state

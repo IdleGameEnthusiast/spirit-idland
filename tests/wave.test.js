@@ -1,4 +1,7 @@
-/* Wave timing checks - docs/spec/08-acceptance-tests.md#wave-timing-checks */
+/* Wave timing checks - docs/spec/08-acceptance-tests.md#wave-timing-checks
+ *
+ * A wave is reinforcement only now: Build, then Discover, then the track shifts. It deals no
+ * damage at all - that lives in the continuous fight, in combat.test.js. */
 
 (function () {
   const { engine, test, assert, assertEqual, assertClose, newGame, advance, clearBoard, setLand } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
@@ -31,57 +34,48 @@
     }
   });
 
-  test("wave: the track shifts build->ravage and explore->build", () => {
+  test("wave: the track is two slots, and explore shifts into build", () => {
     const ctx = newGame();
     const { state } = ctx;
-    const before = { ...state.invader };
+    assert(!("ravage" in state.invader), "the Ravage slot is gone");
 
+    const before = { ...state.invader };
     advance(ctx, engine.WAVE_INTERVAL_SECONDS);
 
-    assertEqual(state.invader.ravage, before.build, "old build becomes ravage");
     assertEqual(state.invader.build, before.explore, "old explore becomes build");
     assert(engine.INVADER_TERRAINS.includes(state.invader.explore), "a new explore terrain is drawn");
   });
 
-  test("wave: a drawn explore terrain never duplicates ravage or build", () => {
+  test("wave: a drawn explore terrain never duplicates build", () => {
     const ctx = newGame();
     for (let i = 0; i < 8; i += 1) {
       advance(ctx, engine.WAVE_INTERVAL_SECONDS);
       if (ctx.state.round.status !== "running") break;
-      const { ravage, build, explore } = ctx.state.invader;
-      assert(explore !== build, "explore must differ from build");
-      if (ravage) assert(explore !== ravage, "explore must differ from ravage");
+      assert(ctx.state.invader.explore !== ctx.state.invader.build, "explore must differ from build");
     }
   });
 
-  test("wave: the phases run ravage, then build, then discover", () => {
-    const ctx = newGame();
-    const { state } = ctx;
+  test("wave: a wave deals no damage of its own", () => {
+    const { state } = newGame();
     clearBoard(state);
-
-    // Jungle sits in both the ravage and the build slot. Land 5 holds one town and two
-    // Dahan: ravaging first deals 2 damage and kills one Dahan, while building first would
-    // deal 4 and kill both. The surviving Dahan is the whole assertion.
-    state.invader = { ravage: "jungle", build: "jungle", explore: "mountains" };
     setLand(state, "5", { towns: 1 }, 2);
+    state.invader = { build: "mountains", explore: "mountains" };
 
     engine.resolveWave(state);
 
-    assertEqual(state.dahan["5"], 1, "Ravage resolved before Build");
+    assertEqual(state.dahan["5"], 2, "no Dahan lost to the wave itself");
+    assertEqual(state.round.blight, 0, "no Blight from the wave itself");
   });
 
-  test("wave: one wave runs all three phases, each on its own terrain", () => {
-    const ctx = newGame();
-    const { state } = ctx;
+  test("wave: one wave runs Build then Discover, each on its own terrain", () => {
+    const { state } = newGame();
     clearBoard(state);
 
-    state.invader = { ravage: "wetlands", build: "jungle", explore: "desert" };
-    setLand(state, "1", { explorers: 1 }, 0);
+    state.invader = { build: "jungle", explore: "desert" };
     setLand(state, "5", { towns: 1 }, 0);
 
     engine.resolveWave(state);
 
-    assert(state.round.blight > 0, "Ravage hit the wetlands");
     assertEqual(engine.invaderCountInLand(state.invaders["5"]), 2, "Build added to the jungle");
     assertEqual(state.invaders["2"].explorers, 1, "Discover seeded the coastal desert");
   });
@@ -108,5 +102,78 @@
     // no waves at all rather than a burst of them.
     assertEqual(ctx.state.round.wavesResolved, 0, "waves credited from a 10-minute gap");
     assertClose(ctx.state.round.elapsedSeconds, engine.MAX_TICK_SECONDS, 0.01, "round time credited");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Build and Discover, unchanged by the redesign                      *
+   * ---------------------------------------------------------------- */
+
+  test("build: towns outnumbering cities builds a city, otherwise a town", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    setLand(state, "3", { towns: 2, cities: 1 }, 0);
+    setLand(state, "5", { towns: 1, cities: 1 }, 0);
+    state.invader = { build: "jungle", explore: null };
+
+    engine.resolveBuildPhase(state);
+    assertEqual(state.invaders["3"].cities, 2, "towns outnumber cities: a city is built");
+    assertEqual(state.invaders["5"].towns, 2, "otherwise a town is built");
+  });
+
+  test("build: an empty land builds nothing", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: "jungle", explore: null };
+
+    engine.resolveBuildPhase(state);
+    assertEqual(engine.invaderCountInLand(state.invaders["3"]), 0, "land 3 stays empty");
+    assertEqual(engine.invaderCountInLand(state.invaders["5"]), 0, "land 5 stays empty");
+  });
+
+  test("build: the chip names what the next wave would put here", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    setLand(state, "3", { towns: 2, cities: 1 }, 0);
+    setLand(state, "5", { towns: 1, cities: 1 }, 0);
+
+    assertEqual(engine.buildOutcomeInLand(state, "3"), "cities", "a city is next here");
+    assertEqual(engine.buildOutcomeInLand(state, "5"), "towns", "a town is next here");
+    assertEqual(engine.buildOutcomeInLand(state, "1"), null, "nothing to build on in an empty land");
+  });
+
+  test("discover: seeds the coastal land and skips the unreachable inland one", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: null, explore: "jungle" };
+
+    engine.resolveExplorePhase(state);
+    assertEqual(state.invaders["3"].explorers, 1, "coastal jungle takes an explorer");
+    assertEqual(state.invaders["5"].explorers, 0, "inland jungle has no way in yet");
+  });
+
+  test("discover: a town next to the inland land opens it up", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    setLand(state, "1", { towns: 1 }, 0);
+    state.invader = { build: null, explore: "jungle" };
+
+    engine.resolveExplorePhase(state);
+    assertEqual(state.invaders["5"].explorers, 1, "land 5 is adjacent to the town in land 1");
+  });
+
+  test("discover: mountains stays shut until invaders are inland", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: null, explore: "mountains" };
+
+    engine.resolveExplorePhase(state);
+    assertEqual(state.invaders["4"].explorers, 0, "land 4 shut");
+    assertEqual(state.invaders["6"].explorers, 0, "land 6 shut");
+
+    // Land 6 borders coastal lands 2 and 3, so it is the first mountain land to open.
+    setLand(state, "2", { towns: 1 }, 0);
+    engine.resolveExplorePhase(state);
+    assertEqual(state.invaders["6"].explorers, 1, "land 6 opens first");
+    assertEqual(state.invaders["4"].explorers, 0, "land 4 is still interior");
   });
 })();

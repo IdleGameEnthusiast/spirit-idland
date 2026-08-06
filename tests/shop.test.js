@@ -7,9 +7,8 @@
     const ctx = newGame();
     const { state } = ctx;
 
-    // Earned by hand, because at the current placeholder numbers an unattended round earns
-    // none: one Dahan per land dies to the 3 damage a land holds by the time it is ravaged,
-    // so the counterattack never fires. See the balance note in docs/tasks.
+    // Earned by hand rather than played for: this check is about Fear surviving a lost
+    // round, and an ability is the shortest way to put some on the books.
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
     engine.triggerAbility(state, "flash_floods");

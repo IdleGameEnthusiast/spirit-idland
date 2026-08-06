@@ -9,8 +9,14 @@ DOM) plus `ui.js` (all DOM, no rules), loaded as two classic scripts by `index.h
 
 The loop is playable end to end — a round resolves itself, loses to Blight, hands off to
 the shop, and starts again stronger. What is *not* settled is the balance: every number in
-[04 Economy and Formulas](./04-economy-formulas.md) is still the placeholder pass, and one
-of them is known to be wrong — see [Known Balance Problems](#known-balance-problems) below.
+[04 Economy and Formulas](./04-economy-formulas.md) is still the placeholder pass — see
+[Known Balance Problems](#known-balance-problems) below.
+
+**`4.0.0` rebuilt the fight.** The Ravage phase is gone. Invaders now damage the land they
+stand in continuously, everywhere at once, and both consequences — Blight rising and Dahan
+falling — accrue as per-land bars rather than landing in whole points on a schedule. The
+invader track is two slots (Build, Discover) and a wave deals no damage at all. Read
+[02 Core Loop](./02-core-loop.md#the-fight) first; most of what changed follows from it.
 
 Run it by opening `index.html` from disk; no server and no build step. Run the regression
 suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
@@ -30,7 +36,7 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 
 ## Concept Summary
 
-- A round is a real-time survival attempt: invaders and Dahan fight automatically while
+- A round is a real-time survival attempt: invaders and Dahan fight continuously while
   Blight climbs, and the player intervenes with cooldown-gated abilities.
 - A round always ends the same way: Blight reaches its threshold and the round is lost.
   There is no separate "win" state — how long you lasted is the score.
@@ -49,22 +55,34 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 - Manually resolving Ravage/Build/Discover phase by phase and hand-assigning the Dahan
   counterattack.
 - Per-land Essence generation and presence placement range.
+- **The Ravage phase itself**, as of `4.0.0`. Damage is not an event on a terrain any more;
+  it is a rate in every land at once. See [02-core-loop.md](./02-core-loop.md#the-fight).
 
 ## Known Balance Problems
 
-Found by playing the implemented loop, not by reading it. Both are numbers, not structure.
+Both old findings — zero unattended Fear, a 64-second round — were artefacts of the per-wave
+Ravage model and are fixed. A round now runs 87-120 seconds, earns 1.05-1.75 Fear unattended,
+and costs the player 2-4 of their 6 Dahan. Full trace in
+[04-economy-formulas.md](./04-economy-formulas.md#measured-behaviour).
 
-- **An unattended round earns zero Fear.** Every land starts with at most 1 Dahan (2 health),
-  and by the time a land is Ravaged it holds enough invaders to deal 3+ damage, so the Dahan
-  die before they can counterattack — every round, in every land. Fear therefore only ever
-  comes from abilities. The meta loop still works, but only for a player who acts; an idle
-  first round buys nothing at all.
-- **A round lasts about 64 seconds** (8 waves at the default threshold of 10). That is short
-  enough that the shop arrives before the board is legible.
+A third was found and fixed during this pass: at the first cut's casualty rate, **no Dahan
+ever died** — the casualty bar and its death spiral were dead code. Raising
+`DAHAN_LOSS_PER_DAMAGE_SECOND` to 0.05 put them on screen. That constant is the one under
+playtest.
 
-Neither is a design flaw in the loop; both are the placeholder numbers meeting each other.
-See [Implementation Microtasks](../tasks/implementation-microtasks.md#what-to-build-next)
-for the shortlist of fixes.
+What is left:
+
+- **Dahan stacking was superlinear, and has been braked twice.** Casualty damage divided by
+  the stack size gave a stack quadratic lifetime, and defence cancelling Blight outright gave
+  it a cliff to zero — together, one fortified land beat six defended ones and `rivers_bounty`
+  was the only ability worth casting. `BLIGHT_FLOOR_FRACTION` removes the cliff (a held land
+  seeps), and `DAHAN_CONCENTRATION_CAP` makes a stack's lifetime linear in its size. Both
+  constants are under playtest, and `dahan_reinforcement` and `rivers_bounty` still have not
+  been repriced against them. See
+  [04-economy-formulas.md](./04-economy-formulas.md#dahan-casualty-formula).
+- **First Blight lands anywhere between 33 and 74 seconds**, depending on whether the early
+  Discover draws hit the two lands `roundStartDahan` leaves empty. The variance is the terrain
+  draw rather than the rates, but it means two players' first rounds can read very differently.
 
 ## Still Open
 

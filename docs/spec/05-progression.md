@@ -83,7 +83,9 @@ meta loop: a tier bought after round 1 still applies in round 5.
 
 ## Known Gap
 
-Progression only turns over if a round produces Fear, and at the current placeholder numbers
-an unattended round produces none — the Dahan die before they can counterattack. The
-machinery is right; the inputs are not. See
+Progression only turns over if a round produces Fear. It now does unattended: the Dahan
+strike fires on its own timer whether or not a land is under attack, so a defended land earns
+Fear without the player acting. What is untested is whether it earns *enough*, and whether
+`dahan_reinforcement` is priced correctly now that the Blight floor and the concentration cap
+have taken the superlinear returns out of a Dahan. See
 [index.md](./index.md#known-balance-problems).

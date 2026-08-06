@@ -7,7 +7,7 @@
 
   test("landstate: with nothing armed, the next wave's lands read as wave-active", () => {
     const { state } = newGame();
-    state.invader = { ravage: "jungle", build: "desert", explore: "mountains" };
+    state.invader = { build: "jungle", explore: "mountains" };
     state.ui.selectedLand = "1";
 
     const states = engine.landRenderStates(state);
@@ -19,7 +19,7 @@
 
   test("landstate: nothing is dimmed while no ability is armed", () => {
     const { state } = newGame();
-    state.invader = { ravage: "jungle", build: null, explore: "mountains" };
+    state.invader = { build: "jungle", explore: "mountains" };
 
     const states = engine.landRenderStates(state);
     assert(!Object.values(states).includes("out"), "dimming only teaches a targeting rule");
@@ -30,7 +30,7 @@
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
     setLand(state, "6", { explorers: 1 }, 0);
-    state.invader = { ravage: "jungle", build: null, explore: null };
+    state.invader = { build: "jungle", explore: null };
     state.ui.selectedLand = "1";
 
     engine.triggerAbility(state, "flash_floods");
@@ -54,7 +54,7 @@
 
   test("landstate: an ended round marks no land as a wave target", () => {
     const { state } = newGame();
-    state.invader = { ravage: "jungle", build: null, explore: null };
+    state.invader = { build: "jungle", explore: null };
     engine.endRound(state);
 
     const states = engine.landRenderStates(state);
@@ -64,10 +64,10 @@
   test("landstate: selection falls back to a wave target, then to land 1", () => {
     const { state } = newGame();
     state.ui.selectedLand = null;
-    state.invader = { ravage: "jungle", build: null, explore: null };
-    assertEqual(engine.effectiveSelectedLand(state), "3", "first land of the ravage terrain");
+    state.invader = { build: "jungle", explore: null };
+    assertEqual(engine.effectiveSelectedLand(state), "3", "first land of the build terrain");
 
-    state.invader = { ravage: null, build: null, explore: "jungle" };
+    state.invader = { build: null, explore: "jungle" };
     assertEqual(engine.effectiveSelectedLand(state), "1", "nothing incoming yet");
 
     state.ui.selectedLand = "7";

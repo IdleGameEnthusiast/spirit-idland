@@ -31,43 +31,69 @@ files are listed by hand in `tests.html`; adding one means adding a `<script>` l
 
 1. A fresh round starts with `round.status = "running"`, `round.blight = 0`,
    `round.elapsedSeconds = 0`, and every ability's `cooldownRemaining` at 0.
-2. Round setup seeds Dahan per `roundStartDahan` plus any purchased `dahan_reinforcement`
-   tiers, at most `DAHAN_MAX_ADD_PER_LAND` newly added to one land.
-3. Round setup seeds `round.blightThreshold` from `BLIGHT_THRESHOLD_BASE` plus any purchased
+2. Round setup seeds Dahan per `roundStartDahan` plus every purchased `dahan_reinforcement`
+   tier — none are dropped, however many are bought.
+3. However deep reinforcement is bought, no two lands end round setup more than
+   `DAHAN_MAX_SPREAD` Dahan apart: no land reaches 3 while another is still empty.
+4. Round setup seeds `round.blightThreshold` from `BLIGHT_THRESHOLD_BASE` plus any purchased
    `blight_resilience` tiers.
-4. Round setup clears `invaders` and `invaderDamage` to zero everywhere and resets the
-   invader track.
-5. A second round after purchasing an upgrade starts stronger than the first, without
+5. Round setup clears `invaders` and `invaderDamage` to zero everywhere and resets the
+   invader track, then runs the opening Discover: at least one land holds an explorer at
+   second zero, every seeded land is of the terrain now in the Build slot, and nothing but
+   explorers stands on the board.
+6. The opening Discover is not a wave: `wavesResolved` is 0, `waveTimerRemaining` is a full
+   `WAVE_INTERVAL_SECONDS`, and no Blight has accrued.
+7. The opening Discover never draws a terrain it cannot seed — over many rounds it never
+   draws mountains, and it never seeds nothing.
+8. A second round after purchasing an upgrade starts stronger than the first, without
    re-purchasing anything.
 
 ## Wave Timing Checks
 
 1. With no player input, a wave resolves automatically after `WAVE_INTERVAL_SECONDS`.
-2. A resolved wave runs Ravage, then Build, then Discover, then shifts the invader track, in
-   that fixed order.
-3. `round.wavesResolved` increments exactly once per wave.
-4. The wave timer cannot be paused, skipped, or manually triggered by any control.
+2. A resolved wave runs Build, then Discover, then shifts the invader track, in that fixed
+   order.
+3. A wave deals no damage of its own: no Dahan lost, no Blight gained, from the wave itself.
+4. The invader track has two slots; `invader.ravage` does not exist.
+5. `round.wavesResolved` increments exactly once per wave.
+6. The wave timer cannot be paused, skipped, or manually triggered by any control.
 
 ## Blight Checks
 
-1. A land with invaders that Ravages this wave adds `BLIGHT_PER_RAVAGED_LAND` to
-   `round.blight`.
-2. A land with 0 Dahan going into that Ravage adds the undefended bonus on top.
-3. A land with no invaders this wave adds no Blight.
-4. `round.blight` never decreases within a round.
-5. The instant `round.blight` reaches `round.blightThreshold`, the round ends and no further
-   wave resolves.
+1. `round.blightByLand` sums to `round.blight` at all times.
+2. `round.blight` never decreases within a round.
+3. The instant `round.blight` reaches `round.blightThreshold`, the round ends and nothing
+   further resolves — no wave, and no more Blight.
+4. A round always ends by itself, with no player input, in a plausible span of time.
 
-## Ravage Checks
+## Combat Checks
 
-1. Ravage on a land with no invaders reports nothing happening and costs no Dahan.
-2. Invader damage is the sum of explorer 1, town 2, city 3.
-3. Two invader damage destroys exactly 1 Dahan; leftover damage below 2 destroys nothing.
-4. Dahan destroyed this Ravage deal no counterattack.
-5. The counterattack pool auto-spends on the highest-tier invader type present first (cities,
-   then towns, then explorers) until it or the invaders run out, with no player input.
-6. Invaders defeated by the counterattack award Fear per the defeat formula.
-7. Ravage resolves both lands of the named terrain, lowest land id first.
+The fight is continuous. Every check here is about a *rate*, because the rates are the design.
+
+1. A land's gross damage is the sum of explorer 1, town 2, city 3, per second.
+2. An undefended land holding one of each (6 damage) takes its first Blight after `1 / 0.12`
+   seconds, and takes exactly one — not a burst.
+3. Each Dahan cancels 2 damage before any Blight accrues; 6 gross against 2 Dahan is 2 net.
+4. A land whose Dahan defence meets or exceeds its gross damage is `held`, and still seeps
+   `BLIGHT_FLOOR_FRACTION` of its gross: it takes no Blight quickly, but it does take one.
+   The seepage scales with gross, so a held land under heavier invaders blights sooner.
+5. A land with no invaders never blights and never loses a Dahan.
+6. A filled Blight bar carries its remainder rather than resetting to zero.
+7. Blight accrues in every land at once, with no terrain selected.
+8. Dahan take gross damage, not net: a held land still loses defenders.
+9. Damage concentrates on the survivors — the second casualty in a two-Dahan land arrives in
+   half the time the first did.
+10. Concentration stops at `DAHAN_CONCENTRATION_CAP`: a stack well past the cap loses Dahan
+    at the same rate as one at it, so doubling a stack does not quadruple its lifetime.
+11. Losing a Dahan raises that land's Blight rate immediately.
+12. A land's casualty bar clears when its last Dahan falls.
+13. The Dahan strike runs on `DAHAN_ATTACK_INTERVAL_SECONDS`, a constant of its own, and is
+    armed at round start.
+14. Each Dahan deals `DAHAN_ATTACK_DAMAGE` per strike, spent on the highest-tier invader type
+    present first (cities, then towns, then explorers) until it or the invaders run out.
+15. A land with no Dahan never strikes; a land with no invaders is skipped.
+16. Invaders defeated by a strike award Fear per the defeat formula.
+17. Partial damage on an invader persists across waves within a round.
 
 ## Ability Checks
 
@@ -103,37 +129,39 @@ files are listed by hand in `tests.html`; adding one means adding a `<script>` l
    pending ability target.
 2. Save and reload resume a running round exactly as saved, crediting no elapsed wall-clock
    time toward the wave timer or ability cooldowns.
-3. A `2.0.0` save loads via the hard-reset migration path, starts `meta.fear` at 0, and logs
-   a notice explaining the reset.
+3. Any save that is not the current `schemaVersion` loads via the hard-reset migration path,
+   starts `meta.fear` at 0, and logs a notice explaining the reset.
 4. Invalid `round.status` values normalize to `running` instead of corrupting the UI.
 5. An unknown `pendingAbilityTarget` id normalizes to `null`.
 
 ## UI Checks
 
-1. The Blight meter and wave timer are visible without opening any panel, at all times while
-   a round is running.
+1. The Blight meter, wave timer, and Dahan strike timer are visible without opening any panel,
+   at all times while a round is running.
 2. Every ability's state (ready, on cooldown with remaining time, or armed) is visible
    without hovering.
 3. A land under a legal ability target renders distinctly from a land that isn't.
 4. The shop appears the instant `round.status` becomes `ended`, with no extra
    acknowledge-the-loss click required.
 5. Defeat feedback appears briefly and then disappears.
-6. Values that change every second (wave timer, cooldowns, Blight) patch in place without
-   rebuilding the board.
-7. The board always shows eight lands, three of them coastal, two per terrain (unchanged
+6. Values that change every second (wave timer, strike timer, cooldowns, Blight) patch in
+   place without rebuilding the board.
+7. The per-land bars are excluded from the board's rebuild signature, so they patch in place
+   every tick rather than rebuilding the board ten times a second.
+8. The board always shows eight lands, three of them coastal, two per terrain (unchanged
    from the turn-based build; see [09-island-board.md](./09-island-board.md)).
 
 ## Current Validation Status
 
-**109 automated checks, all passing.** Coverage by file:
+**115 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
 | `tests/board.test.js` | Board invariants and adjacency (09) |
 | `tests/setup.test.js` | Round setup, upgrade baseline, round reset |
-| `tests/wave.test.js` | Wave timing, phase order, track shift, the tick cap |
-| `tests/ravage.test.js` | Combat math, auto-counterattack, Build, Discover |
-| `tests/blight.test.js` | Blight gain, the undefended bonus, round end |
+| `tests/wave.test.js` | Wave timing, Build, Discover, track shift, the tick cap |
+| `tests/combat.test.js` | Blight and casualty rates, concentration, the Dahan strike |
+| `tests/blight.test.js` | Blight accrual, the per-land tally, round end |
 | `tests/ability.test.js` | Cooldowns, arming, cancelling, each ability's effect |
 | `tests/shop.test.js` | Fear persistence, purchases, tiers, next round |
 | `tests/save.test.js` | Round-trip, no offline credit, migration, normalization |

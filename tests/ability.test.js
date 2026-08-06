@@ -199,7 +199,7 @@
     assert(!engine.triggerAbility(state, "boon_of_vigor"), "no-target trigger must refuse too");
   });
 
-  test("ability: a defeat by an ability awards Fear the same as a counterattack", () => {
+  test("ability: a defeat by an ability awards Fear the same as a Dahan strike", () => {
     const { state } = newGame();
     clearBoard(state);
     state.meta.fear = 0;

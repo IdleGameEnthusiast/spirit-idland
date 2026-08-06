@@ -8,7 +8,7 @@ neighbours. Adjacency is a rule the player plays around, not a hidden model.
 The board geometry, adjacency, and rendering in this document are **unchanged by the
 round-based redesign** (see [index.md](./index.md)). What changed is *how* the board is
 acted on: invader phases now resolve on the automatic wave timer instead of player clicks,
-the Dahan counterattack is auto-assigned instead of a player-driven queue, and presence —
+the Dahan strike is auto-assigned instead of a player-driven queue, and presence —
 placement, range, and the essence rate it drove — is retired. Those sections below are
 rewritten; the rest of this document (board table, SVG rendering, colour) still applies as
 written.
@@ -79,10 +79,11 @@ board's back country:
 - That is an escalation curve rather than a flat one within a single round: the interior
   stays quiet exactly as long as the coast is kept clear.
 
-Land `5` touches six of the other seven lands. It is the board's hub: a Ravage there is felt
-everywhere. Land `3` touches only `2` and `6` — a corner that is easy to have cut off, and
-also easy for an undefended-land Blight bonus to sneak up on unnoticed, since it's easy to
-stop watching.
+Land `5` touches six of the other seven lands. It is the board's hub: what stands there is
+one Build away from reaching most of the island. Land `3` touches only `2` and `6` — a corner
+that is easy to have cut off, and also easy to stop watching, which now costs more than it
+used to: an unwatched land is not waiting for its turn to be ravaged, it is losing Dahan and
+gaining Blight the whole time.
 
 ### Land IDs
 
@@ -98,7 +99,7 @@ One primitive, derived from the table above:
 - `adjacent(land)` — the land's neighbours. Between 2 and 6 of them; never assume four.
 
 A land is a legal ability target only if it satisfies both the ability's own requirement
-(holds invaders, is the most-Blighted ravaged land, etc.) and, for effects like `wash_away`
+(holds invaders, is the most-Blighted land, etc.) and, for effects like `wash_away`
 that move units, the adjacency of the destination to the source. See
 [07-content-registry.md](./07-content-registry.md) for what each ability actually requires,
 and [06-ui-contract.md](./06-ui-contract.md) for how a legal target is shown on the board.
@@ -115,29 +116,35 @@ If an ability is triggered and no land satisfies its requirement, it does not ar
 
 ## Invader Phases
 
-The invader track stays **terrain-keyed**. `invader.ravage`, `invader.build`, and
-`invader.explore` keep holding terrain keys. A phase resolves in **every land of that
-terrain**, in ascending land-id order (coastal land first, since coastal ids are the lower
-ones) — unchanged from the turn-based build.
+The invader track stays **terrain-keyed**, but it is now **two slots, not three**.
+`invader.build` and `invader.explore` hold terrain keys; there is no `invader.ravage`. A
+phase resolves in **every land of that terrain**, in ascending land-id order (coastal land
+first, since coastal ids are the lower ones) — unchanged from the turn-based build.
 
-What changed: a full Ravage/Build/Discover/track-shift cycle (a "wave") now fires
-automatically on `WAVE_INTERVAL_SECONDS`, not on End Turn, and the Ravage counterattack is
-auto-assigned rather than opening a player-driven targeting queue. See
+What changed: a Build/Discover/track-shift cycle (a "wave") fires automatically on
+`WAVE_INTERVAL_SECONDS` rather than on End Turn, and it deals **no damage**. See
 [02-core-loop.md](./02-core-loop.md#wave-resolution) for the full sequence.
 
-### Ravage
+### Ravaging, which is no longer a phase
 
-For each land of the terrain, in id order:
+Invaders damage the land they stand in, continuously, in every land at once. No terrain is
+selected for it and no tick delivers it in a lump. Because it is not keyed to a terrain, it
+is not an invader phase at all and does not appear on the track — see
+[02-core-loop.md](./02-core-loop.md#the-fight) for the rates and
+[04-economy-formulas.md](./04-economy-formulas.md#blight-formula) for the arithmetic.
 
-1. Compute invader damage in that land (explorer 1, town 2, city 3).
-2. Destroy Dahan at 2 health each; damage below a full 2 is discarded.
-3. Surviving Dahan counterattack for 2 each, auto-spent on the highest-tier invader type
-   present (cities, then towns, then explorers) until the pool or the invaders run out.
-4. The land gains Blight — see [02-core-loop.md](./02-core-loop.md#blight).
+The board consequence is worth naming: under the old design a terrain's two lands took
+damage together and everywhere else was safe. Now the terrain track says nothing about where
+the damage is, only where the island is about to get *more* of it. Land `5`'s six-neighbour
+hub position matters for the same reason it always did, but pressure there is now constant
+rather than periodic.
 
-Because a terrain has two lands, a single wave can Ravage both at once; each resolves fully
-and independently, with no queue or lock to manage since nothing here waits on player input
-anymore.
+### The Dahan strike
+
+On its own timer, every land holding both Dahan and invaders strikes at once, spending
+`DAHAN_ATTACK_DAMAGE` per Dahan on the highest-tier invader type present (cities, then towns,
+then explorers) until the pool or the invaders run out. This is not keyed to a terrain either,
+and it is not part of a wave.
 
 ### Build
 
@@ -163,9 +170,9 @@ once the invaders are already well inland.
 
 ### Track shift
 
-Unchanged. Old build becomes ravage, old explore becomes build, a new explore terrain is
-drawn excluding the other two. This now happens automatically as the last step of every
-wave.
+Old explore becomes build, and a new explore terrain is drawn excluding it. This happens
+automatically as the last step of every wave. With only two slots, a terrain is announced one
+wave before it thickens rather than two.
 
 ---
 
@@ -189,10 +196,14 @@ Retired as an active system for this redesign, kept as inert schema:
   [07-content-registry.md](./07-content-registry.md) for the replacement
   `roundStartDahan` field.
 - **Dahan**: round setup seeds Dahan from `roundStartDahan` (baseline 6, same distribution
-  density the turn-based build used), plus any purchased `dahan_reinforcement` upgrade
-  tiers, still at most `DAHAN_MAX_ADD_PER_LAND` newly added to one land. This now happens at
-  the start of **every** round, not just fresh-game creation.
-- **Invaders**: still 0 everywhere at round setup.
+  density the turn-based build used), plus every purchased `dahan_reinforcement` upgrade
+  tier, each dropped into the emptiest land so no two lands finish more than
+  `DAHAN_MAX_SPREAD` apart. This now happens at the start of **every** round, not just
+  fresh-game creation.
+- **Invaders**: cleared to 0 everywhere at round setup, then the opening Discover puts one
+  explorer in every reachable land of the drawn terrain — on an empty board that means its
+  coastal lands. The draw skips terrains with no reachable land, so mountains is never the
+  opening Discover: lands 4 and 6 are both interior.
 
 ---
 
@@ -209,9 +220,9 @@ The full canonical shape, including how board state is keyed, lives in
 ### Migration
 
 The `1.5.0` (terrain-keyed) → `2.0.0` (land-keyed) migration described the turn-based
-prototype's own history and is no longer live. The current migration — `2.0.0` →
-`3.0.0`, a hard reset rather than a field translation — is documented in
-[03-state-contract.md](./03-state-contract.md#migration-from-200).
+prototype's own history and is no longer live. The current migration — anything older than
+the current `schemaVersion` hard-resets rather than translating field by field — is
+documented in [03-state-contract.md](./03-state-contract.md#migration-from-anything-older).
 
 ---
 
@@ -249,8 +260,10 @@ On the board, for every land, kept deliberately short:
 - Land number and terrain.
 - Invader summary — explorer/town/city glyphs with counts, **nonzero only**.
 - Dahan pips.
-- While the current wave is acting on this land: a banner naming the phase and what it's
-  doing here.
+- While the land holds invaders: a Blight bar, a casualty bar if it also holds Dahan, and a
+  line naming the Blight rate and the seconds until the next one. These are the board's
+  primary readout now — the fight never stops, so a land's danger is a speed.
+- While the next wave will Build here: a banner naming the unit it will add.
 - While an ability is armed and this land is a legal target: a highlight, per
   [06-ui-contract.md](./06-ui-contract.md).
 
@@ -278,8 +291,8 @@ against the dark ocean. Unit type is carried by shape, not hue.
 ## Acceptance
 
 - Every land names its neighbours, and every adjacency is symmetric in both directions.
-- A wave Ravages both lands of its terrain automatically, with no player input and no queue
-  to manage.
+- A wave Builds in both lands of its terrain automatically, with no player input.
+- Blight and Dahan casualties accrue in every land holding invaders, with no terrain selected.
 - Discover adds 1 explorer while only the coastal land qualifies, and 2 once a town or city
   sits next to the inland land.
 - An ability triggered with no land satisfying its requirement logs a no-target line and
@@ -301,8 +314,10 @@ Worth knowing before changing any of this.
   wetlands converge into the same blue-grey against the dark ocean.
 - Unit type is carried by shape, not hue.
 - The turn-based build's `ravageCounter` effect (a player-assigned counterattack queue) has
-  no successor object in this design — the counterattack is computed and applied in the same
-  step as the rest of Ravage, with nothing left pending afterward.
+  no successor object in this design — the Dahan strike is computed and applied in one step
+  on its own timer, with nothing left pending afterward.
+- `invader.ravage` is gone as of `4.0.0`. Anything reaching for "the terrain being ravaged"
+  is reaching for a concept this design does not have.
 
 ## Verification
 
@@ -312,6 +327,7 @@ resolution and player-assigned counterattacks, so it was **not** carried over on
 
 The board invariants are now re-asserted from scratch in `tests/board.test.js` — eight
 lands, two per terrain, three coastal, mountains landlocked, fourteen edges, symmetric
-adjacency, no terrain pair touching — and the phase rules in `tests/ravage.test.js`,
-including the Discover cases this board's landlocked mountains make into a third of every
-early round. See [08-acceptance-tests.md](./08-acceptance-tests.md) for how to run them.
+adjacency, no terrain pair touching — and the phase rules in `tests/wave.test.js`, including
+the Discover cases this board's landlocked mountains make into a third of every early round.
+The continuous fight is covered separately in `tests/combat.test.js`. See
+[08-acceptance-tests.md](./08-acceptance-tests.md) for how to run them.

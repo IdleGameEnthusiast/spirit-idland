@@ -243,9 +243,9 @@ h4 {
   font-family: "Cinzel", "Times New Roman", serif;
 }
 
-/* Ravage is the slot that actually costs Blight this wave, so it is the one that carries
-   the warning colour. */
-.track-slot-ravage span { color: var(--accent-pressure); }
+/* Build is the slot that makes the island measurably worse next wave, so it is the one that
+   carries the warning colour. Discover only ever adds a single explorer. */
+.track-slot-build span { color: var(--accent-pressure); }
 
 button {
   width: 100%;
@@ -619,16 +619,100 @@ button.reset {
 
 .chip-unit .tok { margin-right: -0.02em; }
 
-/* What the incoming wave will do here, named on the land it will happen in. */
+/* What a contested land wears. Blight is what ends the round, so it keeps the whole width of
+   the chip as a bar; the Dahan casualty clock rides beside it as a token barely taller than
+   the bar, filling left to right. Deliberately lopsided - two bars of equal weight read as
+   two equal threats, and only one of them is the loss condition.
+   Both are filled by patchLandMeters every frame, which is why the transition is short - a
+   long one would lag behind its own value rather than smoothing it. */
+.chip-meters {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.16rem;
+}
+
+.chip-meter {
+  flex: 1 1 auto;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(3, 14, 20, 0.72);
+  border: 1px solid rgba(247, 241, 222, 0.13);
+}
+
+.chip-meter-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  transition: width 0.12s linear;
+}
+
+.chip-meter.is-blight .chip-meter-fill {
+  background: linear-gradient(90deg, rgba(231, 103, 85, 0.75), #ff9d8a);
+}
+
+/* The token is drawn twice: a dim copy for the empty clock, and a lit copy clipped to the
+   progress width on top of it. Same width patch as a bar, so patchLandMeters does not care
+   which shape it is filling. */
+.chip-dahan-mark {
+  position: relative;
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  color: rgba(242, 196, 90, 0.3);
+}
+
+.chip-dahan-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  overflow: hidden;
+  color: #ffd98a;
+  transition: width 0.12s linear;
+}
+
+.chip-dahan-mark .tok {
+  display: block;
+  width: 0.5rem;
+  height: 0.5rem;
+  vertical-align: baseline;
+}
+
+/* How fast this land is losing, in words, under the bar that shows it. */
+.chip-pressure {
+  font-size: 0.53rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #ffc9bd;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the incoming wave will do here, named on the land it will happen in. The warning
+   colour rides on a dark base rather than washing straight over the terrain: a 22% red over
+   a bright desert fill left 9px text at roughly 3:1. */
 .chip-wave {
   margin-top: 0.15rem;
   padding: 0.14rem 0.3rem;
   border-radius: 5px;
   display: grid;
   gap: 0.05rem;
-  background: rgba(231, 103, 85, 0.22);
+  background:
+    linear-gradient(rgba(231, 103, 85, 0.3), rgba(231, 103, 85, 0.3)),
+    rgba(3, 14, 20, 0.55);
   border: 1px solid rgba(231, 103, 85, 0.5);
   backdrop-filter: blur(2px);
+}
+
+/* The quiet variant: this land is on the wave's list, but the wave will find nothing to
+   build on. Neutral rather than pressure-red, because the frame's job is to say how bad the
+   next ten seconds are, and here the answer is "not at all". */
+.chip-wave.is-quiet {
+  background: rgba(3, 14, 20, 0.6);
+  border-color: rgba(247, 241, 222, 0.18);
 }
 
 .chip-wave-name {
@@ -637,16 +721,25 @@ button.reset {
   letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--accent-pressure);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
+.chip-wave.is-quiet .chip-wave-name { color: var(--ink-1); }
+
+/* Weight and shadow to match every other line on the chip - this was the one piece of chip
+   text carrying neither, at the smallest size and the longest string. */
 .chip-wave-text {
   font-size: 0.57rem;
+  font-weight: 700;
   line-height: 1.25;
   color: var(--ink-0);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
-/* Blight already taken here, carried beside the land number. A land that has been ravaged
-   twice is a land the round is being lost in, and that should be visible on the board. */
+.chip-wave.is-quiet .chip-wave-text { color: var(--ink-1); }
+
+/* Blight already taken here, carried beside the land number. A land that has taken two is a
+   land the round is being lost in, and that should be visible on the board. */
 .chip-blight-count {
   font-size: 0.55rem;
   font-weight: 800;
@@ -858,6 +951,8 @@ button.reset {
   .land-chip,
   .chip-defeat,
   .chip-blight,
+  .chip-meter-fill,
+  .chip-dahan-fill,
   .meter-fill,
   .ability-sweep { transition: none; animation: none; }
 
