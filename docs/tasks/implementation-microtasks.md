@@ -23,8 +23,9 @@ What remains is balance and content, not structure — see
 
 - `tick()` drives the wave timer; at 0 a full wave resolves and the timer resets. No control
   anywhere can pause, skip or trigger one.
-- The tick cap (`MAX_TICK_SECONDS = 5`) sits below one wave interval, so a machine waking
-  from sleep resolves no waves at all rather than a burst. Asserted.
+- The tick cap (`MAX_TICK_SECONDS = 5 * TIME_SCALE`) sits below one wave interval, so a
+  machine waking from sleep resolves no waves at all rather than a burst. Asserted. It is
+  written against the dial so it stays half an interval whatever the game's pace.
 - Covered by `tests/wave.test.js`.
 
 ### Task R3: Automatic Dahan Strike — *done, reworked in Task C1*
@@ -116,8 +117,9 @@ Ordered by what most changes the game. The first item is the one that matters.
 
 ### 1. Balance: settle the casualty rate
 
-`DAHAN_LOSS_PER_DAMAGE_SECOND` was raised from 0.02 to 0.05 during Task C1 and is explicitly
-under playtest. At 0.02 no Dahan ever died and the whole casualty system was dead code; at
+`DAHAN_LOSS_PER_DAMAGE_SECOND` was raised from 0.02 to 0.05 a beat during Task C1 and is
+explicitly under playtest. (It reads `0.05 / TIME_SCALE` in the source; retune the beat rate,
+not the quotient.) At 0.02 no Dahan ever died and the whole casualty system was dead code; at
 0.05 a round costs 2-4 of the starting 6, which is what puts the death spiral on screen. That
 is one measurement, not a tuned number — play it and see whether losing Dahan feels like
 something the player can act against or just weather.
@@ -135,14 +137,17 @@ Two brakes are in, both in `landPressure`:
 - `DAHAN_CONCENTRATION_CAP = 2` — concentration stops past two survivors, so a stack's
   lifetime is linear in its size rather than quadratic.
 
-Both numbers are guesses. What to watch: whether holding a land still feels worth doing at
-all (if not, the floor is too high), and whether `rivers_bounty` is now merely one option
-among four rather than useless. `dahan_reinforcement` and `rivers_bounty` still have not been
-repriced against the brakes.
+Both numbers are guesses. What to watch: whether holding a land still feels worth doing at all
+(if not, the floor is too high), and whether `rivers_bounty` is now merely one option among
+five rather than useless. `dahan_reinforcement` and `rivers_bounty` still have not been
+repriced against the brakes — and `rivers_bounty` has since changed from a gather to a
+creation, and then again to an ability that never fails at all (it falls back to the thinnest
+land on the board when nothing is contested), which strengthens it twice over without any of
+this having been re-measured.
 
 ### 3. Balance: the first Blight arrives on a wide spread
 
-33s in one traced round, 74s in another, depending on whether the early Discover draws land on
+33 beats in one traced round, 74 in another, depending on whether the early Discover draws on
 `3` and `8` — the two lands `roundStartDahan` leaves empty. The rates are not the variance;
 the terrain draw is. Two players' first rounds can therefore read very differently, which is
 the worst place for that to happen.
@@ -165,16 +170,19 @@ The unlock path is built and untested against real content. One new ability — 
 removes invaders from a land outright, since that is the lever the player actually has —
 would exercise it and give the shop a non-numeric reward.
 
-### 6. `wash_away` is dead for the first half-minute
+### 6. Invaders that scale with the player — *the next real feature*
 
-It needs a land with Blight already on it, and the traced first Blight lands between 33 and
-74 seconds in. An ability that cannot be used at the moment the player first reads the bar
-teaches the wrong thing about the bar. Either give it an early-game fallback target or move it
-behind an unlock — and note that item 3 moves this number too.
+Energy income is flat within a round while the kit's prices are not: the ladder tops out at
+250 and a round earns roughly 20-40, so a long round has nothing left to spend on but time.
+The intended answer is invaders that grow stronger as the player does, which turns a long
+round into more income rather than only more waves. Nothing of it is implemented.
+
+Until it exists, the Innate's third tier is effectively unreachable and `blight_resilience`
+is the only thing that moves it — which is a progression gate by accident rather than design.
 
 ### 7. Keyboard shortcuts for the ability bar
 
-Real-time and mouse-only is a bad combination. Digits 1-4 mapped to the bar, Escape to
+Real-time and mouse-only is a bad combination. Digits 1-5 mapped to the bar, Escape to
 cancel an armed ability. Small, and it changes how the round feels to play.
 
 ### 8. Make the click wiring a standing test
@@ -184,11 +192,19 @@ headless browser, but as a throwaway probe. It should be a test file that builds
 needs, so a refactor of `ui.js` cannot break targeting silently. The per-land bars want the
 same treatment: nothing currently asserts that they patch in place rather than rebuilding.
 
-### 9. Answer the Energy question
+### 9. Price the Energy economy
 
-`resources.energy` is parked in the schema with no reader or writer. Either give abilities a
-resource cost and something that feeds it, or delete the field. Leaving it is the only
-option that costs something every time someone reads the state contract.
+**Answered, not tuned.** Energy has a writer (1 per point of defeated invader power) and five
+readers: the unlock ladder at 5 / 10 / 20 and the Innate's tiers at 50 / 250. It is also
+round-local now, so every one of those prices has to be payable inside a single round.
+
+None of it has been checked against a played round. The ladder is shaped against an estimate —
+20 to 40 Energy over 60 to 120 beats — not a measurement, so "the three unlocks are about one
+early round's income" is an assertion rather than a finding. Measure a round's actual income
+first; item 6 will move the number before any of it can be called tuned.
+
+Related and unmeasured: the kill-first damage rule made the Dahan strike meaningfully stronger
+across every land at once, which moves income and round length together.
 
 ### 10. Accessibility pass
 
@@ -223,7 +239,8 @@ was deleted with `app.js`; it remains in git history.
 ### Task 04: Starter River Cards — *retired, superseded by Task R6*
 
 - Boon of Vigor, Flash Floods, River's Bounty and Wash Away carried forward by name only, as
-  abilities with redesigned effects.
+  abilities with redesigned effects. The Innate Power, added later, has no card ancestor —
+  it is the one entry in the kit that grows through tiers rather than being bought once.
 
 ### Task 05: Invader Phase Track — *partly reused; Ravage retired in Task C1*
 

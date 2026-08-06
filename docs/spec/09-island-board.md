@@ -98,9 +98,9 @@ One primitive, derived from the table above:
 
 - `adjacent(land)` — the land's neighbours. Between 2 and 6 of them; never assume four.
 
-A land is a legal ability target only if it satisfies both the ability's own requirement
-(holds invaders, is the most-Blighted land, etc.) and, for effects like `wash_away`
-that move units, the adjacency of the destination to the source. See
+A land is a legal ability target only if it satisfies the ability's own requirement. For most
+that is "holds invaders"; for a push it also reads the neighbours, since a land with nothing
+adjacent to push into is not a legal click however many explorers stand in it. See
 [07-content-registry.md](./07-content-registry.md) for what each ability actually requires,
 and [06-ui-contract.md](./06-ui-contract.md) for how a legal target is shown on the board.
 
@@ -297,7 +297,8 @@ against the dark ocean. Unit type is carried by shape, not hue.
   sits next to the inland land.
 - An ability triggered with no land satisfying its requirement logs a no-target line and
   leaves its cooldown unspent.
-- `wash_away`'s push cannot move a unit to a non-adjacent land.
+- A push cannot move a unit to a non-adjacent land, or into one that already holds invaders,
+  and among the lands it *can* reach it always takes the lowest-numbered one.
 - The board is legible at a glance: which lands are under Blight pressure, where invaders
   are, where Dahan still stand.
 - The island reads as an island, not as a pie chart.

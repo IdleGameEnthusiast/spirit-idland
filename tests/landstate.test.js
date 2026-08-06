@@ -3,7 +3,7 @@
  * The precedence is a rule, not styling, so it is asserted here rather than eyeballed. */
 
 (function () {
-  const { engine, test, assert, assertEqual, newGame, clearBoard, setLand } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, newGame, clearBoard, setLand, unlockAllAbilities } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   test("landstate: with nothing armed, the next wave's lands read as wave-active", () => {
     const { state } = newGame();
@@ -27,6 +27,7 @@
 
   test("landstate: an armed ability splits the board into legal and dimmed", () => {
     const { state } = newGame();
+    unlockAllAbilities(state);
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
     setLand(state, "6", { explorers: 1 }, 0);
@@ -42,14 +43,18 @@
     assertEqual(states["5"], "out", "wave target but not a legal target");
   });
 
-  test("landstate: an ability that takes any land marks every land legal", () => {
+  test("landstate: an ability that picks its own land arms nothing and dims nothing", () => {
     const { state } = newGame();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 1 }, 1);
+    setLand(state, "6", { explorers: 1 }, 0);
+    state.invader = { build: "jungle", explore: null };
+
     engine.triggerAbility(state, "rivers_bounty");
 
+    assertEqual(state.pendingAbilityTarget, null, "River's Bounty resolves without a click");
     const states = engine.landRenderStates(state);
-    for (const landId of engine.LAND_IDS) {
-      assertEqual(states[landId], "legal", `land ${landId}`);
-    }
+    assert(!Object.values(states).includes("out"), "nothing armed, so nothing dims");
   });
 
   test("landstate: an ended round marks no land as a wave target", () => {

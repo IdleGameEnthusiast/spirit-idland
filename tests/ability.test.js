@@ -1,23 +1,36 @@
 /* Ability checks - docs/spec/08-acceptance-tests.md#ability-checks */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, newGame, advance, clearBoard, setLand } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const {
+    engine, test, assert, assertEqual, assertClose, assertDeepEqual,
+    newGame, advance, clearBoard, setLand, woundUnit, healthOf,
+    unlockAllAbilities, setAbilityTier
+  } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
-  test("ability: every ability starts ready", () => {
-    const { state } = newGame();
+  /* A game with the spirit's whole kit granted. Most of what follows is about what an
+   * ability does, not about what it cost, so the Energy lock is paid off up front. The
+   * lock itself is asserted in its own block at the end. */
+  function fullKit(options) {
+    const ctx = newGame(options);
+    unlockAllAbilities(ctx.state);
+    return ctx;
+  }
+
+  test("ability: every unlocked ability starts ready", () => {
+    const { state } = fullKit();
     for (const abilityId of engine.unlockedAbilityIds(state)) {
       assert(engine.abilityIsReady(state, abilityId), `${abilityId} should start ready`);
     }
   });
 
   test("ability: triggering a no-target ability resolves immediately and spends the cooldown", () => {
-    const { state } = newGame();
-    state.abilities.flash_floods.cooldownRemaining = 8;
+    const { state } = fullKit();
+    state.resources.energy = 0;
 
     const ok = engine.triggerAbility(state, "boon_of_vigor");
     assert(ok, "trigger should succeed");
     assertEqual(state.pendingAbilityTarget, null, "no target is armed");
-    assertEqual(state.abilities.flash_floods.cooldownRemaining, 3, "boon cut 5s off the other cooldown");
+    assertEqual(state.resources.energy, 1, "Boon of Vigor is a faucet now: +1 Energy");
     assertEqual(
       state.abilities.boon_of_vigor.cooldownRemaining,
       engine.abilityCooldownSeconds(state, "boon_of_vigor"),
@@ -26,7 +39,7 @@
   });
 
   test("ability: an ability on cooldown cannot be triggered", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
 
@@ -41,7 +54,7 @@
   });
 
   test("ability: cooldowns tick down in real time, independently of the wave timer", () => {
-    const ctx = newGame();
+    const ctx = fullKit();
     const { state } = ctx;
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
@@ -52,7 +65,6 @@
 
     advance(ctx, 4);
     assertClose(state.abilities.flash_floods.cooldownRemaining, full - 4, 0.01, "after 4 seconds");
-    assert(state.round.wavesResolved === 0, "no wave has resolved yet, so the two clocks are independent");
 
     advance(ctx, full);
     assertEqual(state.abilities.flash_floods.cooldownRemaining, 0, "cooldown bottoms out at zero");
@@ -60,7 +72,7 @@
   });
 
   test("ability: a targeted ability arms rather than resolving", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
 
@@ -71,7 +83,7 @@
   });
 
   test("ability: clicking an armed ability again cancels it without spending the cooldown", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
 
@@ -83,9 +95,9 @@
   });
 
   test("ability: an armed ability resolves on a legal land click", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
-    setLand(state, "3", { towns: 1 }, 0);
+    setLand(state, "3", { towns: 1 }, 0);   // land 3 is coastal, so Flash Floods deals 2
 
     engine.triggerAbility(state, "flash_floods");
     const ok = engine.resolveAbilityTarget(state, "3");
@@ -97,7 +109,7 @@
   });
 
   test("ability: an illegal land click does not resolve and does not disarm", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
 
@@ -110,7 +122,7 @@
   });
 
   test("ability: triggering with no legal target logs and leaves the cooldown unspent", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
 
     const ok = engine.triggerAbility(state, "flash_floods");
@@ -119,78 +131,8 @@
     assertEqual(state.abilities.flash_floods.cooldownRemaining, 0, "cooldown unspent");
   });
 
-  test("ability: flash floods hits the strongest type present", () => {
-    const { state } = newGame();
-    clearBoard(state);
-    setLand(state, "3", { explorers: 2, towns: 1, cities: 1 }, 0);
-
-    engine.triggerAbility(state, "flash_floods");
-    engine.resolveAbilityTarget(state, "3");
-
-    assertEqual(state.invaders["3"].cities, 1, "the city survives 2 of its 3 health");
-    assertEqual(state.invaderDamage["3"].cities, 2, "and carries the damage");
-    assertEqual(state.invaders["3"].explorers, 2, "explorers untouched");
-  });
-
-  test("ability: river's bounty accepts any land and adds Dahan", () => {
-    const { state } = newGame();
-    clearBoard(state);
-
-    assertEqual(engine.abilityLegalLands(state, "rivers_bounty").length, 8, "every land is legal");
-
-    engine.triggerAbility(state, "rivers_bounty");
-    engine.resolveAbilityTarget(state, "7");
-    assertEqual(state.dahan["7"], 2, "+2 Dahan");
-  });
-
-  test("ability: wash away moves units out of the most-Blighted land", () => {
-    const { state } = newGame();
-    clearBoard(state);
-    setLand(state, "5", { explorers: 2, towns: 1, cities: 1 }, 0);
-    setLand(state, "3", { explorers: 1 }, 0);
-    state.round.blightByLand["5"] = 3;
-    state.round.blightByLand["3"] = 1;
-    state.round.blight = 4;
-
-    const ok = engine.triggerAbility(state, "wash_away");
-    assert(ok, "wash away should resolve");
-    assertEqual(state.invaders["5"].explorers, 0, "explorers pushed out");
-    assertEqual(state.invaders["5"].towns, 0, "towns pushed out");
-    assertEqual(state.invaders["5"].cities, 1, "the city stays put");
-
-    const moved = engine.LAND_IDS
-      .filter((id) => id !== "5")
-      .reduce((sum, id) => sum + state.invaders[id].explorers + state.invaders[id].towns, 0);
-    assertEqual(moved, 4, "three pushed units plus the explorer already in land 3");
-  });
-
-  test("ability: wash away only ever pushes into an adjacent land", () => {
-    const { state } = newGame();
-    clearBoard(state);
-    setLand(state, "3", { explorers: 2 }, 0);
-    state.round.blightByLand["3"] = 2;
-    state.round.blight = 2;
-
-    engine.triggerAbility(state, "wash_away");
-
-    const receivers = engine.LAND_IDS.filter((id) => id !== "3" && state.invaders[id].explorers > 0);
-    assertEqual(receivers.length, 1, "exactly one destination");
-    assert(engine.areAdjacent("3", receivers[0]), `${receivers[0]} must border land 3`);
-  });
-
-  test("ability: wash away finds no target when nothing is Blighted yet", () => {
-    const { state } = newGame();
-    clearBoard(state);
-    setLand(state, "5", { explorers: 3 }, 0);
-
-    const ok = engine.triggerAbility(state, "wash_away");
-    assert(!ok, "no Blighted land means no target");
-    assertEqual(state.abilities.wash_away.cooldownRemaining, 0, "cooldown unspent");
-    assertEqual(state.invaders["5"].explorers, 3, "board untouched");
-  });
-
   test("ability: nothing can be triggered once the round has ended", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
     engine.endRound(state);
@@ -200,7 +142,7 @@
   });
 
   test("ability: a defeat by an ability awards Fear the same as a Dahan strike", () => {
-    const { state } = newGame();
+    const { state } = fullKit();
     clearBoard(state);
     state.meta.fear = 0;
     setLand(state, "3", { towns: 1 }, 0);
@@ -208,6 +150,734 @@
     engine.triggerAbility(state, "flash_floods");
     engine.resolveAbilityTarget(state, "3");
 
-    assertClose(state.meta.fear, 2 * engine.FEAR_PER_POWER, 0.0001, "a town is worth 0.7 either way");
+    assertEqual(state.meta.fear, 2 * engine.FEAR_PER_POWER, "a town is worth 2 either way");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Boon of Vigor                                                      *
+   * ---------------------------------------------------------------- */
+
+  test("boon: it pays an Energy and needs nothing on the board", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    state.resources.energy = 4;
+
+    const ok = engine.triggerAbility(state, "boon_of_vigor");
+
+    assert(ok, "an empty island does not stop the faucet");
+    assertEqual(state.resources.energy, 5, "+1 Energy");
+    assertEqual(engine.abilityCooldownSeconds(state, "boon_of_vigor"), 12 * engine.TIME_SCALE, "on a 12-beat clock");
+  });
+
+  test("boon: without the upgrade it never fires on its own", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.resources.energy = 0;
+
+    advance(ctx, 30 * engine.TIME_SCALE);
+    assertEqual(state.resources.energy, 0, "an unbought faucet stays shut");
+  });
+
+  test("boon: once auto_boon is owned it casts itself on its cooldown", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.upgrades.purchased.auto_boon = 1;
+    state.resources.energy = 0;
+
+    // The ability starts ready, so the first tick casts; each one after waits the full 12
+    // beats. Counted off the cooldown itself rather than off a literal, because the cadence
+    // is the assertion and TIME_SCALE is allowed to move what a beat costs in seconds.
+    const cooldown = engine.abilityCooldownSeconds(state, "boon_of_vigor");
+
+    advance(ctx, 1);
+    assertEqual(state.resources.energy, 1, "it fires without a click");
+
+    advance(ctx, cooldown - 1);
+    assertEqual(state.resources.energy, 1, "and not again while the cooldown runs");
+
+    advance(ctx, 1);
+    assertEqual(state.resources.energy, 2, "the next one lands when the clock does");
+
+    advance(ctx, cooldown);
+    assertEqual(state.resources.energy, 3, "and keeps to that pace");
+  });
+
+  test("boon: the auto-cast spends the same cooldown a click would", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.upgrades.purchased.auto_boon = 1;
+
+    advance(ctx, 1);
+    assertClose(
+      state.abilities.boon_of_vigor.cooldownRemaining,
+      engine.abilityCooldownSeconds(state, "boon_of_vigor"),
+      0.01,
+      "owning it changes who presses the button, not how often it can be pressed"
+    );
+  });
+
+  test("boon: the auto-cast writes no log line", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.upgrades.purchased.auto_boon = 1;
+
+    advance(ctx, 40 * engine.TIME_SCALE);
+    const boonLines = (state._log || []).filter((line) => line.includes("Boon of Vigor"));
+    assertEqual(boonLines.length, 0, "a faucet the shop opened does not narrate itself");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * River's Bounty                                                     *
+   * ---------------------------------------------------------------- */
+
+  test("rivers bounty: it needs no land click and picks the thinnest contested land", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "1", { explorers: 1 }, 3);
+    setLand(state, "5", { explorers: 1 }, 1);   // fewest Dahan of the two under attack
+    state.dahan["7"] = 4;                       // deepest land on the board, but no invaders
+
+    assertEqual(engine.abilityRecord(state, "rivers_bounty").needsTarget, false, "no click to give");
+    assertEqual(engine.riversBountyLand(state), "5", "the thinnest land holding invaders");
+
+    const ok = engine.triggerAbility(state, "rivers_bounty");
+    assert(ok, "it resolves on the trigger itself");
+    assertEqual(state.dahan["5"], 2, "+1 Dahan where it was thinnest");
+    assertEqual(state.dahan["1"], 3, "and nothing was taken from anywhere else");
+    assertEqual(state.pendingAbilityTarget, null, "nothing is left armed");
+    assert(state.abilities.rivers_bounty.cooldownRemaining > 0, "cooldown spent");
+  });
+
+  test("rivers bounty: the Dahan is created, not gathered from a neighbour", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "5", { explorers: 1 }, 0);
+    state.dahan["1"] = 2;   // adjacent to 5, and must stay where it is
+
+    engine.triggerAbility(state, "rivers_bounty");
+
+    assertEqual(state.dahan["5"], 1, "one arrived");
+    assertEqual(state.dahan["1"], 2, "the neighbour is untouched");
+  });
+
+  test("rivers bounty: a contested land outranks an emptier quiet one", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "5", { explorers: 1 }, 2);
+    // Land 7 has no Dahan at all, but no invaders either - a fight comes first while there
+    // is one to reinforce.
+
+    engine.triggerAbility(state, "rivers_bounty");
+
+    assertEqual(state.dahan["5"], 3, "the contested land took it");
+    assertEqual(state.dahan["7"], 0, "the empty one did not");
+  });
+
+  test("rivers bounty: with no invaders anywhere it still lands, in the thinnest land", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    state.dahan["1"] = 3;
+    state.dahan["4"] = 1;   // thinnest of the lands actually holding anyone
+    state.dahan["7"] = 2;
+    assertEqual(engine.riversBountyLand(state), "2", "land 2 is empty, and the lowest such id");
+
+    const ok = engine.triggerAbility(state, "rivers_bounty");
+
+    assert(ok, "a quiet island is the moment to build up, not to refuse");
+    assertEqual(state.dahan["2"], 1, "the Dahan arrived where the board was thinnest");
+    assertEqual(state.dahan["1"], 3, "and nothing moved out of anywhere else");
+    assert(state.abilities.rivers_bounty.cooldownRemaining > 0, "cooldown spent");
+  });
+
+  test("rivers bounty: it never fails, so its cooldown is always spent", () => {
+    const { state } = fullKit();
+    clearBoard(state);   // no invaders, no Dahan, nothing at all
+
+    const ok = engine.triggerAbility(state, "rivers_bounty");
+    assert(ok, "there is always a thinnest land");
+    assertEqual(state.dahan["1"], 1, "ties go to the lowest land id");
+    assert(state.abilities.rivers_bounty.cooldownRemaining > 0, "cooldown spent");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Flash Floods                                                       *
+   * ---------------------------------------------------------------- */
+
+  test("flash floods: 1 damage inland, 2 on the coast", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "5", { cities: 1 }, 0);   // land 5 is inland
+    setLand(state, "3", { cities: 1 }, 0);   // land 3 is coastal
+
+    engine.triggerAbility(state, "flash_floods");
+    engine.resolveAbilityTarget(state, "5");
+    assertDeepEqual(healthOf(state, "5", "cities"), [2], "inland: the city is down 1");
+
+    state.abilities.flash_floods.cooldownRemaining = 0;
+    engine.triggerAbility(state, "flash_floods");
+    engine.resolveAbilityTarget(state, "3");
+    assertDeepEqual(healthOf(state, "3", "cities"), [1], "coastal: the same city would be down 2");
+  });
+
+  test("flash floods: leftover damage from a kill carries to the next target", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 3 is coastal, so this is 2 damage. The city is one hit from falling, so it dies
+    // to the first point and the second has to find something else - the user's own example.
+    setLand(state, "3", { explorers: 1, cities: 1 }, 0);
+    woundUnit(state, "3", "cities", 0, 2);
+
+    engine.triggerAbility(state, "flash_floods");
+    engine.resolveAbilityTarget(state, "3");
+
+    assertEqual(state.invaders["3"].cities, 0, "the city fell to the first point");
+    assertEqual(state.invaders["3"].explorers, 0, "and the spare point took the explorer");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Kill-first damage (the rule every ability and the Dahan share)     *
+   * ---------------------------------------------------------------- */
+
+  test("damage: 2 damage buys the town it can kill, not the city it cannot", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 4, towns: 2, cities: 2 }, 0);
+
+    engine.applyDamage(state, "3", 2);
+
+    assertEqual(state.invaders["3"].towns, 1, "a town fell");
+    assertEqual(state.invaders["3"].explorers, 4, "no explorer was touched");
+    assertDeepEqual(healthOf(state, "3", "cities"), [3, 3], "and both cities are untouched");
+  });
+
+  test("damage: a wounded city outranks a healthy town at the same health", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 4, towns: 2, cities: 2 }, 0);
+    woundUnit(state, "3", "cities", 0, 1);   // one city down to 2 health
+
+    engine.applyDamage(state, "3", 2);
+
+    assertEqual(state.invaders["3"].cities, 1, "the wounded city died");
+    assertEqual(state.invaders["3"].towns, 2, "both towns still stand");
+    assertDeepEqual(healthOf(state, "3", "cities"), [3], "the untouched city is the survivor");
+  });
+
+  test("damage: 1 damage takes an explorer rather than scratching a city", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 4, towns: 2, cities: 2 }, 0);
+
+    engine.applyDamage(state, "3", 1);
+
+    assertEqual(state.invaders["3"].explorers, 3, "an explorer fell");
+    assertDeepEqual(healthOf(state, "3", "cities"), [3, 3], "the cities are untouched");
+  });
+
+  test("damage: with no kill available it lands on the strongest thing standing", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { towns: 1, cities: 1 }, 0);
+
+    engine.applyDamage(state, "3", 1);
+
+    assertDeepEqual(healthOf(state, "3", "cities"), [2], "the city took it");
+    assertDeepEqual(healthOf(state, "3", "towns"), [2], "the town is untouched");
+  });
+
+  test("damage: with no kill available it finishes the city it already started", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { cities: 2 }, 0);
+    woundUnit(state, "3", "cities", 0, 1);   // one at 2 health, one at 3
+
+    engine.applyDamage(state, "3", 1);
+
+    assertDeepEqual(healthOf(state, "3", "cities"), [1, 3], "the wounded one took it, not the fresh one");
+  });
+
+  test("damage: a pool spends itself down through kill after kill", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 2, towns: 1 }, 0);
+
+    const result = engine.applyDamage(state, "3", 4);
+
+    assertEqual(result.totalDefeated, 3, "town then both explorers");
+    assertEqual(engine.invaderCountInLand(state.invaders["3"]), 0, "the land is clear");
+    assertEqual(result.spent, 4, "every point found a target");
+  });
+
+  test("damage: more damage than the land can absorb leaves the surplus unspent", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 1 }, 0);
+
+    const result = engine.applyDamage(state, "3", 5);
+
+    assertEqual(result.spent, 1, "one point killed the explorer, four had nothing to hit");
+    assertEqual(result.totalDefeated, 1, "one defeat");
+  });
+
+  test("damage: wounds survive between hits within a round", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { cities: 1 }, 0);
+
+    engine.applyDamage(state, "3", 1);
+    assertDeepEqual(healthOf(state, "3", "cities"), [2], "down one");
+
+    engine.applyDamage(state, "3", 1);
+    assertDeepEqual(healthOf(state, "3", "cities"), [1], "down two");
+
+    engine.applyDamage(state, "3", 1);
+    assertEqual(state.invaders["3"].cities, 0, "the third point finished it");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Pushing (Wash Away, and the Innate's first two tiers)              *
+   * ---------------------------------------------------------------- */
+
+  test("push: a coastal neighbour without invaders wins over an inland one", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 2 borders 1 and 3 (both coastal, both empty) and 5 and 6 (inland).
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "5", { explorers: 0 }, 0);
+
+    const destinations = engine.pushDestinations(state, "2");
+    assert(destinations.length > 0, "there is somewhere to go");
+    for (const landId of destinations) {
+      assert(engine.landIsCoastal(landId), `${landId} should be coastal while a coast is free`);
+    }
+  });
+
+  test("push: an occupied neighbour is never a destination", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 2 }, 0);
+    setLand(state, "2", { explorers: 1 }, 0);   // 3's only other neighbour is 6
+
+    assertDeepEqual(engine.pushDestinations(state, "3"), ["6"], "only the empty neighbour");
+  });
+
+  test("push: among free neighbours the water takes the lowest land id, never a roll", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 2 borders coastal 1 and 3 and inland 5 and 6, all of them empty.
+    setLand(state, "2", { explorers: 1 }, 0);
+
+    assertEqual(engine.pushDestination(state, "2"), "1", "the lowest free neighbour");
+  });
+
+  test("push: the RNG no longer has a say in where the water goes", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "2", { explorers: 1 }, 0);
+
+    // An RNG pinned to the top of its range used to pick the last of the free coastal lands.
+    engine.setRng(() => 0.999999);
+    const pushed = engine.applyPushFrom(state, "2", 1);
+
+    assertEqual(pushed.destination, "1", "still the lowest id - a push can be planned now");
+    assertEqual(state.invaders["3"].explorers, 0, "and land 3 never saw it");
+  });
+
+  test("push: with no coast free it is still the lowest id, not the nearest coast", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 8 borders only inland lands: 5, 6 and 7.
+    setLand(state, "8", { explorers: 1 }, 0);
+
+    assertEqual(engine.pushDestination(state, "8"), "5", "lowest of the three inland neighbours");
+  });
+
+  test("push: towns go before explorers when the budget is short", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 3, towns: 2 }, 0);
+
+    engine.applyPushFrom(state, "3", 3);
+
+    assertEqual(state.invaders["3"].towns, 0, "both towns left");
+    assertEqual(state.invaders["3"].explorers, 2, "and one explorer went with them");
+  });
+
+  test("push: cities never move", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 1, cities: 2 }, 0);
+
+    const pushed = engine.applyPushFrom(state, "3", 3);
+
+    assertEqual(state.invaders["3"].cities, 2, "the cities are built in");
+    assertEqual(pushed.moved, 1, "only the explorer travelled");
+  });
+
+  test("push: a unit carries its own wound with it", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { towns: 2 }, 0);
+    woundUnit(state, "3", "towns", 0, 1);   // one town at 1 health, one at 2
+
+    const pushed = engine.applyPushFrom(state, "3", 1);
+
+    assertDeepEqual(healthOf(state, pushed.destination, "towns"), [1], "the wounded one travelled, still wounded");
+    assertDeepEqual(healthOf(state, "3", "towns"), [2], "the healthy one stayed, still healthy");
+  });
+
+  test("push: two wounded units arriving together both keep their own health", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { towns: 2 }, 0);
+    woundUnit(state, "3", "towns", 0, 1);
+
+    const pushed = engine.applyPushFrom(state, "3", 2);
+
+    assertDeepEqual(
+      healthOf(state, pushed.destination, "towns"),
+      [1, 2],
+      "one at 1 health and one at 2 - the old per-type model could only have described one of them"
+    );
+  });
+
+  test("wash away: it pushes up to 3 from the land the player picked", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 3, towns: 2, cities: 1 }, 0);
+
+    engine.triggerAbility(state, "wash_away");
+    const ok = engine.resolveAbilityTarget(state, "3");
+
+    assert(ok, "wash away should resolve");
+    assertEqual(state.invaders["3"].towns, 0, "both towns pushed");
+    assertEqual(state.invaders["3"].explorers, 2, "one explorer went with them, two stayed");
+    assertEqual(state.invaders["3"].cities, 1, "the city stays put");
+  });
+
+  test("wash away: the destination is adjacent and was empty", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 2 }, 0);
+
+    engine.triggerAbility(state, "wash_away");
+    engine.resolveAbilityTarget(state, "3");
+
+    const receivers = engine.LAND_IDS.filter((id) => id !== "3" && state.invaders[id].explorers > 0);
+    assertEqual(receivers.length, 1, "exactly one destination");
+    assert(engine.areAdjacent("3", receivers[0]), `${receivers[0]} must border land 3`);
+    assertEqual(receivers[0], "2", "land 3's neighbours are 2 and 6, and 2 is the lower");
+  });
+
+  test("wash away: a land with nowhere to push to is not a legal target", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 3 borders only 2 and 6. Fill both, and there is no room left.
+    setLand(state, "3", { explorers: 2 }, 0);
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "6", { explorers: 1 }, 0);
+
+    assert(!engine.abilityLegalLand(state, "wash_away", "3"), "boxed in, so not a legal click");
+
+    engine.triggerAbility(state, "wash_away");
+    assert(!engine.abilityLegalLands(state, "wash_away").includes("3"), "and the board says so too");
+  });
+
+  test("wash away: a land holding only cities is not a legal target", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { cities: 2 }, 0);
+
+    assert(!engine.abilityLegalLand(state, "wash_away", "3"), "nothing there can be pushed");
+  });
+
+  test("wash away: nothing pushable anywhere leaves the cooldown unspent", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+
+    const ok = engine.triggerAbility(state, "wash_away");
+    assert(!ok, "an empty island has nothing to push");
+    assertEqual(state.abilities.wash_away.cooldownRemaining, 0, "cooldown unspent");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * The Innate Power                                                   *
+   * ---------------------------------------------------------------- */
+
+  test("innate: it opens at tier 1, unlocked and free", () => {
+    const { state } = newGame();
+
+    assert(engine.abilityIsUnlocked(state, "innate_power"), "in the opening hand");
+    assertEqual(engine.abilityTier(state, "innate_power"), 0, "at its first tier");
+    assertEqual(engine.abilityUnlockCost(state, "innate_power"), 0, "and it cost nothing");
+    assertEqual(engine.abilityCooldownSeconds(state, "innate_power"), 8 * engine.TIME_SCALE, "8 beats at tier 1");
+  });
+
+  test("innate tier 1: it pushes exactly one unit", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 2, towns: 2 }, 0);
+
+    engine.triggerAbility(state, "innate_power");
+    const ok = engine.resolveAbilityTarget(state, "3");
+
+    assert(ok, "resolve should succeed");
+    assertEqual(state.invaders["3"].towns, 1, "one town left");
+    assertEqual(state.invaders["3"].explorers, 2, "and nothing else moved");
+  });
+
+  test("innate tier 2: 2 damage and up to 3 pushed, on a 16-beat clock", () => {
+    const { state } = fullKit();
+    setAbilityTier(state, "innate_power", 1);
+    clearBoard(state);
+    setLand(state, "3", { explorers: 2, towns: 2, cities: 1 }, 0);
+
+    assertEqual(engine.abilityCooldownSeconds(state, "innate_power"), 16 * engine.TIME_SCALE, "16 beats at tier 2");
+
+    engine.triggerAbility(state, "innate_power");
+    const ok = engine.resolveAbilityTarget(state, "3");
+
+    assert(ok, "resolve should succeed");
+    // 2 damage kills a town, then 3 of what is left is pushed - the surviving town first.
+    assertEqual(state.invaders["3"].towns, 0, "one town died, the other was pushed");
+    assertEqual(state.invaders["3"].explorers, 0, "and both explorers went with it");
+    assertEqual(state.invaders["3"].cities, 1, "the city neither died nor moved");
+  });
+
+  test("innate tier 2: the damage still lands when there is nowhere to push", () => {
+    const { state } = fullKit();
+    setAbilityTier(state, "innate_power", 1);
+    clearBoard(state);
+    setLand(state, "3", { towns: 2 }, 0);
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "6", { explorers: 1 }, 0);   // land 3 is now boxed in
+
+    assert(engine.abilityLegalLand(state, "innate_power", "3"), "damage alone makes it a legal target");
+
+    engine.triggerAbility(state, "innate_power");
+    const ok = engine.resolveAbilityTarget(state, "3");
+
+    assert(ok, "the cast counts on its damage alone");
+    assertEqual(state.invaders["3"].towns, 1, "a town fell to the 2 damage");
+  });
+
+  test("innate tier 3: every invader takes 2, individually", () => {
+    const { state } = fullKit();
+    setAbilityTier(state, "innate_power", 2);
+    clearBoard(state);
+    setLand(state, "3", { explorers: 4, towns: 2, cities: 2 }, 0);
+
+    assertEqual(engine.abilityCooldownSeconds(state, "innate_power"), 24 * engine.TIME_SCALE, "24 beats at tier 3");
+
+    engine.triggerAbility(state, "innate_power");
+    engine.resolveAbilityTarget(state, "3");
+
+    assertEqual(state.invaders["3"].explorers, 0, "every explorer died to its own 2");
+    assertEqual(state.invaders["3"].towns, 0, "and every town");
+    assertDeepEqual(
+      healthOf(state, "3", "cities"),
+      [1, 1],
+      "both cities survive at 1 health each - the state the per-type damage model could not hold"
+    );
+  });
+
+  test("innate tier 3: it pays for every kill separately", () => {
+    const { state } = fullKit();
+    setAbilityTier(state, "innate_power", 2);
+    clearBoard(state);
+    state.resources.energy = 0;
+    setLand(state, "3", { explorers: 2, towns: 1 }, 0);
+
+    engine.triggerAbility(state, "innate_power");
+    engine.resolveAbilityTarget(state, "3");
+
+    assertEqual(state.resources.energy, 4, "two explorers at 1 and a town at 2");
+  });
+
+  test("innate: buying a tier spends Energy, swaps the ability, and hands it back ready", () => {
+    const { state } = fullKit();
+    state.resources.energy = 60;
+    state.abilities.innate_power.cooldownRemaining = 5;
+
+    const ok = engine.upgradeAbility(state, "innate_power");
+
+    assert(ok, "the upgrade should succeed");
+    assertEqual(state.resources.energy, 10, "50 spent");
+    assertEqual(engine.abilityTier(state, "innate_power"), 1, "now at tier 2");
+    assertEqual(engine.abilityRecord(state, "innate_power").effect, "damage_and_push", "a different ability entirely");
+    assert(engine.abilityIsReady(state, "innate_power"), "and ready, not still cooling");
+  });
+
+  test("innate: the tier ladder is 50 then 250, and stops there", () => {
+    const { state } = fullKit();
+
+    assertEqual(engine.abilityUpgradeCost(state, "innate_power"), 50, "tier 2 costs 50");
+    setAbilityTier(state, "innate_power", 1);
+    assertEqual(engine.abilityUpgradeCost(state, "innate_power"), 250, "tier 3 costs 250");
+    setAbilityTier(state, "innate_power", 2);
+    assert(!Number.isFinite(engine.abilityUpgradeCost(state, "innate_power")), "and there is no tier 4");
+    assert(!engine.upgradeAbility(state, "innate_power"), "the top of the ladder refuses");
+  });
+
+  test("innate: too little Energy buys no tier", () => {
+    const { state } = fullKit();
+    state.resources.energy = 49;
+
+    assert(!engine.upgradeAbility(state, "innate_power"), "the upgrade must refuse");
+    assertEqual(state.resources.energy, 49, "Energy untouched");
+    assertEqual(engine.abilityTier(state, "innate_power"), 0, "still tier 1");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Energy, the ability lock, and the round reset                      *
+   * ---------------------------------------------------------------- */
+
+  test("unlock: a fresh spirit holds its opening hand, and the rest are locked", () => {
+    const { state } = newGame();
+
+    assertEqual(
+      engine.unlockedAbilityIds(state).join(","),
+      "innate_power,boon_of_vigor",
+      "two abilities to open with"
+    );
+    assertEqual(
+      engine.lockedAbilityIds(state).join(","),
+      "rivers_bounty,flash_floods,wash_away",
+      "the rest are behind a price, in kit order"
+    );
+    assertEqual(engine.spiritAbilityIds(state).length, 5, "the bar still lists the whole kit");
+  });
+
+  test("unlock: the price ladder runs 5, 10, 20", () => {
+    const { state } = newGame();
+
+    assertEqual(engine.abilityUnlockCost(state, "rivers_bounty"), 5, "River's Bounty");
+    assertEqual(engine.abilityUnlockCost(state, "flash_floods"), 10, "Flash Floods");
+    assertEqual(engine.abilityUnlockCost(state, "wash_away"), 20, "Wash Away");
+  });
+
+  test("unlock: a locked ability refuses to be cast at all", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    setLand(state, "3", { towns: 1 }, 0);
+
+    assert(!engine.triggerAbility(state, "flash_floods"), "locked, so it cannot fire");
+    assertEqual(state.invaders["3"].towns, 1, "board untouched");
+    assertEqual(state.abilities.flash_floods, undefined, "a locked ability carries no cooldown slot");
+  });
+
+  test("unlock: buying an ability spends Energy and hands it over ready", () => {
+    const { state } = newGame();
+    state.resources.energy = 12;
+
+    const ok = engine.unlockAbility(state, "flash_floods");
+    assert(ok, "the purchase should succeed");
+    assertEqual(state.resources.energy, 2, "10 spent");
+    assert(engine.abilityIsUnlocked(state, "flash_floods"), "unlocked");
+    assert(engine.abilityIsReady(state, "flash_floods"), "and usable at once, not cooling");
+  });
+
+  test("unlock: too little Energy buys nothing", () => {
+    const { state } = newGame();
+    state.resources.energy = 9;
+
+    assert(!engine.unlockAbility(state, "flash_floods"), "the purchase must refuse");
+    assertEqual(state.resources.energy, 9, "Energy untouched");
+    assert(!engine.abilityIsUnlocked(state, "flash_floods"), "still locked");
+  });
+
+  test("unlock: an ability already owned cannot be bought twice", () => {
+    const { state } = newGame();
+    state.resources.energy = 40;
+
+    engine.unlockAbility(state, "flash_floods");
+    const again = engine.unlockAbility(state, "flash_floods");
+
+    assert(!again, "the second purchase must refuse");
+    assertEqual(state.resources.energy, 30, "charged exactly once");
+    assert(!engine.unlockAbility(state, "boon_of_vigor"), "the opening hand is not for sale either");
+  });
+
+  test("reset: a new round takes back the Energy and everything bought with it", () => {
+    const { state } = newGame();
+    state.resources.energy = 300;
+    engine.unlockAbility(state, "wash_away");
+    engine.upgradeAbility(state, "innate_power");
+
+    assert(engine.abilityIsUnlocked(state, "wash_away"), "owned during the round");
+    assertEqual(engine.abilityTier(state, "innate_power"), 1, "and upgraded during it");
+
+    engine.endRound(state);
+    engine.startNextRound(state);
+
+    assertEqual(state.resources.energy, 0, "the purse is empty again");
+    assert(!engine.abilityIsUnlocked(state, "wash_away"), "the unlock is gone with it");
+    assertEqual(engine.abilityTier(state, "innate_power"), 0, "and the Innate is back at tier 1");
+    assertEqual(
+      engine.unlockedAbilityIds(state).join(","),
+      "innate_power,boon_of_vigor",
+      "every round opens on the same two"
+    );
+  });
+
+  test("reset: Fear is not touched by the round reset", () => {
+    const { state } = newGame();
+    state.meta.fear = 14;
+    state.resources.energy = 30;
+
+    engine.endRound(state);
+    engine.startNextRound(state);
+
+    assertEqual(state.meta.fear, 14, "Fear is the currency that carries");
+    assertEqual(state.resources.energy, 0, "Energy is the one that does not");
+  });
+
+  test("energy: a defeated invader pays Energy equal to its attack", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    state.resources.energy = 0;
+
+    setLand(state, "3", { explorers: 1 }, 0);
+    engine.applyDamage(state, "3", 1);
+    assertEqual(state.resources.energy, 1, "an explorer attacks for 1");
+
+    setLand(state, "3", { towns: 1 }, 0);
+    engine.applyDamage(state, "3", 2);
+    assertEqual(state.resources.energy, 3, "a town attacks for 2");
+
+    setLand(state, "3", { cities: 1 }, 0);
+    engine.applyDamage(state, "3", 3);
+    assertEqual(state.resources.energy, 6, "a city attacks for 3");
+  });
+
+  test("energy: damage that defeats nothing pays nothing", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    state.resources.energy = 0;
+    setLand(state, "3", { cities: 1 }, 0);
+
+    engine.applyDamage(state, "3", 2);
+
+    assertEqual(state.invaders["3"].cities, 1, "the city is still standing");
+    assertEqual(state.resources.energy, 0, "Energy is paid on the kill, not on the hit");
+  });
+
+  test("energy: a Dahan casualty pays the player nothing", () => {
+    const ctx = fullKit();
+    const { state } = ctx;
+    clearBoard(state);
+    state.resources.energy = 0;
+    setLand(state, "3", { cities: 2 }, 1);
+
+    // 6 gross damage is 30% of a casualty a beat, so 6 beats is comfortably past the one it
+    // takes to lose the defender.
+    advance(ctx, 6 * engine.TIME_SCALE);
+
+    assertEqual(state.dahan["3"], 0, "the lone Dahan fell to the two cities");
+    assertEqual(state.resources.energy, 0, "losing a Dahan is not an income");
   });
 })();

@@ -15,7 +15,7 @@ Open `index.html`. That is the whole procedure — no server, no build step, no 
 | `engine.js` | Every rule. No DOM access anywhere in it. |
 | `ui.js` | Every DOM call. No rules anywhere in it. |
 | `app.css` | Styling, including the terrain hues mirrored from `engine.js`. |
-| `vis.html` | Dev fixture: paints a mid-round board for layout work. `?ended` shows the shop. |
+| `vis.js` | Dev fixture, loaded only by `index.html?vis`: paints a mid-round board for layout work. `?vis&ended` shows the shop. |
 | `tests.html` | The regression suite, in a browser. |
 
 The split between `engine.js` and `ui.js` is the load-bearing one: it is what lets the suite
@@ -30,7 +30,7 @@ powershell -File tests\headless.ps1          headless Edge or Chrome; exits 1 on
 node tests/run.js [filter]                   if node is installed
 ```
 
-109 checks covering the board, round setup, wave timing, combat, Blight, abilities, the
+168 checks covering the board, round setup, wave timing, combat, Blight, abilities, the
 shop, save/migration, and the land-state rules. The engine takes its clock and RNG by
 injection, so the whole suite is deterministic and finishes instantly.
 
@@ -53,3 +53,10 @@ the two known balance problems up front. What to build next is at the top of
 - **The board rebuilds only when its signature changes.** Values that move every second are
   patched in place; rebuilding on a per-second cadence would destroy hover, focus, and any
   running animation.
+- **Invader damage is per unit,** not per type: `invaderDamage[land][type]` is one entry per
+  living unit, sorted worst-first. Anything that adds an invader goes through
+  `addInvaderUnit`, or the count and the wound list drift apart.
+- **Read a tiered ability through `abilityRecord(state, id)`,** never straight out of
+  `ABILITIES`. The raw entry for a tiered ability carries no cooldown and no effect of its own.
+- **Energy is round-local.** It, every unlock bought with it, and every Innate tier are cleared
+  by `startRound`. Fear is the only currency that carries.

@@ -51,7 +51,8 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 ## Retired From The Turn-Based Slice
 
 - Player-clicked growth options and the two presence tracks.
-- Multi-step card targeting (Wash Away's three-click push, River's Bounty's gather-then-finish).
+- Multi-step card targeting. A push still takes one click for its source; where the units land
+  is decided by rule, never by a second click.
 - Manually resolving Ravage/Build/Discover phase by phase and hand-assigning the Dahan
   counterattack.
 - Per-land Essence generation and presence placement range.
@@ -60,8 +61,8 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 
 ## Known Balance Problems
 
-Both old findings — zero unattended Fear, a 64-second round — were artefacts of the per-wave
-Ravage model and are fixed. A round now runs 87-120 seconds, earns 1.05-1.75 Fear unattended,
+Both old findings — zero unattended Fear, a 64-beat round — were artefacts of the per-wave
+Ravage model and are fixed. A round now runs 87-120 beats, earns 1.05-1.75 Fear unattended,
 and costs the player 2-4 of their 6 Dahan. Full trace in
 [04-economy-formulas.md](./04-economy-formulas.md#measured-behaviour).
 
@@ -80,9 +81,19 @@ What is left:
   constants are under playtest, and `dahan_reinforcement` and `rivers_bounty` still have not
   been repriced against them. See
   [04-economy-formulas.md](./04-economy-formulas.md#dahan-casualty-formula).
-- **First Blight lands anywhere between 33 and 74 seconds**, depending on whether the early
+- **First Blight lands anywhere between 33 and 74 beats**, depending on whether the early
   Discover draws hit the two lands `roundStartDahan` leaves empty. The variance is the terrain
   draw rather than the rates, but it means two players' first rounds can read very differently.
+- **The Dahan strike got stronger and has not been repriced.** Kill-first damage means two
+  Dahan take a town where they used to scratch a city, across every land at once. That is the
+  intended direction, but nothing has been re-measured against it.
+- **Innate tier 3 costs 250 and a round earns roughly 20-40.** It is gated on round *length*,
+  which `blight_resilience` buys, so it is a late-progression sight rather than a mid-round
+  one. Deliberate, but unmeasured: nobody has played to it.
+- **`rivers_bounty` no longer fails, and pushes no longer roll.** The Bounty falls back to the
+  thinnest land on the board when nothing is contested, so it banks Dahan on a quiet island
+  instead of refusing; and a push now always takes the lowest-numbered free neighbour. Both
+  make the kit more reliable — and neither has been re-measured against the Blight rates.
 
 ## Still Open
 
@@ -90,8 +101,9 @@ What is left:
   implemented as specified, but never balanced.
 - The permanent upgrade shop's catalogue beyond the three placeholder entries, and its cost
   curve.
-- Whether a spent resource (Energy or otherwise) ever returns alongside ability cooldowns.
-  `resources.energy` stays parked in the schema until this is answered.
+- **An invader scaling curve.** Energy income is flat within a round while the kit's prices
+  are not, so a long round has nothing to spend a late 250 on but time. The intended answer is
+  invaders that grow stronger as the player does, which is not implemented.
 - Whether a round in progress needs to survive a page reload. It currently does: a save
   resumes exactly as written, crediting nothing for the time the tab was closed.
 

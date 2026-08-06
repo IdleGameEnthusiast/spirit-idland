@@ -90,7 +90,7 @@
           </div>
           <div class="board-hud-tile hud-wave">
             <h3 id="waveLabel">Naechste Welle</h3>
-            <p id="waveValue" class="value">10s</p>
+            <p id="waveValue" class="value">20s</p>
             <div class="meter"><span id="waveFill" class="meter-fill"></span></div>
           </div>
           <div class="board-hud-tile hud-dahan">
@@ -127,9 +127,19 @@
         <p id="spiritTraits" class="hint"></p>
       </section>
 
+      <!-- Energy lives here rather than in the HUD: it is only ever read next to what it
+           buys, and every one of those things is in this panel. -->
       <section class="panel abilities">
         <h2 id="abilitiesTitle">Faehigkeiten</h2>
         <small id="abilitiesHint" class="action-info"></small>
+        <div class="ability-purse">
+          <span id="energyLabel">Energie</span>
+          <strong id="energyValue">0</strong>
+        </div>
+        <!-- Where Energy comes from, under the number itself. It is the one currency the
+             player earns by fighting rather than by surviving, and nothing else on the page
+             says so - least of all the purse, which only ever shows a total. -->
+        <small id="energyHint" class="hint"></small>
         <div id="abilityBar" class="ability-bar"></div>
       </section>
 
@@ -161,5 +171,17 @@
 
   <script src="engine.js"></script>
   <script src="ui.js"></script>
+  <script>
+    // Dev fixture, fetched only when it is asked for: `index.html?vis` paints a mid-round
+    // board for layout work, `index.html?vis&ended` the between-round shop. The game itself
+    // never loads a byte of it.
+    //
+    // It is a mode of this page rather than a page of its own because a second page meant a
+    // second copy of the markup above, and that copy went stale the first time the layout
+    // moved. ui.js reads the same flag and switches off the clock and every save.
+    if (/[?&]vis(&|=|$)/.test(location.search)) {
+      document.body.appendChild(Object.assign(document.createElement("script"), { src: "vis.js" }));
+    }
+  </script>
 </body>
 </html>

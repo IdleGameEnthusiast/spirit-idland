@@ -12,12 +12,14 @@ upgrade shop between rounds.
   regardless of whether the player acts.
 - Exactly one loss condition exists: Blight reaching `round.blightThreshold`. There is no
   other way for a round to end.
-- Abilities are cooldown-gated, not resource-gated, for this slice. See
-  [Open Question: Energy](#open-question-energy).
+- Casting an ability is cooldown-gated, not resource-gated. Energy gates *access* to an
+  ability rather than each use of it. See [Energy](#energy).
 - Waves resolve automatically on a fixed interval; the player cannot speed them up, pause
   them, or resolve them early.
-- Fear earned during a round is never lost, including when the round ends. It is the only
-  state that survives a round.
+- Fear earned during a round is never lost, including when the round ends.
+- Energy, and the abilities bought with it, survive a round the same way Fear does. The two
+  currencies differ in where they are spent, not in whether a loss takes them: Fear buys
+  permanent upgrades between rounds, Energy unlocks abilities at any time.
 - A new round resets the island (invaders, Dahan, Blight, wave timer) to the spirit's
   current permanent-upgrade baseline. It does not reset Fear or purchased upgrades.
 
@@ -67,12 +69,39 @@ invaders directly.
   values) is placeholder content — see [07-content-registry.md](./07-content-registry.md) —
   and is expected to change during balancing.
 
-### Open Question: Energy
+### Energy
 
 The turn-based prototype gated card plays on an Energy resource fed by the presence tracks.
-Both are retired along with presence. For now, abilities cost only their cooldown. Whether a
-resource cost returns, and what would feed it without presence, is deliberately left open;
-treat `resources.energy` as parked, not deleted, until that's decided.
+Presence is retired; Energy is not. It is back, fed by the fight itself and spent on the
+ability bar rather than on individual casts:
+
+- **Income.** Every defeated invader pays Energy equal to its attack — an explorer 1, a town
+  2, a city 3. The same power scale Fear reads, deliberately: a unit's threat is its worth,
+  and a second scale would only be a second thing to learn. Whole numbers, unlike Fear.
+- **Cost.** Casting is still free of everything but its cooldown. What Energy buys is
+  *access*: the spirit opens every round with two abilities and the rest priced at 5, 10 and
+  20, plus the Innate's own tier ladder at 50 and 250.
+- **When.** Purchases are mid-round by nature. The Energy came from the fight and does not
+  outlive it, so that fight is the only one it can pay for.
+- **Persistence — none.** `resources.energy`, `round.purchasedAbilityIds` and
+  `round.abilityTiers` are all cleared by `startRound`. Every round is built from the same
+  opening hand, out of Energy earned in that round alone.
+
+That last point is what separates the two currencies. Fear carries and buys permanent
+upgrades between rounds; Energy is spent inside a round and dies with it. So the shop decides
+*how fast a round can be rebuilt* — more Dahan striking, longer before Blight ends it — and the
+fight decides *how far that round gets*. Neither can be traded for the other, and a round can
+never be won on a previous round's leftovers.
+
+Answered against the alternative of a per-cast cost. A per-cast cost makes a good round
+cheaper to play than a bad one — exactly backwards for a loop whose whole tension is that
+pressure only rises — and it hands the player a second cooldown to read on every button.
+Gating access instead means Energy changes what the bar *is* rather than how often it can be
+pressed.
+
+Ability *upgrades* (spending Energy to improve an ability already owned) are the intended
+next use of the currency and are not implemented; the flat unlock price is a placeholder
+until there is a curve to tune it against.
 
 ## Wave Resolution
 
@@ -109,14 +138,18 @@ net             = max(grossDamage - dahanCount * 2, grossDamage * BLIGHT_FLOOR_F
 blight per sec  = net * BLIGHT_PER_DAMAGE_SECOND
 ```
 
-At 2% per damage-second, one point of net damage takes 50 seconds to become a Blight. One
-explorer, one town and one city in an undefended land is 6 damage, so 12% a second, so a
-Blight roughly every 8.3 seconds. Put two Dahan in it and 4 of that 6 is cancelled: 2 net,
-4% a second, one Blight every 25 seconds.
+Counted in **beats** — the design's unit of time, worth `TIME_SCALE` real seconds each. See
+[04](./04-economy-formulas.md#beats-and-time_scale) for why every duration is written this way
+and why turning the dial cannot move the balance.
+
+At 2% per damage-beat, one point of net damage takes 50 beats to become a Blight. One
+explorer, one town and one city in an undefended land is 6 damage, so 12% a beat, so a
+Blight roughly every 8.3 beats. Put two Dahan in it and 4 of that 6 is cancelled: 2 net,
+4% a beat, one Blight every 25 beats.
 
 A land whose Dahan out-defend its invaders is **held**, which is not the same as safe: a
 quarter of the gross always seeps through. The same land with four Dahan cancels all 6 on
-paper but still takes 1.5 net, one Blight every 33 seconds. Defence buys time, not immunity —
+paper but still takes 1.5 net, one Blight every 33 beats. Defence buys time, not immunity —
 a stack parked on a land slows the loss down instead of ending it, so the land still has to
 be cleared.
 
@@ -196,8 +229,13 @@ spend all Fear first.
   across lands, at most 2 per land, modified upward by any permanent Dahan upgrade
   purchased.
 - Dahan defend continuously and strike periodically; see [The Fight](#the-fight).
-- Dahan are not currently moved or reinforced by any ability beyond `rivers_bounty`. That is
-  expected placeholder content, not a design decision to leave them static forever.
+- `rivers_bounty` is the only ability that touches Dahan: it **creates** one, in the land with
+  the fewest Dahan that is actually under attack — or, when no land is under attack, simply in
+  the land with the fewest Dahan. Nothing else reinforces or relocates them. An earlier draft
+  gathered a Dahan out of a neighbouring land instead, which made the ability a redistribution
+  rather than a reinforcement — it bought one land defence at another's expense, and the island
+  was no stronger for it. A later one refused outright on a quiet island, which punished the
+  player for having cleared the map at exactly the moment to be building up for the next wave.
 
 ## Damage Rules
 
@@ -210,9 +248,14 @@ spend all Fear first.
 - `health` only governs invaders, who are still killed in whole points. Dahan are not killed
   by whole points of damage at all — they die to the per-land casualty bar, which is why
   their 2 health does not appear in any formula.
-- Partial invader damage is tracked per land and per invader type, and persists across
-  waves within a round. There is no "end turn" to clear it against anymore — it only clears
-  on round reset.
+- Invader damage is tracked **per unit**, not per type: `invaderDamage[land][type]` holds one
+  entry per living unit. Two cities in one land can therefore be wounded independently, which
+  a single number per type could not express. It persists across waves within a round; there
+  is no "end turn" to clear it against anymore, so it only clears on round reset.
+- Damage kills if it can, and only wounds when it cannot. Every ability and the Dahan strike
+  share that one routine; see
+  [04-economy-formulas.md](./04-economy-formulas.md#applying-damage) for the exact rule and
+  its tie-breaks.
 
 ## What The Player Actually Controls
 
@@ -220,11 +263,14 @@ Worth naming, because "Blight only goes up and the round always ends" reads at f
 the player has no lever at all. They have two, both indirect:
 
 - **A land with no invaders generates no Blight.** Clearing a land outright — with
-  `flash_floods`, or by pushing its occupants away with `wash_away` — stops that land's bar
-  dead. This is the main lever.
+  `flash_floods`, or by pushing its occupants away with `wash_away` or the Innate — stops that
+  land's bar dead. This is the main lever, and pushing is the cheaper half of it: a push moves
+  the pressure to a land that was generating none, but it costs no damage to do.
 - **Dahan cancel 2 damage each, and a land whose Dahan out-defend its invaders sits at zero.**
-  Keeping Dahan alive, or seeding more with `rivers_bounty`, is the difference between a land
-  that costs the round nothing and one that costs it everything.
+  Keeping Dahan alive, or reinforcing with `rivers_bounty`, is the difference between a land
+  that costs the round nothing and one that costs it everything. `rivers_bounty` always lands
+  on the thinnest contested land, so the reinforcement goes where the arithmetic is worst; with
+  nothing contested it banks the Dahan in the thinnest land instead.
 
 Neither stops the round; both buy time. How long you bought is the score.
 

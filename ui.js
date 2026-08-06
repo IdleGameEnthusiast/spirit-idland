@@ -40,6 +40,9 @@ const dom = {
 
   abilitiesTitle: document.getElementById("abilitiesTitle"),
   abilitiesHint: document.getElementById("abilitiesHint"),
+  energyLabel: document.getElementById("energyLabel"),
+  energyValue: document.getElementById("energyValue"),
+  energyHint: document.getElementById("energyHint"),
   abilityBar: document.getElementById("abilityBar"),
 
   mapTitle: document.getElementById("mapTitle"),
@@ -303,8 +306,30 @@ function tokenIcon(unitType) {
   return `<svg class="tok" aria-hidden="true" focusable="false"><use href="#${UNIT_GLYPH[unitType]}"/></svg>`;
 }
 
-function unitGlyph(unitType, count) {
-  return `<span class="chip-unit unit-${unitType}">${tokenIcon(unitType)}${count}</span>`;
+// Every unit count on the board wears the same health ring: Dahan and invader alike, red,
+// draining clockwise from twelve. It rides on the count rather than beside the Blight bar so
+// a land shows one token per type instead of two - the ring belongs on the number it drains.
+//
+// The ring is always in the markup and revealed by opacity when the unit is hurt, never added
+// to the DOM at that moment. patchLandMeters writes both every frame, and the board itself
+// only rebuilds when its signature changes - a ring that had to be inserted to appear would
+// wait on that rebuild and lag the damage that caused it.
+//
+// It stays through an armed ability too. The ring is part of the count now, and hiding it
+// there would resize the glyph and shift the whole row every time a target is chosen.
+function unitGlyph(state, landId, unitType, count) {
+  const t = locale(state);
+  const title = unitType === "dahan" ? t.dahanBarLabel : t.invaderBarLabel;
+  return `<span class="chip-unit unit-${unitType}"><span class="chip-token" title="${title}"><span class="chip-ring" data-meter-land="${landId}" data-meter-kind="${unitType}"></span>${tokenIcon(unitType)}</span>${count}</span>`;
+}
+
+// How badly the worst-off unit of a type in this land is hurt, as a fraction of its health.
+// The damage array is sorted most-wounded first, so index 0 is the one the ring shows.
+function worstInvaderWound(state, landId, unitType) {
+  const stats = UNIT_STATS[unitType];
+  const wounds = (state.invaderDamage[landId] || {})[unitType];
+  if (!stats || !Array.isArray(wounds) || wounds.length === 0) return 0;
+  return clamp((wounds[0] || 0) / stats.health, 0, 1);
 }
 
 function fmtSeconds(value) {
@@ -332,32 +357,21 @@ function chipWaveMarkup(state, landId) {
 }
 
 // What every contested land wears: the Blight bar, which is what ends the round and so gets
-// the full width of the chip, and beside it a Dahan token ringed by a clock that closes as
-// its defenders near a casualty - the same reading in a fraction of the space, so the two
-// never compete. Both fill continuously, so the fills themselves are written by
+// the full width of the chip. The health rings are not here - they ride on the unit counts
+// above, in unitGlyph. The bar fills continuously, so the fill itself is written by
 // patchLandMeters rather than baked in here - a bar rebuilt ten times a second could never
 // animate.
 function chipMetersMarkup(state, landId) {
   if (state.pendingAbilityTarget) return "";
-  const p = landPressure(state, landId);
-  if (p.gross <= 0) return "";
+  if (landPressure(state, landId).gross <= 0) return "";
 
   const t = locale(state);
-  const dahanMark = p.dahan > 0
-    ? `
-      <span class="chip-dahan-mark" title="${t.dahanBarLabel}">
-        <span class="chip-dahan-ring" data-meter-land="${landId}" data-meter-kind="dahan"></span>
-        ${tokenIcon("dahan")}
-      </span>
-    `
-    : "";
 
   return `
     <div class="chip-meters">
       <span class="chip-meter is-blight" title="${t.blightBarLabel}">
         <span class="chip-meter-fill" data-meter-land="${landId}" data-meter-kind="blight"></span>
       </span>
-      ${dahanMark}
     </div>
     <div class="chip-pressure" data-pressure-land="${landId}"></div>
   `;
@@ -398,11 +412,11 @@ function renderBoard(state) {
     const counts = state.invaders[landId];
     const invaderBits = [];
     for (const type of INVADER_TYPES) {
-      if (counts[type]) invaderBits.push(unitGlyph(type, counts[type]));
+      if (counts[type]) invaderBits.push(unitGlyph(state, landId, type, counts[type]));
     }
 
     const allyBits = [];
-    if (state.dahan[landId]) allyBits.push(unitGlyph("dahan", state.dahan[landId]));
+    if (state.dahan[landId]) allyBits.push(unitGlyph(state, landId, "dahan", state.dahan[landId]));
 
     const chip = document.createElement("div");
     chip.className = "land-chip";
@@ -451,14 +465,24 @@ function renderBoard(state) {
 function patchLandMeters(state) {
   for (const el of dom.landChips.querySelectorAll("[data-meter-land]")) {
     const landId = el.getAttribute("data-meter-land");
-    const p = landPressure(state, landId);
-    const isDahan = el.getAttribute("data-meter-kind") === "dahan";
-    const value = Math.max(0, Math.min(1, isDahan ? p.dahanProgress : p.blightProgress));
+    const kind = el.getAttribute("data-meter-kind");
 
-    // Two shapes, two dials: Blight is a bar and fills by width, the casualty clock is a
-    // conic ring and fills by the registered property its sweep is drawn from.
-    if (isDahan) el.style.setProperty("--dahan-progress", value);
-    else el.style.width = `${value * 100}%`;
+    // Two shapes, two dials. Blight is a bar and fills by width as the round is lost; a
+    // health ring is a conic sweep and drains by the registered property it is drawn from.
+    if (kind === "blight") {
+      el.style.width = `${clamp(landPressure(state, landId).blightProgress, 0, 1) * 100}%`;
+      continue;
+    }
+
+    // Both rings show health lost, from two different clocks. A Dahan's is the casualty bar
+    // filling continuously toward the next death; an invader's is whole points already taken.
+    const lost = kind === "dahan"
+      ? clamp(landPressure(state, landId).dahanProgress, 0, 1)
+      : worstInvaderWound(state, landId, kind);
+
+    el.style.setProperty("--health-lost", lost);
+    // Untouched units wear no ring at all, so the ones that do are the ones worth looking at.
+    el.style.opacity = lost > 0 ? "1" : "0";
   }
 
   for (const el of dom.landChips.querySelectorAll("[data-pressure-land]")) {
@@ -480,14 +504,17 @@ function renderLandDetail(state) {
   const counts = state.invaders[landId];
   const damageSlot = state.invaderDamage[landId];
 
+  // The chip has room for one ring per type; this is where the exact per-unit health lives,
+  // which is the whole reason damage is tracked per unit. Only the hurt ones are spelled out -
+  // a "3/3" beside every healthy city would bury the one number that matters.
   const rows = [];
   for (const type of INVADER_TYPES) {
     if ((counts[type] || 0) <= 0) continue;
     const health = UNIT_STATS[type].health;
-    const carry = Math.max(0, Math.floor(damageSlot[type] || 0));
-    const hpHint = carry > 0 && health > 1
-      ? `<span class="detail-hp">${template(t.invaderHpHint, { current: health - carry, max: health })}</span>`
-      : "";
+    const wounded = (damageSlot[type] || [])
+      .filter((damage) => damage > 0)
+      .map((damage) => template(t.invaderHpHint, { current: health - damage, max: health }));
+    const hpHint = wounded.length > 0 ? `<span class="detail-hp">${wounded.join(", ")}</span>` : "";
     rows.push(`<div class="detail-row"><span class="detail-key unit-${type}">${tokenIcon(type)}${unitLabelByType(state, type)}</span><span class="detail-val">${hpHint}${counts[type]}</span></div>`);
   }
   if (rows.length === 0) rows.push(`<p class="detail-empty">${t.noInvadersHere}</p>`);
@@ -539,19 +566,78 @@ function renderLandDetail(state) {
  * second, which is the whole reason for the split.                      *
  * ------------------------------------------------------------------ */
 
+// What changes the bar's shape: which abilities are unlocked, and what tier the tiered ones
+// stand at - a tier swaps the card's whole text and price, so it has to force a rebuild.
+// Affordability is patched per frame rather than rebuilt.
 function abilityBarSignature(state) {
-  return [currentLang(state), unlockedAbilityIds(state).join(",")].join("|");
+  const tiers = spiritAbilityIds(state)
+    .filter(abilityIsTiered)
+    .map((id) => `${id}:${abilityTier(state, id)}`)
+    .join(",");
+  return [currentLang(state), unlockedAbilityIds(state).join(","), tiers].join("|");
 }
 
-function renderAbilityBar(state) {
-  dom.abilityBar.innerHTML = "";
+// One unlocked ability: the pressable card, with the cooldown sweep behind its text.
+function renderUnlockedAbility(state, abilityId) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ability";
+  button.setAttribute("data-ability", abilityId);
+  button.innerHTML = `
+    <span class="ability-sweep" data-role="sweep"></span>
+    <span class="ability-body">
+      <span class="ability-head">
+        <span class="ability-name">${abilityName(state, abilityId)}</span>
+        <span class="ability-state" data-role="state"></span>
+      </span>
+      <span class="ability-text">${abilityText(state, abilityId)}</span>
+    </span>
+  `;
+  return button;
+}
 
-  for (const abilityId of unlockedAbilityIds(state)) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ability";
-    button.setAttribute("data-ability", abilityId);
-    button.innerHTML = `
+// One locked ability: the same card, dimmed, with a price where its state would be. It is a
+// div rather than a button because it contains one - the card itself does nothing, only the
+// price is pressable.
+function renderLockedAbility(state, abilityId) {
+  const t = locale(state);
+  const card = document.createElement("div");
+  card.className = "ability is-locked";
+  card.setAttribute("data-locked-ability", abilityId);
+  card.innerHTML = `
+    <span class="ability-body">
+      <span class="ability-head">
+        <span class="ability-name">${abilityName(state, abilityId)}</span>
+        <span class="ability-state">${t.abilityLocked}</span>
+      </span>
+      <span class="ability-text">${abilityText(state, abilityId)}</span>
+      <button type="button" class="ability-unlock" data-unlock-ability="${abilityId}">
+        ${template(t.abilityUnlockBtn, { cost: abilityUnlockCost(state, abilityId) })}
+      </button>
+    </span>
+  `;
+  return card;
+}
+
+// A tiered ability is unlocked and pressable *and* carries a price for its next tier, so it
+// cannot be the single button the others are - a button inside a button is not markup. The
+// card becomes a div holding two: the cast surface, and the tier row beneath it.
+function renderTieredAbility(state, abilityId) {
+  const t = locale(state);
+  const card = document.createElement("div");
+  card.className = "ability is-tiered";
+  card.setAttribute("data-tiered-ability", abilityId);
+
+  const cost = abilityUpgradeCost(state, abilityId);
+  // Tiers are zero-based in state and one-based on the card, because "Tier 0" is not a thing
+  // a player has ever been sold.
+  const nextTier = abilityTier(state, abilityId) + 2;
+  const upgrade = Number.isFinite(cost)
+    ? `<button type="button" class="ability-unlock" data-upgrade-ability="${abilityId}">${template(t.abilityUpgradeBtn, { tier: nextTier, cost })}</button>`
+    : "";
+
+  card.innerHTML = `
+    <button type="button" class="ability-cast" data-ability="${abilityId}">
       <span class="ability-sweep" data-role="sweep"></span>
       <span class="ability-body">
         <span class="ability-head">
@@ -560,14 +646,45 @@ function renderAbilityBar(state) {
         </span>
         <span class="ability-text">${abilityText(state, abilityId)}</span>
       </span>
-    `;
-    dom.abilityBar.appendChild(button);
+    </button>
+    <span class="ability-foot">
+      <span class="ability-tier">${template(t.abilityTierLabel, { tier: abilityTier(state, abilityId) + 1 })}</span>
+      ${upgrade}
+    </span>
+  `;
+  return card;
+}
+
+function renderAbilityBar(state) {
+  dom.abilityBar.innerHTML = "";
+
+  // Kit order, locked entries in place: the bar is the spirit's full hand from the first
+  // round, so what is still missing is visible rather than inferred.
+  for (const abilityId of spiritAbilityIds(state)) {
+    let card;
+    if (!abilityIsUnlocked(state, abilityId)) card = renderLockedAbility(state, abilityId);
+    else if (abilityIsTiered(abilityId)) card = renderTieredAbility(state, abilityId);
+    else card = renderUnlockedAbility(state, abilityId);
+    dom.abilityBar.appendChild(card);
   }
 }
 
-// Per-frame patch: state class, the countdown, and the sweep's width. No node is replaced.
+// Per-frame patch: state class, the countdown, the sweep's width, and whether each locked
+// ability is affordable right now. No node is replaced.
 function patchAbilityBar(state) {
   const t = locale(state);
+
+  // Both prices in the bar answer the same question - can I afford this yet - so they are
+  // patched the same way, and the card wears the answer as a warm border either way.
+  for (const button of dom.abilityBar.querySelectorAll("[data-unlock-ability], [data-upgrade-ability]")) {
+    const unlockId = button.getAttribute("data-unlock-ability");
+    const cost = unlockId
+      ? abilityUnlockCost(state, unlockId)
+      : abilityUpgradeCost(state, button.getAttribute("data-upgrade-ability"));
+    const affordable = state.resources.energy >= cost;
+    button.disabled = !affordable;
+    button.closest(".ability").classList.toggle("is-affordable", affordable);
+  }
 
   for (const button of dom.abilityBar.querySelectorAll("[data-ability]")) {
     const abilityId = button.getAttribute("data-ability");
@@ -579,9 +696,12 @@ function patchAbilityBar(state) {
     const armed = state.pendingAbilityTarget === abilityId;
     const ready = remaining <= 0;
 
-    button.classList.toggle("is-armed", armed);
-    button.classList.toggle("is-ready", ready && !armed);
-    button.classList.toggle("is-cooling", !ready);
+    // The state classes go on the card, not the pressable element: for a plain ability those
+    // are the same node, for a tiered one the card is the button's parent.
+    const card = button.closest(".ability");
+    card.classList.toggle("is-armed", armed);
+    card.classList.toggle("is-ready", ready && !armed);
+    card.classList.toggle("is-cooling", !ready);
     button.disabled = state.round.status !== "running" || (!ready && !armed);
 
     button.querySelector('[data-role="state"]').textContent = armed
@@ -618,22 +738,44 @@ function renderShop(state) {
   dom.shopFearValue.textContent = formatFear(state.meta.fear);
 
   dom.upgradeList.innerHTML = "";
+  // The registry is ordered repeatables first, one-offs after, so the list only has to notice
+  // where the two halves meet rather than sort anything itself.
+  let seenOneOff = false;
+
   for (const upgradeId of UPGRADE_IDS) {
+    const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
     const tier = upgradeTier(state, upgradeId);
     const maxed = tier >= upgradeMaxTier(upgradeId);
     const cost = upgradeCost(state, upgradeId);
     const affordable = !maxed && state.meta.fear >= cost;
 
+    if (!repeatable && !seenOneOff) {
+      seenOneOff = true;
+      const rule = document.createElement("div");
+      rule.className = "upgrade-divider";
+      rule.textContent = t.shopOneOffLabel;
+      dom.upgradeList.appendChild(rule);
+    }
+
+    // A one-off has no ladder, so it shows nothing where a tier would go and reads "Owned"
+    // rather than "Maxed" once it is bought.
+    const status = repeatable
+      ? `<span class="upgrade-tier">${template(t.shopTierLabel, { tier })}</span>`
+      : "";
+    const buyLabel = maxed
+      ? (repeatable ? t.shopMaxedBtn : t.shopOwnedBtn)
+      : template(t.shopCostLabel, { cost });
+
     const row = document.createElement("div");
-    row.className = `upgrade${affordable ? " is-affordable" : ""}`;
+    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${upgradeName(state, upgradeId)}</span>
         <span class="upgrade-text">${upgradeText(state, upgradeId)}</span>
-        <span class="upgrade-tier">${template(t.shopTierLabel, { tier })}</span>
+        ${status}
       </div>
       <button type="button" class="upgrade-buy" data-upgrade="${upgradeId}" ${maxed || !affordable ? "disabled" : ""}>
-        ${maxed ? t.shopMaxedBtn : template(t.shopCostLabel, { cost })}
+        ${buyLabel}
       </button>
     `;
     dom.upgradeList.appendChild(row);
@@ -653,6 +795,9 @@ function patchHud(state) {
   dom.bestRoundValue.textContent = String(state.meta.bestRoundReached);
   dom.fearValue.textContent = formatFear(state.meta.fear);
   dom.waveCountValue.textContent = String(state.round.wavesResolved);
+  // Energy is whole-numbered and rises mid-fight, so it is patched with the rest of the
+  // per-tick readouts rather than waiting on an ability-bar rebuild.
+  dom.energyValue.textContent = String(state.resources.energy);
 
   dom.blightValue.textContent = template(t.blightMeter, {
     value: state.round.blight,
@@ -738,6 +883,8 @@ function applyStaticLanguage(state) {
 
   dom.abilitiesTitle.textContent = t.abilitiesTitle;
   dom.abilitiesHint.textContent = t.abilitiesHint;
+  dom.energyLabel.textContent = t.energyLabel;
+  dom.energyHint.textContent = t.energyHint;
   dom.mapTitle.textContent = t.mapTitle;
   dom.shopTitle.textContent = t.shopTitle;
   dom.shopFearLabel.textContent = t.shopFearLabel;
@@ -769,7 +916,9 @@ function mapSignature(state) {
     parts.push([
       landId,
       slot.explorers, slot.towns, slot.cities,
-      damage.explorers, damage.towns, damage.cities,
+      // Joined explicitly rather than left to Array.toString: these are per-unit damage
+      // lists now, and two of them must not collapse into one indistinguishable string.
+      damage.explorers.join("/"), damage.towns.join("/"), damage.cities.join("/"),
       state.dahan[landId],
       state.round.blightByLand[landId]
     ].join("."));
@@ -826,8 +975,28 @@ function updateUI(state) {
  * Boot                                                                 *
  * ------------------------------------------------------------------ */
 
+// Dev fixture mode: `index.html?vis` hands the page over to vis.js, which paints a
+// hand-authored mid-round board for layout work. It is a mode of the real page rather than
+// a second page, because a second page meant a second copy of this markup - and that copy
+// went stale the first time the layout changed.
+//
+// Two things are switched off for it, and both are the point:
+//   - Persistence. A fixture that autosaved would overwrite a real save with a board nobody
+//     played, ten seconds after being opened out of curiosity.
+//   - The clock. A frozen board is what makes the fixture a fixture: the state vis.js
+//     authored is the state on screen, not the state a second later.
+const FIXTURE_MODE = /[?&]vis(&|=|$)/.test(location.search);
+
+// The one place a save is written from. Everything below calls this rather than saveState,
+// so fixture mode cannot leak a board into storage through a call site added later.
+function persist() {
+  if (!FIXTURE_MODE) saveState(state);
+}
+
 drawIslandOnce();
-let state = loadState();
+// A fixture starts from a fresh game, never from the player's save: the board it paints has
+// to be the same board on every machine, and a stale upgrade tier would quietly change it.
+let state = FIXTURE_MODE ? createFreshGameState() : loadState();
 addLog(state, locale(state).spiritAwakens);
 updateUI(state);
 
@@ -838,12 +1007,32 @@ updateUI(state);
 dom.languageToggleBtn.addEventListener("click", () => {
   state.ui.language = currentLang(state) === "de" ? "en" : "de";
   updateUI(state);
-  saveState(state);
+  persist();
 });
 
 dom.abilityBar.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  // Both prices are checked before the cast path. A locked card carries no data-ability at
+  // all, but a tiered card carries both - its upgrade button sits beside the cast button, and
+  // whichever was clicked has to win outright rather than by DOM accident.
+  const unlock = target.closest("[data-unlock-ability]");
+  if (unlock) {
+    unlockAbility(state, unlock.getAttribute("data-unlock-ability") || "");
+    updateUI(state);
+    persist();
+    return;
+  }
+
+  const upgrade = target.closest("[data-upgrade-ability]");
+  if (upgrade) {
+    upgradeAbility(state, upgrade.getAttribute("data-upgrade-ability") || "");
+    updateUI(state);
+    persist();
+    return;
+  }
+
   const button = target.closest("[data-ability]");
   if (!button) return;
   triggerAbility(state, button.getAttribute("data-ability") || "");
@@ -893,17 +1082,17 @@ dom.upgradeList.addEventListener("click", (event) => {
   if (!button) return;
   purchaseUpgrade(state, button.getAttribute("data-upgrade") || "");
   updateUI(state);
-  saveState(state);
+  persist();
 });
 
 dom.startNextRoundBtn.addEventListener("click", () => {
   startNextRound(state);
   updateUI(state);
-  saveState(state);
+  persist();
 });
 
 dom.manualSaveBtn.addEventListener("click", () => {
-  saveState(state);
+  persist();
   addLog(state, locale(state).manualSaved);
   updateUI(state);
 });
@@ -917,7 +1106,9 @@ dom.wipeSaveBtn.addEventListener("click", () => {
   );
   if (!ok) return;
 
-  localStorage.removeItem(SAVE_KEY);
+  // The one destructive control on the page, and fixture mode reaches it too now that the
+  // fixture is a mode of this page. It must not be able to wipe a save it cannot even write.
+  if (!FIXTURE_MODE) localStorage.removeItem(SAVE_KEY);
   state = createFreshGameState();
   state.ui.language = langBeforeWipe;
   addLog(state, locale(state).saveWiped);
@@ -931,7 +1122,10 @@ dom.wipeSaveBtn.addEventListener("click", () => {
 let lastTick = nowMs();
 let saveAccumulator = 0;
 
-setInterval(() => {
+// Not started in fixture mode. The board vis.js authored has a wave most of the way in and a
+// city one hit from falling; a running clock would spend both before the page finished
+// painting, and every screenshot of it would be of a different board.
+if (!FIXTURE_MODE) setInterval(() => {
   const now = nowMs();
   // Browsers throttle background tabs to roughly one tick per second, so the cap inside
   // tick() has to sit well above that. It still guards against a huge jump after sleep.
@@ -944,10 +1138,10 @@ setInterval(() => {
   saveAccumulator += dt;
   if (saveAccumulator >= 10) {
     saveAccumulator = 0;
-    saveState(state);
+    persist();
   }
 }, 100);
 
 window.addEventListener("beforeunload", () => {
-  saveState(state);
+  persist();
 });

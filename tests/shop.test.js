@@ -1,11 +1,12 @@
 /* Fear and shop checks - docs/spec/08-acceptance-tests.md#fear-and-shop-checks */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, newGame, advance, runUntilRoundEnds, clearBoard, setLand } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, assertClose, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   test("shop: Fear earned mid-round is still there when the round ends", () => {
     const ctx = newGame();
     const { state } = ctx;
+    unlockAllAbilities(state);
 
     // Earned by hand rather than played for: this check is about Fear surviving a lost
     // round, and an ability is the shortest way to put some on the books.
@@ -157,19 +158,33 @@
     assertEqual(state.meta.bestRoundReached, 2, "record holds");
   });
 
-  test("shop: swift_currents stops at its max tier", () => {
+  test("shop: blight_resilience stops at its max tier", () => {
     const { state } = newGame();
     engine.endRound(state);
     state.meta.fear = 1e9;
 
-    const max = engine.upgradeMaxTier("swift_currents");
-    for (let i = 0; i < max + 3; i += 1) engine.purchaseUpgrade(state, "swift_currents");
+    const max = engine.upgradeMaxTier("blight_resilience");
+    for (let i = 0; i < max + 3; i += 1) engine.purchaseUpgrade(state, "blight_resilience");
 
-    assertEqual(engine.upgradeTier(state, "swift_currents"), max, "tier caps");
+    assertEqual(engine.upgradeTier(state, "blight_resilience"), max, "tier caps");
+  });
+
+  test("shop: a one-off upgrade is bought once and then refuses", () => {
+    const { state } = newGame();
+    engine.endRound(state);
+    state.meta.fear = 1e9;
+
+    assertEqual(engine.upgradeMaxTier("auto_boon"), 1, "a one-off has a single tier");
+    assert(engine.purchaseUpgrade(state, "auto_boon"), "the first buy lands");
+    assertEqual(engine.upgradeTier(state, "auto_boon"), 1, "owned");
+
+    assert(!engine.purchaseUpgrade(state, "auto_boon"), "the second buy is refused");
+    assertEqual(engine.upgradeTier(state, "auto_boon"), 1, "still one");
   });
 
   test("shop: an ability defeat during a round feeds the same purse the shop spends", () => {
     const { state } = newGame();
+    unlockAllAbilities(state);
     clearBoard(state);
     state.meta.fear = 0;
     setLand(state, "3", { cities: 1 }, 0);
@@ -182,7 +197,7 @@
     engine.resolveAbilityTarget(state, "3");
 
     assertEqual(state.invaders["3"].cities, 0, "the city fell to two hits");
-    assertClose(state.meta.fear, 3 * engine.FEAR_PER_POWER, 0.0001, "a city is worth 1.05");
+    assertEqual(state.meta.fear, 3 * engine.FEAR_PER_POWER, "a city is worth 3");
 
     engine.endRound(state);
     const cost = engine.upgradeCost(state, "dahan_reinforcement");

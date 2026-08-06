@@ -1,7 +1,7 @@
 /* Save and migration checks - docs/spec/08-acceptance-tests.md#save-and-migration-checks */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, newGame, advance, memoryStorage, clearBoard, setLand } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, memoryStorage, clearBoard, setLand, unlockAllAbilities } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   test("save: a round-trip preserves meta, upgrades, round and board state", () => {
     const ctx = newGame();
@@ -9,24 +9,24 @@
     const storage = memoryStorage();
 
     advance(ctx, 20);
-    state.meta.fear = 12.6;
+    state.meta.fear = 12;
     state.upgrades.purchased.dahan_reinforcement = 3;
     state.ui.selectedLand = "6";
     state.invaders["5"] = { explorers: 2, towns: 1, cities: 0 };
-    state.invaderDamage["5"].towns = 1;
+    state.invaderDamage["5"].towns = [1];
     state.dahan["5"] = 2;
 
     engine.saveState(state, storage);
     const loaded = engine.loadState(storage);
 
-    assertClose(loaded.meta.fear, 12.6, 0.0001, "fear");
+    assertEqual(loaded.meta.fear, 12, "fear");
     assertEqual(loaded.upgrades.purchased.dahan_reinforcement, 3, "upgrade tier");
     assertEqual(loaded.round.number, state.round.number, "round number");
     assertEqual(loaded.round.blight, state.round.blight, "blight");
     assertEqual(loaded.round.wavesResolved, state.round.wavesResolved, "waves");
     assertEqual(loaded.ui.selectedLand, "6", "selected land");
     assertEqual(loaded.invaders["5"].explorers, 2, "invaders");
-    assertEqual(loaded.invaderDamage["5"].towns, 1, "carried damage");
+    assertDeepEqual(loaded.invaderDamage["5"].towns, [1], "the wounded town is still wounded");
     assertEqual(loaded.dahan["5"], 2, "dahan");
   });
 
@@ -44,6 +44,7 @@
   test("save: a pending ability target survives a reload", () => {
     const { state } = newGame();
     const storage = memoryStorage();
+    unlockAllAbilities(state);
     clearBoard(state);
     setLand(state, "3", { towns: 1 }, 0);
     engine.triggerAbility(state, "flash_floods");
@@ -73,6 +74,7 @@
   test("save: ability cooldowns get no offline credit either", () => {
     const ctx = newGame();
     const storage = memoryStorage();
+    unlockAllAbilities(ctx.state);
     clearBoard(ctx.state);
     setLand(ctx.state, "3", { towns: 1 }, 0);
     engine.triggerAbility(ctx.state, "flash_floods");
@@ -168,27 +170,67 @@
     }
   });
 
-  test("normalize: carried damage can never exceed what the living units could absorb", () => {
+  test("normalize: a wound can never exceed what its unit could absorb", () => {
+    newGame();
+    const state = engine.normalizeState({
+      schemaVersion: engine.VERSION,
+      invaders: { "3": { explorers: 1, towns: 2, cities: 0 } },
+      invaderDamage: { "3": { explorers: [5], towns: [9, 1], cities: [4] } }
+    });
+    assertDeepEqual(state.invaderDamage["3"].towns, [1, 1], "a 2-health town can carry at most 1");
+    assertDeepEqual(state.invaderDamage["3"].cities, [], "no cities means no city wounds");
+    assertDeepEqual(state.invaderDamage["3"].explorers, [0], "a 1-health unit is never wounded, only dead");
+  });
+
+  test("normalize: the wound list is sized to the units and sorted worst-first", () => {
+    newGame();
+    const state = engine.normalizeState({
+      schemaVersion: engine.VERSION,
+      invaders: { "3": { explorers: 0, towns: 3, cities: 0 } },
+      // Two entries for three towns, in the wrong order: the third is filled in healthy, and
+      // the list is re-sorted so the board's ring always reads the worst-off unit at index 0.
+      invaderDamage: { "3": { explorers: [], towns: [0, 1], cities: [] } }
+    });
+    assertDeepEqual(state.invaderDamage["3"].towns, [1, 0, 0], "one entry per living town, worst first");
+  });
+
+  test("normalize: a wound left behind by a dead unit is dropped", () => {
     newGame();
     const state = engine.normalizeState({
       schemaVersion: engine.VERSION,
       invaders: { "3": { explorers: 0, towns: 1, cities: 0 } },
-      invaderDamage: { "3": { explorers: 5, towns: 9, cities: 4 } }
+      invaderDamage: { "3": { explorers: [], towns: [1, 1, 1], cities: [] } }
     });
-    assertEqual(state.invaderDamage["3"].towns, 1, "a 2-health town can carry at most 1");
-    assertEqual(state.invaderDamage["3"].cities, 0, "no cities means no carried city damage");
-    assertEqual(state.invaderDamage["3"].explorers, 0, "a 1-health unit never carries damage");
+    assertDeepEqual(state.invaderDamage["3"].towns, [1], "only the surviving town keeps a wound");
   });
 
   test("normalize: an unknown upgrade id is dropped and tiers clamp to their max", () => {
     newGame();
     const state = engine.normalizeState({
       schemaVersion: engine.VERSION,
-      upgrades: { purchased: { made_up_upgrade: 4, swift_currents: 999, dahan_reinforcement: -3 } }
+      upgrades: { purchased: { made_up_upgrade: 4, blight_resilience: 999, dahan_reinforcement: -3 } }
     });
     assert(!("made_up_upgrade" in state.upgrades.purchased), "unknown id dropped");
-    assertEqual(state.upgrades.purchased.swift_currents, engine.upgradeMaxTier("swift_currents"), "tier clamped");
+    assertEqual(
+      state.upgrades.purchased.blight_resilience,
+      engine.upgradeMaxTier("blight_resilience"),
+      "tier clamped"
+    );
     assert(!("dahan_reinforcement" in state.upgrades.purchased), "a negative tier is not a purchase");
+  });
+
+  // swift_currents was cut from the registry. An old save still naming it must load, not
+  // throw, and simply lose the entry the way any unknown id does.
+  test("normalize: a save naming a retired upgrade drops it and keeps the rest", () => {
+    newGame();
+    const state = engine.normalizeState({
+      schemaVersion: engine.VERSION,
+      meta: { fear: 12.7 },
+      upgrades: { purchased: { swift_currents: 4, dahan_reinforcement: 2 } }
+    });
+    assert(!("swift_currents" in state.upgrades.purchased), "retired id dropped");
+    assertEqual(state.upgrades.purchased.dahan_reinforcement, 2, "the live upgrade survives");
+    assertEqual(state.meta.fear, 12, "fractional Fear from an old save floors to whole");
   });
 
   test("normalize: every land key is present even when the save names none", () => {

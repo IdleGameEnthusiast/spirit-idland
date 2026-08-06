@@ -35,9 +35,20 @@ island board, and the between-round shop.
 - Active spirit name and trait text
 
 2. Ability bar
-- One control per ability the active spirit has unlocked
-- Each shows: name, ready/cooldown state, and — while on cooldown — a visible countdown or
-  sweep, not just a disabled button with no indication of when it'll be ready
+- The **Energy purse** at the head of the panel: `resources.energy`, in its own colour. It
+  lives here rather than in the round HUD because it is only ever read next to what it buys,
+  and everything it buys is in this panel. It is patched per tick like the rest of the live
+  readouts — Energy arrives mid-fight, on a kill, not on a round boundary
+- One control per ability in the active spirit's **whole kit**, locked entries included
+- An unlocked ability shows: name, ready/cooldown state, and — while on cooldown — a visible
+  countdown or sweep, not just a disabled button with no indication of when it'll be ready
+- A locked ability shows the same card, dimmed, with its price where its state would be. It
+  is listed rather than hidden: what the spirit could still be doing is half of what makes
+  Energy worth banking, and a bar that grows by surprise teaches nothing. Its border warms to
+  the Energy colour the moment it becomes affordable, so "can I buy anything yet" is answered
+  without reading a number twice
+- The locked card itself is inert; only the price is pressable. Kit order is fixed and a
+  purchase never reshuffles the bar — the player would lose the position they had learned
 - An ability awaiting a land click (`pendingAbilityTarget` set) reads as active/armed, and
   the board shows which lands are valid targets for it
 
@@ -49,13 +60,34 @@ island board, and the between-round shop.
 - On every land holding invaders: a **Blight bar** showing `round.blightProgress` for that
   land, and a line naming the rate and the seconds to the next Blight. This is the primary
   read on the board — the fight is continuous, so a land's danger is a speed, not an event
-- On every land holding both invaders and Dahan: the **casualty clock**, `round.dahanProgress`
-  drawn as a ring sweeping clockwise around a Dahan token rather than as a second bar, so a
-  land about to stop defending itself says so before it does. A closed circle is one dead
-  Dahan. It is deliberately a fraction of the Blight bar's size: two bars of equal weight
-  read as two equal threats, and only Blight ends the round. The token inside stays fully
-  lit and the ring's unfilled remainder is drawn, so the clock is legible at rest — an
-  empty clock that renders as nothing is the state a land sits in for most of a round
+- On **every wounded unit count**, Dahan and invader alike: a **health ring** around that
+  count's **existing glyph** — not a second bar, and not a second token. It is red, and it
+  drains: a full ring is full health, and the gap opens clockwise from twelve as health goes,
+  so a unit down a third shows red from four o'clock round to twelve. An empty ring is the
+  moment the count beside it drops.
+
+  It reads as health rather than as damage on purpose. A filling damage bar says "something is
+  accumulating"; a draining health ring says "this thing is nearly dead", which is the sentence
+  the player needs at a glance. The behaviour is identical either way — this is a presentation
+  decision, not a rules one.
+
+  One bar and rings, rather than a second bar: two bars of equal weight read as two equal
+  threats, and only Blight ends the round.
+- **Nothing at full health wears a ring.** The rings on screen are exactly the units worth
+  looking at. The Dahan ring is fed by `round.dahanProgress`, which is continuous; an invader
+  ring is fed by whole points already taken.
+- There is **one ring per type per land**, and it belongs to that type's worst-off unit. The
+  chip has room for one number per type, not one per unit, and the unit about to die is the one
+  worth watching. Exact per-unit health lives in the land detail panel, which is what per-unit
+  damage tracking exists to make possible.
+- A land with no invaders shows its Dahan ring **stopped, not cleared**. `dahanPerSecond` is 0
+  there and `resolveLandCombat` leaves `dahanProgress` alone, so the ring holds whatever it
+  reached: a land that nearly lost a defender still says how close it came, and says what the
+  next wave resumes from. Rings are drawn while an ability is armed too — a ring is part of the
+  count, and hiding it would resize the glyph and shift the row on every target selection
+- The ring element is always in the markup and revealed by opacity, never inserted when the
+  first damage lands: the board only rebuilds when its signature changes, and a ring that had
+  to be added to the DOM to appear would lag the damage that caused it
 - On a land the next wave will Build: a colour-coded banner naming the unit it will add. A
   land on the wave's list with nothing to build on wears a **quiet** variant of the same
   banner — neutral, not pressure-red. The loud frame means "this land gets worse"; wearing it
@@ -78,16 +110,30 @@ island board, and the between-round shop.
 
 ## Ability Status Rules
 
-- An ability control shows one of: ready, on cooldown (with remaining time), or armed
-  (waiting for a land click).
+- An ability control shows one of: locked (with its price), ready, on cooldown (with
+  remaining time), or armed (waiting for a land click).
 - An armed ability can be cancelled by clicking it again, returning
   `pendingAbilityTarget` to `null` without spending the cooldown.
+- A locked ability's price is disabled while `resources.energy` is under it. The card is
+  never hidden and never reorders.
+- Buying is allowed during a running round, not only between rounds — see
+  [02-core-loop.md](./02-core-loop.md#energy). A bought ability appears in the bar ready, not
+  cooling: the purchase was the cost. So does a bought tier.
+- A **tiered** ability's card carries its current tier and the price of the next one. It is
+  castable and buyable at once, so it cannot be the single button the others are — a button
+  inside a button is not markup. The card becomes a container holding two: the cast surface,
+  and the tier row beneath it. It keeps the same card styling either way, so the bar still
+  reads as one column of equal things.
+- **Under the Energy purse: where Energy comes from.** It is the one currency the player earns
+  by fighting rather than by surviving, and the purse only ever shows a total. The note names
+  the income (1/2/3 per Explorer/Town/City, plus Boon of Vigor) and — the part nothing else on
+  the page says — that it and everything bought with it reset when a round starts.
 
 ## Map Hint Rules
 
 - Default hint names the board: eight lands, three of them coastal.
 - While an ability is armed, the hint names which ability is waiting and what land property
-  it needs (holds invaders, is the most-Blighted, etc.).
+  it needs: invaders present, or — for a push — something pushable and a free neighbour.
 - Otherwise, while a round runs, the hint names the terrain the next wave will Build in and
   the lands that means.
 
@@ -168,7 +214,9 @@ Two clarifications the implementation forced:
 ## Visual Feedback Rules
 
 - Dahan must be visually separated from invader counts.
-- Damaged invaders with health greater than 1 should show remaining HP text.
+- Damaged invaders show remaining HP text in the land detail panel, one figure per wounded
+  unit. Healthy units are not listed — a "3/3" beside every whole city would bury the one
+  number that matters.
 - Defeats should briefly animate with a pop-style hint.
 - Blight gain should be visible at the moment it happens, not only reflected in the meter's
   end value — the player should see *which* land just cost them Blight.
@@ -204,8 +252,19 @@ four tiles to two, because a Blight meter narrower than its own label stops bein
   land-state precedence above lives in `engine.js` precisely because it is a rule, which is
   what lets the suite assert it.
 - Three render caches gate the expensive work: the board rebuilds only when its own
-  signature changes, the ability bar only when the ability set or language changes, the shop
-  only when Fear or a tier changes. The HUD, the map hint and the ability countdowns are
-  patched in place on every tick instead — no node is created ten times a second.
-- The dev fixture `vis.html` paints a mid-round board for layout work without playing to it;
-  `vis.html?ended` does the same for the shop.
+  signature changes, the ability bar only when the unlocked set or language changes, the shop
+  only when Fear or a tier changes. The HUD, the map hint, the Energy purse, the ability
+  countdowns and each locked card's affordability are patched in place on every tick instead
+  — no node is created ten times a second. Affordability is deliberately *not* in the ability
+  bar's signature: Energy moves on every kill, and putting it there would rebuild the bar
+  mid-cooldown and kill the sweep it is meant to preserve.
+- The dev fixture `index.html?vis` paints a mid-round board for layout work without playing
+  to it; `index.html?vis&ended` does the same for the shop. It is a **mode of the real page**,
+  not a page of its own: the fixture used to be a second HTML file carrying its own copy of
+  this markup, and that copy silently stopped matching the layout the first time the HUD
+  moved onto the board. One page means the drift cannot happen again.
+- Fixture mode switches off the clock and every write to storage. A frozen board is what
+  makes it a fixture — the state `vis.js` authored is the state on screen, not the state a
+  second later — and a fixture that autosaved would overwrite a real save with a board nobody
+  played. Every save in `ui.js` goes through one `persist()` helper for that reason, so a
+  call site added later cannot leak around the guard.

@@ -15,19 +15,59 @@ Document the numeric rules and constants for the round-based redesign.
 
 ```txt
 VERSION = 4.0.0
-WAVE_INTERVAL_SECONDS = 10
+TIME_SCALE = 2                         (real seconds per beat)
+WAVE_INTERVAL_SECONDS = 10 * TIME_SCALE  = 20
 BLIGHT_THRESHOLD_BASE = 10             (placeholder)
-BLIGHT_PER_DAMAGE_SECOND = 0.02
-DAHAN_LOSS_PER_DAMAGE_SECOND = 0.05      (under playtest)
+BLIGHT_PER_DAMAGE_SECOND = 0.02 / TIME_SCALE  = 0.01
+DAHAN_LOSS_PER_DAMAGE_SECOND = 0.05 / TIME_SCALE  = 0.025  (under playtest)
 BLIGHT_FLOOR_FRACTION = 0.25             (anti-stacking, under playtest)
 DAHAN_CONCENTRATION_CAP = 2              (anti-stacking, under playtest)
-DAHAN_ATTACK_INTERVAL_SECONDS = 10     (placeholder)
+DAHAN_ATTACK_INTERVAL_SECONDS = 10 * TIME_SCALE  = 20  (placeholder)
 DAHAN_ATTACK_DAMAGE = 1                (placeholder)
 DAHAN_PER_ROUND_START_BASE = 6
 DAHAN_MAX_SPREAD = 2
 DEFEAT_FX_MS = 1200
-MAX_TICK_SECONDS = 5
+MAX_TICK_SECONDS = 5 * TIME_SCALE  = 10
 ```
+
+## Beats and TIME_SCALE
+
+Every duration in the game is authored in **beats** and rendered in seconds by one dial. A
+beat is the design's own unit of time; `TIME_SCALE` says how many real seconds one costs.
+Durations are `beats * TIME_SCALE`, per-second rates are `beatRate / TIME_SCALE`, and the
+cooldown of every ability in [07](./07-content-registry.md) is written the same way.
+
+Turning the dial changes how much real time the player has to read a board and answer it, and
+changes nothing else. A wave still costs one wave interval; an ability still fires the same
+number of times inside one; a land under the same damage still takes the same number of waves
+to Blight. The guarantee is not empirical but arithmetic: the fight only ever spends
+damage-seconds, and a doubled clock against a halved rate is the same product at every instant
+of the round, not merely at its end. `TIME_SCALE` was raised from 1 to 2 for reaction time
+alone, and no balance figure was touched with it.
+
+Verified rather than assumed: an unattended round traced at scale 1 and at scale 2, sampled
+every beat, is identical at every mark — same waves, same Blight, same board, same Fear, same
+ending beat — as long as both are stepped the same number of times per beat.
+
+The one real difference is **resolution**, and it is not a rate. `ui.js` ticks on a fixed
+100 ms interval, so at scale 2 a beat is integrated in twenty steps instead of ten. That is
+strictly closer to the continuous fight this document specifies, but the round is knife-edged
+in places — a casualty landing just before rather than just after a Dahan strike changes what
+that strike can kill — so an individual round can still come out a wave longer or shorter than
+the same seed did at scale 1. Stepping scale 1 twice as often reproduces the scale 2 round
+exactly, which is what identifies the effect as the tick rate rather than the dial. It sits
+well inside the spread the terrain draw already produces.
+
+Two consequences worth stating, because both are easy to break:
+
+- **Every constant above is real seconds.** Nothing may scale a duration a second time on its
+  way to the screen — the HUD prints `waveTimerRemaining` as it stands.
+- **Retune against the beat, not the second.** `BLIGHT_PER_DAMAGE_SECOND` reads 0.01 today
+  but the tuned figure is 0.02 a beat; a rebalance moves the numerator and leaves the divisor
+  alone. The prose in this document counts in beats for that reason.
+
+`DEFEAT_FX_MS` is deliberately outside the dial. It is measured against how fast an eye
+catches a highlight, which no change of game pace moves.
 
 `DAHAN_ATTACK_INTERVAL_SECONDS` equals `WAVE_INTERVAL_SECONDS` today by choice, not by
 derivation, so that round one reads as a single rhythm. They are separate constants and the
@@ -51,15 +91,21 @@ The numbers are unchanged from the turn-based build, but `damage` now means **da
 second**, not damage per Ravage. `health` still governs invaders only; Dahan die to the
 casualty bar below, so their 2 health appears in no formula.
 
+A unit's `damage` is a rate and is *not* scaled by `TIME_SCALE`. It is also the unit's power,
+which is what a defeat pays in Fear and Energy, so scaling it would move the economy. The two
+damage-second constants carry the whole of the scaling instead — see below.
+
 ## The Damage-Second
 
 The whole fight runs on one currency. One point of damage sustained for one second is a
-**damage-second**. 50 of them buy one Blight; 20 buy one Dahan casualty.
+**damage-second**. 50 damage-*beats* buy one Blight; 20 buy one Dahan casualty. At
+`TIME_SCALE = 2` that is 100 and 40 damage-seconds, which is the same purchase read on a
+slower stopwatch.
 
-The two rates were equal at 0.02 in the first cut — one clock, read two ways — but Dahan
-outlasted the pressure that was supposed to grind them down, so the casualty rate is raised
-to 0.05 and under playtest. Blight stays at 0.02. If the casualty clock settles somewhere
-else, only this constant moves; nothing is derived from the two being equal.
+The two rates were equal at 0.02 a beat in the first cut — one clock, read two ways — but
+Dahan outlasted the pressure that was supposed to grind them down, so the casualty rate is
+raised to 0.05 a beat and under playtest. Blight stays at 0.02 a beat. If the casualty clock
+settles somewhere else, only this constant moves; nothing is derived from the two being equal.
 
 ## Wave Timing
 
@@ -95,13 +141,14 @@ if round.blight >= round.blightThreshold:
     round ends
 ```
 
-Worked examples, at the constants above:
+Worked examples, per beat, so they hold at any `TIME_SCALE`. Seconds are the beat column
+times the dial; at 2 an undefended land of one of each blights every 16.7s.
 
 ```txt
-1 explorer + 1 town + 1 city, 0 Dahan   6.0 net   12.0% / s   1 Blight every  8.3s
-1 explorer + 1 town + 1 city, 2 Dahan   2.0 net    4.0% / s   1 Blight every 25.0s
-1 explorer + 1 town + 1 city, 4 Dahan   1.5 net    3.0% / s   held, 1 every 33.3s
-1 city, 2 Dahan                         0.75 net   1.5% / s   held, 1 every 66.7s
+1 explorer + 1 town + 1 city, 0 Dahan   6.0 net   12.0% / beat   1 Blight every  8.3 beats
+1 explorer + 1 town + 1 city, 2 Dahan   2.0 net    4.0% / beat   1 Blight every 25.0 beats
+1 explorer + 1 town + 1 city, 4 Dahan   1.5 net    3.0% / beat   held, 1 every 33.3 beats
+1 city, 2 Dahan                         0.75 net   1.5% / beat   held, 1 every 66.7 beats
 ```
 
 Blight never decreases in this slice, and it never stops. `BLIGHT_FLOOR_FRACTION` is the
@@ -195,40 +242,154 @@ Fear accumulates in `meta.fear`, which persists across rounds; nothing in this d
 it. `round.fearEarned` tracks the same income for the current round only, for the shop's
 summary line.
 
-## Ability Formulas (placeholder kit)
-
-First-draft cooldowns and effects for the four River abilities, carried over by name from
-the turn-based starter cards. None of these numbers are tuned; see
-[Implementation Microtasks](../tasks/implementation-microtasks.md) for the balancing task.
+## Energy Formula
 
 ```txt
-boon_of_vigor   cooldown 20s   effect: -5s to every other ability's current cooldown
-wash_away       cooldown 15s   effect: push all explorers/towns out of the most-Blighted
-                                        land into an adjacent land
-flash_floods    cooldown 12s   effect: 2 damage to one invader type in a clicked land
-rivers_bounty   cooldown 18s   effect: +2 Dahan in a clicked land
+energyGain = defeatedPower * ENERGY_PER_POWER   ENERGY_PER_POWER = 1
+defeatedPower = the unit's damage value: explorer 1, town 2, city 3
 ```
 
-`flash_floods` and `rivers_bounty` need a land click (`pendingAbilityTarget`); `boon_of_vigor`
-and `wash_away` resolve without one, per their placeholder effects above.
+The same defeat pays both currencies, off the same power value: an explorer pays 1 Energy, a
+town 2, a city 3. One scale rather than two, so a player who has learned what a city is worth
+has learned it once.
 
-### Tie-breaks the one-click model forced
+Energy is whole-numbered where Fear is fractional — it is spent on flat integer prices, and a
+purse reading `7.35` would be three decimal places of noise on a number nothing can use them
+for. Only an invader defeat pays it: a Dahan casualty is a loss, not an income.
 
-A single click cannot answer a follow-up question, so three "which one" decisions the draft
-left open are resolved by rule instead. Each is deterministic, which is also what makes them
-testable:
+Energy accumulates in `resources.energy` and **dies with the round**. `startRound` zeroes the
+purse, empties `round.purchasedAbilityIds`, and clears `round.abilityTiers`: everything bought
+during a round is given back when the next one starts.
+
+That is the sharp line between the two currencies. Fear carries and buys permanent upgrades,
+only between rounds. Energy is earned inside a round, spent inside that round, and gone when
+it ends. So the shop decides *how fast a round can be rebuilt* and the fight decides *how far
+that round gets* — and the two never trade against each other. See
+[02-core-loop.md](./02-core-loop.md#energy).
+
+## Ability Unlock Cost
+
+Per ability, not one flat price:
 
 ```txt
-flash_floods, which type?     the highest tier present: cities, then towns, then explorers
-                              (the same rule the Dahan strike already uses)
-wash_away, which land?        the land with the highest round.blightByLand that still holds
-                              an explorer or a town; ties break on the lowest land id
-wash_away, pushed where?      the adjacent land holding the fewest invaders, so the push
-                              relieves pressure rather than stacking it; ties on lowest id
+innate_power    0 Energy    (opening hand)
+boon_of_vigor   0 Energy    (opening hand)
+rivers_bounty   5 Energy
+flash_floods   10 Energy
+wash_away      20 Energy
 ```
 
-`wash_away` has no legal source until some land has taken Blight, which is not before the
-third wave. Triggered earlier it logs "no valid target" and keeps its cooldown, per
+The three prices total 35, which is roughly one early round's whole income — so which two a
+round can afford is its first real decision, and buying all three means a round that lasted.
+The active spirit opens with `startingAbilityIds` unlocked and the rest at these prices; see
+[07-content-registry.md](./07-content-registry.md#spirits).
+
+### Innate tiers
+
+`innate_power` is the one ability that grows rather than being bought once. Its tiers are
+whole records — cooldown, effect and text each — so a tier is a different ability standing in
+the same slot rather than the previous one with a modifier:
+
+```txt
+tier 1   free       cooldown  8 beats   push 1 explorer/town
+tier 2    50 Energy cooldown 16 beats   2 damage, then push up to 3 explorers/towns
+tier 3   250 Energy cooldown 24 beats   2 damage to each invader in the land
+```
+
+Cooldowns rise with the tier deliberately. Throughput still improves at every step — tier 2 is
+three pushes and 2 damage per 16 beats against tier 1's one push per 8 — so the longer wait buys a
+bigger swing rather than taxing the upgrade. The tier is held in `round.abilityTiers` and, like
+every other purchase, resets when the round does.
+
+250 is knowingly out of reach of an early round. It is gated on round *length*, which is what
+`blight_resilience` buys — so the third tier is a late-progression sight rather than a
+mid-round one.
+
+## Ability Formulas
+
+```txt
+innate_power    see the tier table above     needs a land click
+boon_of_vigor   cooldown 12 beats   +1 Energy
+rivers_bounty   cooldown 15 beats   +1 Dahan to the land with the fewest Dahan and invaders if
+                                    possible - the thinnest land outright when nothing is contested
+flash_floods    cooldown 25 beats   1 damage in a clicked land, +1 more if that land is coastal
+wash_away       cooldown 35 beats   push up to 3 explorers/towns out of a clicked land
+```
+
+`boon_of_vigor` and `rivers_bounty` resolve on the trigger itself. The other three take a land
+click (`pendingAbilityTarget`).
+
+### Applying damage
+
+One rule, shared by every ability and by the Dahan strike: **damage kills if it can, and only
+wounds when it cannot.**
+
+```txt
+while damage remains:
+  if any unit can be killed outright by what is left:
+      kill the toughest of them
+        ties -> the higher tier (a wounded city at 2 HP before a fresh town at 2 HP)
+        ties -> the lowest index
+      subtract its remaining health and continue with the rest
+  else:
+      spend everything left on the strongest thing standing
+        highest tier first, and within a tier the one already closest to falling
+      stop
+```
+
+So 2 damage into a land of 4 explorers, 2 towns and 2 cities takes a town — not two explorers,
+and not a scratch on a city. If one of those cities were already down to 2 health, the same 2
+damage would take the city instead. 1 damage into that land takes an explorer.
+
+The predecessor rule always spent on the biggest thing standing, which let a Dahan strike
+scratch a city for a whole round while four explorers stood beside it. Killing is what pays
+Fear and Energy, so damage that could have bought a kill and did not was damage the round
+threw away. The change makes the Dahan meaningfully stronger, which is intended.
+
+`innate_power` at tier 3 is the exception: it deals its damage to each invader *individually*,
+with no pooling and no carry, so a unit that survives is wounded by exactly 2 whatever its
+neighbours did.
+
+### Pushing
+
+`wash_away` and `innate_power`'s first two tiers push. Cities are never pushed — they are built
+into the land, and a spirit of rivers moves what water can carry.
+
+```txt
+which land?         the player's click
+which units?        towns before explorers, up to the ability's push count. A town is worth
+                    two of an explorer everywhere else in the engine, so a push with a budget
+                    smaller than the land spends it on the heavier thing
+pushed where?       one adjacent land holding no invaders at all. A coastal one wins outright
+                    when there is one; among equals the lowest land id
+```
+
+The destination is deterministic, like every other tie on this board: the water always runs the
+same way, so a push can be planned rather than gambled on. An earlier draft picked randomly
+among the equals to stop a player farming one land into a permanent sink; predictability turned
+out to be worth more than that. Note that the coastal preference and the lowest-id tie-break
+never disagree here — the three coastal lands are `1`, `2` and `3`, the lowest ids on the board
+— so the rule reads simply as "the lowest-numbered adjacent land with no invaders".
+
+A unit carries its own damage with it, exactly — which is what per-unit health bought. Under
+the old per-type model the destination kept the worse of the two wounds and the rest was lost.
+
+### Failure to find a target
+
+```txt
+boon_of_vigor    never fails: it needs nothing on the board
+rivers_bounty    never fails: there is always a thinnest land to reinforce
+flash_floods     fails when no land holds invaders
+wash_away        fails when no land holds a pushable unit *and* an empty neighbour - the one
+                 target rule that reads two lands
+innate_power     tier 1 as wash_away; tiers 2 and 3 need only invaders present
+```
+
+Tier 2 is deliberately looser than tier 1: its damage stands on its own, so a boxed-in land is
+still a legal target and the cast still counts. Refusing at that point would rewind damage
+already dealt and already paid Fear for.
+
+A failure logs "no valid target" and leaves the cooldown unspent, per
 [09-island-board.md](./09-island-board.md#failure-to-find-a-target).
 
 ### Cooldown scaling
@@ -237,9 +398,12 @@ third wave. Triggered earlier it logs "no valid target" and keeps its cooldown, 
 abilityCooldownSeconds(id) = max(1, ABILITIES[id].cooldownSeconds * round.abilityCooldownMult)
 ```
 
-Deliberately not rounded to whole seconds: one `swift_currents` tier is worth 5% of 12s,
-about 0.6s, and rounding would flatten the diminishing curve into equal steps. The ability
-bar rounds up for display.
+`ABILITIES[id].cooldownSeconds` is already `beats * TIME_SCALE`, so this returns real seconds
+and the multiplier is a pure percentage on top of it. Nothing here scales again.
+
+Deliberately not rounded to whole seconds: one `swift_currents` tier is worth 5% of the Boon's
+12 beats, a bit over half a beat, and rounding would flatten the diminishing curve into equal
+steps. The ability bar rounds up for display.
 
 ## Round Reset Formula
 
@@ -300,7 +464,9 @@ checklist, and it has not been checked against how much Fear a round actually ea
 
 - `essence` accumulates nothing and has no reader; it is inert scaffolding for a possible
   future system, not active economy.
-- `resources.energy` is present in the schema but has no writer or reader in this design.
+- The unlock ladder (5 / 10 / 20) and the Innate's tier prices (50 / 250) are shaped against a
+  rough estimate of a round's income — 20 to 40 Energy over 60 to 120 beats — not against a
+  played measurement. `ENERGY_PER_POWER` is a placeholder on the same footing.
 
 ## Acceptance
 
@@ -315,14 +481,15 @@ checklist, and it has not been checked against how much Fear a round actually ea
 > (invaders are ashore from second zero, so the first ~10 seconds are no longer free),
 > `BLIGHT_FLOOR_FRACTION` (held lands seep, so rounds should shorten), and
 > `DAHAN_CONCENTRATION_CAP` (stacks die faster, so Dahan lost should rise). Re-measure before
-> quoting any of it.
+> quoting any of it. They were also taken at `TIME_SCALE = 1`, so every figure below is beats;
+> the wall-clock length of a round has since doubled while the beats did not move.
 
 Five unattended rounds at the constants above, on an injected clock:
 
 ```txt
-round length       87 - 120 seconds   (was 64 under the per-wave Ravage model)
+round length       87 - 120 beats     (was 64 under the per-wave Ravage model)
 waves to lose      8 - 11
-first Blight       33 - 74 seconds    (was wave 3, about 24 seconds)
+first Blight       33 - 74 beats      (was wave 3, about 24 beats)
 Fear earned        1.05 - 1.75        (was 0.00)
 Dahan lost         2 - 4 of 6
 ```
@@ -341,12 +508,12 @@ started with a Dahan sat at zero Blight and full strength for the whole round, a
 was lost entirely in lands `3` and `8` — the two `roundStartDahan` skips. The casualty bar,
 the concentration rule, and the death spiral they exist for were all dead code in practice.
 
-Raising the casualty clock to 0.05 (20 damage-seconds per casualty rather than 50) costs the
+Raising the casualty clock to 0.05 (20 damage-beats per casualty rather than 50) costs the
 player 2-4 of their 6 Dahan per round without shortening the round much, which is what puts
 the spiral on screen. Fear came down slightly with it — dead Dahan stop striking — but not
 enough to matter against the shop's curve.
 
-The remaining oddity is the spread on first Blight: 33s to 74s across five runs, driven by
+The remaining oddity is the spread on first Blight: 33 to 74 beats across five runs, driven by
 whether the early Discover draws land on the two undefended lands. Worth watching, but the
 variance is the terrain draw, not the rates. See
 [index.md](./index.md#known-balance-problems).

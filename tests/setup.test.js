@@ -3,12 +3,21 @@
 (function () {
   const { engine, test, assert, assertEqual, newGame, advance } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
-  test("setup: a fresh round is running, unblighted, with every ability ready", () => {
+  test("setup: a fresh round is running, unblighted, with every unlocked ability ready", () => {
     const { state } = newGame();
     assertEqual(state.round.status, "running", "status");
     assertEqual(state.round.blight, 0, "blight");
     assertEqual(state.round.elapsedSeconds, 0, "elapsed");
     assertEqual(state.round.wavesResolved, 0, "waves");
+    assertEqual(state.resources.energy, 0, "the purse opens empty");
+
+    // The cooldown map holds the unlocked abilities and nothing else: a locked ability has
+    // no clock to run, which is also what makes triggerAbility refuse it.
+    assertEqual(
+      Object.keys(state.abilities).sort().join(","),
+      engine.unlockedAbilityIds(state).slice().sort().join(","),
+      "one slot per unlocked ability"
+    );
     for (const abilityId of Object.keys(state.abilities)) {
       assertEqual(state.abilities[abilityId].cooldownRemaining, 0, `${abilityId} cooldown`);
     }
@@ -75,21 +84,19 @@
     assertEqual(state.round.blightThreshold, engine.BLIGHT_THRESHOLD_BASE + 3, "upgraded threshold");
   });
 
-  test("setup: swift_currents shortens cooldowns, with diminishing returns", () => {
+  // No upgrade moves cooldowns since swift_currents was cut, but the multiplier is still
+  // plumbed through startRound for the next one. This pins it at the identity so a future
+  // upgrade cannot quietly inherit a broken baseline.
+  test("setup: cooldowns run at their unmodified length", () => {
     const { state } = newGame();
-    const base = engine.abilityCooldownSeconds(state, "flash_floods");
-    assertEqual(base, engine.ABILITIES.flash_floods.cooldownSeconds, "unupgraded cooldown");
-
-    state.upgrades.purchased.swift_currents = 1;
     engine.startRound(state);
-    const oneTier = engine.abilityCooldownSeconds(state, "flash_floods");
-    assert(oneTier < base, "one tier must be faster");
 
-    state.upgrades.purchased.swift_currents = 2;
-    engine.startRound(state);
-    const twoTiers = engine.abilityCooldownSeconds(state, "flash_floods");
-    assert(twoTiers < oneTier, "two tiers must be faster still");
-    assert((base - oneTier) > (oneTier - twoTiers), "the second tier must be worth less than the first");
+    assertEqual(state.round.abilityCooldownMult, 1, "no cooldown modifier is applied");
+    assertEqual(
+      engine.abilityCooldownSeconds(state, "flash_floods"),
+      engine.ABILITIES.flash_floods.cooldownSeconds,
+      "cooldown matches the record"
+    );
   });
 
   test("setup: the board and the invader track reset between rounds", () => {
@@ -98,7 +105,7 @@
     advance(ctx, 40);
 
     state.invaders["5"].cities = 3;
-    state.invaderDamage["5"].cities = 2;
+    state.invaderDamage["5"].cities = [2, 1, 0];
     engine.startRound(state);
 
     // Everything the last round built is gone. What survives setup is the opening Discover's
@@ -109,7 +116,11 @@
       assertEqual(slot.cities, 0, `land ${landId} cities`);
       assert(slot.explorers <= 1, `land ${landId} holds ${slot.explorers} explorers`);
       for (const type of engine.INVADER_TYPES) {
-        assertEqual(state.invaderDamage[landId][type], 0, `land ${landId} ${type} carried damage`);
+        // One entry per living unit, and every one of them at full health: the opening
+        // Discover's explorers arrive whole, and nothing else is standing to be wounded.
+        const wounds = state.invaderDamage[landId][type];
+        assertEqual(wounds.length, slot[type], `land ${landId} ${type} wound list length`);
+        assert(wounds.every((damage) => damage === 0), `land ${landId} ${type} arrived wounded`);
       }
     }
     assertEqual(state.round.wavesResolved, 0, "wave counter");

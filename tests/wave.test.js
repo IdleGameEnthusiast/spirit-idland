@@ -80,6 +80,72 @@
     assertEqual(state.invaders["2"].explorers, 1, "Discover seeded the coastal desert");
   });
 
+  test("wave: surviving a wave pays Fear, once, into both the purse and the round tally", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.meta.fear = 0;
+    state.round.fearEarned = 0;
+    state.invader = { build: "jungle", explore: "desert" };
+
+    engine.resolveWave(state);
+    assertEqual(state.meta.fear, engine.FEAR_PER_WAVE, "one wave, one payment");
+    assertEqual(state.round.fearEarned, engine.FEAR_PER_WAVE, "the round tallies the same");
+
+    engine.resolveWave(state);
+    assertEqual(state.meta.fear, 2 * engine.FEAR_PER_WAVE, "two waves, two payments");
+  });
+
+  test("wave: Fear stays whole through a full round", () => {
+    const ctx = newGame();
+    for (let i = 0; i < 12 && ctx.state.round.status === "running"; i += 1) {
+      advance(ctx, engine.WAVE_INTERVAL_SECONDS);
+    }
+    assertEqual(ctx.state.meta.fear, Math.floor(ctx.state.meta.fear), "no fraction in the purse");
+    assertEqual(ctx.state.round.fearEarned, Math.floor(ctx.state.round.fearEarned), "none in the tally");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * The wave 10 escalation                                             *
+   * ---------------------------------------------------------------- */
+
+  test("wave: before wave 10, Discover still refuses an unreachable land", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    // Mountains is lands 4 and 6, neither coastal, with no town or city beside them.
+    state.round.wavesResolved = engine.EXPLORE_UNRESTRICTED_FROM_WAVE - 2;
+    state.invader = { build: "jungle", explore: "mountains" };
+
+    engine.resolveWave(state);
+    assertEqual(state.invaders["4"].explorers, 0, "land 4 stays empty");
+    assertEqual(state.invaders["6"].explorers, 0, "land 6 stays empty");
+  });
+
+  test("wave: from wave 10, Discover seeds both lands regardless of reach", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    // One short, so the wave this call resolves is the tenth.
+    state.round.wavesResolved = engine.EXPLORE_UNRESTRICTED_FROM_WAVE - 1;
+    state.invader = { build: "jungle", explore: "mountains" };
+
+    engine.resolveWave(state);
+    assertEqual(state.round.wavesResolved, engine.EXPLORE_UNRESTRICTED_FROM_WAVE, "the tenth wave");
+    assertEqual(state.invaders["4"].explorers, 1, "landlocked mountains seeded anyway");
+    assertEqual(state.invaders["6"].explorers, 1, "and the other one too");
+  });
+
+  test("wave: the escalation is per round, so a new round starts gated again", () => {
+    const { state } = newGame();
+    state.round.wavesResolved = engine.EXPLORE_UNRESTRICTED_FROM_WAVE + 5;
+    assert(engine.landAcceptsExplorer(state, "4"), "unrestricted late in the round");
+
+    engine.endRound(state);
+    engine.startNextRound(state);
+    clearBoard(state);
+
+    assertEqual(state.round.wavesResolved, 0, "the counter resets with the round");
+    assert(!engine.landAcceptsExplorer(state, "4"), "gated again from wave one");
+  });
+
   test("wave: time does not pass once the round has ended", () => {
     const ctx = newGame();
     const { state } = ctx;

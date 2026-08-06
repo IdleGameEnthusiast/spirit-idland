@@ -47,11 +47,13 @@ Define the canonical save shape for the round-based redesign.
     "blightProgress": { "1": 0, "...": 0, "8": 0 },
     "dahanProgress": { "1": 0, "...": 0, "8": 0 },
     "blightThreshold": 10,
-    "waveTimerRemaining": 10,
-    "dahanAttackRemaining": 10,
+    "waveTimerRemaining": 20,
+    "dahanAttackRemaining": 20,
     "wavesResolved": 0,
     "fearEarned": 0,
-    "abilityCooldownMult": 1
+    "abilityCooldownMult": 1,
+    "purchasedAbilityIds": [],
+    "abilityTiers": {}
   },
   "invader": {
     "build": "jungle",
@@ -67,13 +69,11 @@ Define the canonical save shape for the round-based redesign.
     "7": { "explorers": 0, "towns": 0, "cities": 0 },
     "8": { "explorers": 0, "towns": 0, "cities": 0 }
   },
-  "invaderDamage": { "1": { "explorers": 0, "towns": 0, "cities": 0 }, "...": {}, "8": {} },
+  "invaderDamage": { "1": { "explorers": [], "towns": [], "cities": [] }, "...": {}, "8": {} },
   "dahan": { "1": 0, "...": 0, "8": 0 },
   "abilities": {
-    "boon_of_vigor": { "cooldownRemaining": 0 },
-    "wash_away": { "cooldownRemaining": 0 },
-    "flash_floods": { "cooldownRemaining": 0 },
-    "rivers_bounty": { "cooldownRemaining": 0 }
+    "innate_power": { "cooldownRemaining": 0 },
+    "boon_of_vigor": { "cooldownRemaining": 0 }
   },
   "pendingAbilityTarget": null,
   "resources": { "energy": 0 },
@@ -86,6 +86,33 @@ Define the canonical save shape for the round-based redesign.
   "_log": []
 }
 ```
+
+`abilities` holds one slot per **unlocked** ability, not one per ability in the spirit's kit.
+A fresh round shows two entries because `core_spirit_01` opens with two unlocked and the other
+three behind an Energy price; `round.purchasedAbilityIds` is the record of what has been bought
+since, and `unlockedAbilityIds()` is `startingAbilityIds` plus that list (plus the `unlock_`
+upgrade path, which no catalogue row uses today). A locked ability having no cooldown slot is
+what makes `triggerAbility` refuse it — the lock is one rule, not two.
+
+`round.purchasedAbilityIds` and `round.abilityTiers` sit under `round` rather than under
+`spirit` because both die with the round, exactly like the Energy that bought them.
+`startRound` empties both alongside the purse. `purchasedAbilityIds` deliberately does not list
+the starting kit — those were never bought, so keeping them out means the array is exactly the
+record of what this round spent. Normalization drops unknown ids and collapses duplicates, so a
+double-write cannot make one purchase look like two; `abilityTiers` is clamped to the tiers the
+catalogue actually defines, so shortening a ladder cannot strand a save above its top rung.
+
+`invaderDamage[land][type]` is **one entry per living unit**, holding how much that individual
+has taken — not one number per type. The invariant, held by `normalizeInvaderDamage`: length
+equals the matching count in `invaders`, every entry is in `[0, health-1]`, and the list is
+sorted most-wounded first so index 0 is always the unit the board draws a health ring for.
+
+The earlier model kept a single number per type per land, which meant a land could hold only
+one wounded city — "two cities, both at one damage" was not a state it could describe. Every
+effect that spreads damage over a whole land needs it to be, and so does showing a health bar
+per invader. Every place that adds a unit goes through `addInvaderUnit`, which pushes the
+matching entry; a phase that incremented the count alone would leave the board describing units
+that are not there.
 
 The shape above is a round as it stands at second zero, not an empty board: the opening
 Discover has already run, so the coastal jungle (land 3) holds an explorer and the terrain it
@@ -132,7 +159,8 @@ Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
   a mid-round upgrade purchase (not currently possible; upgrades only apply between rounds)
   can't retroactively change an already-running round's threshold.
 - `waveTimerRemaining` counts down in real seconds and is stored as a float; the HUD rounds
-  it up for display. At 0 a wave resolves and it resets to `WAVE_INTERVAL_SECONDS`.
+  it up for display and must not scale it — `WAVE_INTERVAL_SECONDS` already carries
+  `TIME_SCALE`. At 0 a wave resolves and it resets to `WAVE_INTERVAL_SECONDS`.
 - `dahanAttackRemaining` is the same idea on its own clock. At 0 every land holding both
   Dahan and invaders strikes, and it resets to `DAHAN_ATTACK_INTERVAL_SECONDS`. It is a
   separate field from `waveTimerRemaining` on purpose — see
@@ -149,11 +177,12 @@ Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
 Four fields the first draft of this contract did not have. Each earns its place:
 
 - **`round.blightByLand`** — per-land Blight tally, summing to `round.blight`. The original
-  contract said Blight was "a single value for the whole round, not tracked per land", but
-  `wash_away` targets the most-Blighted land, which that shape cannot answer. The
-  tally is also what lets the board show *which* land cost the round, which
-  [06-ui-contract.md](./06-ui-contract.md) asks for. `round.blight` stays the authoritative
-  total; the tally is a breakdown of it, never a second source of truth.
+  contract said Blight was "a single value for the whole round, not tracked per land"; the
+  tally is what lets the board show *which* land cost the round, which
+  [06-ui-contract.md](./06-ui-contract.md) asks for. (An earlier `wash_away` also targeted the
+  most-Blighted land automatically; it takes a click now, but the tally kept its other job.)
+  `round.blight` stays the authoritative total; the tally is a breakdown of it, never a second
+  source of truth.
 - **`round.fearEarned`** — Fear earned in this round alone. `meta.fear` is the purse and
   never resets; the shop's "you earned N this round" line needs the delta, and recomputing
   it from a purse that the player also spends from is not possible.
@@ -244,6 +273,16 @@ bar. There is no honest mapping for either, and a reset costs the player one rou
   resumes exactly as saved. See the open question on offline behavior in
   [index.md](./index.md).
 - `essence` remains present but has no writer in this design; it neither accrues nor resets.
+- `resources.energy`, `round.purchasedAbilityIds` and `round.abilityTiers` are all cleared by
+  `startRound`. Energy is a round-local currency: it is earned inside a round, spent inside
+  that round, and given back with everything it bought when the next one begins. `startRound`
+  then rebuilds `abilities` from the unlocked set, which after the reset is the spirit's
+  opening hand again.
+
+  So every round starts from the same kit and is built up from nothing, and the only thing
+  that carries is Fear and the shop tiers it buys. That is the whole division: the shop decides
+  how fast a round can be rebuilt, the fight decides how far that round gets, and neither can
+  be traded for the other.
 
 ## Acceptance
 

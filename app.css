@@ -347,6 +347,29 @@ button.reset {
  * Ability bar                                                          *
  * ------------------------------------------------------------------ */
 
+/* Energy sits at the head of the panel it pays for, in its own gold rather than the shop's
+   rose: two currencies that looked alike would be read as one. */
+.ability-purse {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgba(242, 196, 90, 0.4);
+  border-radius: 10px;
+  background: rgba(242, 196, 90, 0.12);
+  font-size: 0.78rem;
+  color: var(--ink-1);
+}
+
+.ability-purse strong {
+  font-family: "Cinzel", "Times New Roman", serif;
+  font-size: 1.35rem;
+  color: var(--accent-energy);
+  font-variant-numeric: tabular-nums;
+}
+
 .ability-bar {
   display: grid;
   gap: 0.45rem;
@@ -434,6 +457,90 @@ button.reset {
 
 .ability:focus-visible { outline: 2px solid #8ed3e6; outline-offset: 2px; }
 
+/* A locked ability keeps its full card - name, text, and all - and only loses its colour.
+   What the spirit could still be doing is half of why Energy is worth banking, so it is
+   shown greyed rather than hidden. The card itself is inert; only the price is pressable. */
+.ability.is-locked {
+  opacity: 0.62;
+  cursor: default;
+  border-style: dashed;
+}
+
+/* Affordable right now: the border warms to Energy's own gold, so the panel answers "can I
+   buy anything yet" without reading a number twice. */
+.ability.is-locked.is-affordable {
+  opacity: 1;
+  border-style: solid;
+  border-color: rgba(242, 196, 90, 0.55);
+}
+
+.ability.is-locked .ability-state { color: var(--ink-1); }
+
+.ability-unlock {
+  margin: 0.35rem 0 0;
+  width: auto;
+  justify-self: start;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  border-color: rgba(242, 196, 90, 0.45);
+  color: var(--accent-energy);
+  cursor: pointer;
+}
+
+.ability-unlock:disabled { cursor: default; opacity: 0.5; }
+
+/* A tiered ability is castable and buyable at once, so its card cannot be the single button
+   the others are - a button inside a button is not markup. It is a div holding two: the cast
+   surface on top, the tier and its price along the bottom. The card keeps the .ability
+   styling so the bar still reads as one column of equal things. */
+.ability.is-tiered {
+  display: grid;
+  cursor: default;
+}
+
+.ability-cast {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ability-cast:disabled { cursor: default; }
+
+.ability-cast:focus-visible { outline: 2px solid #8ed3e6; outline-offset: -2px; }
+
+.ability-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.1rem 0.6rem 0.45rem;
+}
+
+.ability-tier {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+}
+
+/* The upgrade price sits on the bottom row, so it needs no top margin of its own. */
+.ability-foot .ability-unlock { margin: 0; }
+
+/* Same gold promise as a locked card wears when its price comes into reach. */
+.ability.is-tiered.is-affordable {
+  border-color: rgba(242, 196, 90, 0.55);
+}
+
 /* ------------------------------------------------------------------ *
  * Between-round shop                                                   *
  * ------------------------------------------------------------------ */
@@ -499,6 +606,29 @@ button.reset {
   text-transform: uppercase;
   color: var(--accent-calm);
 }
+
+/* Where the repeatable ladders end and the one-off unlocks begin. A label rather than a bare
+   rule, because the two halves are bought for different reasons. */
+.upgrade-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+}
+
+.upgrade-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--panel-border);
+}
+
+.upgrade.is-one-off .upgrade-info { gap: 0.15rem; }
 
 .upgrade-buy {
   margin: 0;
@@ -646,12 +776,12 @@ button.reset {
 
 .chip-unit .tok { margin-right: -0.02em; }
 
-/* What a contested land wears. Blight is what ends the round, so it keeps the whole width of
-   the chip as a bar; the Dahan casualty clock rides beside it as a ring around a token,
-   taller than the bar but a sliver of its width. Deliberately lopsided - two bars of equal
-   weight read as two equal threats, and only one of them is the loss condition.
-   Both are filled by patchLandMeters every frame, which is why the transition is short - a
-   long one would lag behind its own value rather than smoothing it. */
+/* Blight is what ends the round, so it keeps the whole width of the chip as a bar, and it is
+   the only bar here - the Dahan casualty clock is a ring on the Dahan count above. One bar
+   and one ring, rather than two bars: two bars of equal weight read as two equal threats,
+   and only one of them is the loss condition.
+   The fill is written by patchLandMeters every frame, which is why the transition is short -
+   a long one would lag behind its own value rather than smoothing it. */
 .chip-meters {
   width: 100%;
   display: flex;
@@ -681,53 +811,63 @@ button.reset {
   background: linear-gradient(90deg, rgba(231, 103, 85, 0.75), #ff9d8a);
 }
 
-/* The casualty clock. The token itself stays fully lit and keeps the dark outline every
-   token wears - it is a Dahan standing there, not a gauge - and the clock is a red ring
-   drawn outside that outline, sweeping clockwise from twelve. One full circle is one dead
-   Dahan, which is exactly what resolveLandCombat does when dahanProgress crosses 1.
-   The earlier version filled the token itself left to right at 30% alpha, which meant the
-   empty clock - the state it sits in for most of a round - was an 8px glyph you could not
-   see against the terrain underneath. A ring reads at rest because its unfilled remainder
-   is drawn too. */
-@property --dahan-progress {
+/* The health ring, worn by every unit count on the board - Dahan and invader alike. The token
+   keeps the size and colour of every other glyph on the chip - it is still the count, not a
+   gauge - and the ring is red, outside its dark outline.
+
+   It reads as health, not as damage: a wounded unit starts with a nearly full ring and the
+   gap opens clockwise from twelve as it drains, so a city down a third of its health shows
+   red from four o'clock round to twelve. Empty means dead, which is the moment the count
+   beside it drops.
+
+   Nothing wears a ring at full health. There is one ring per type per land and it belongs to
+   the worst-wounded unit of that type: the chip has room for one number per type, not one per
+   unit, and the unit about to die is the one worth watching. The land detail panel is where
+   the exact per-unit health lives. */
+@property --health-lost {
   syntax: "<number>";
   inherits: false;
   initial-value: 0;
 }
 
-.chip-dahan-mark {
+/* Sized to clear the 0.72rem token plus the 1px drop-shadow every token wears - the ring has
+   to start outside that outline, not on it. Colour is inherited from the .unit-* class, so
+   the token inside stays exactly the glyph it was before the ring existed. */
+.chip-token {
   position: relative;
   flex: none;
-  display: grid;
+  display: inline-grid;
   place-items: center;
-  width: 0.92rem;
-  height: 0.92rem;
-  color: var(--dahan-ink);
+  width: 1.18rem;
+  height: 1.18rem;
 }
 
-/* A conic sweep masked down to an annulus: the hole keeps the ring off the token, so the
-   wood colour inside is never tinted by the red outside. The hole is sized against the
-   token's drop-shadow rather than the 0.5rem glyph, so the ring starts where the dark
-   outline ends instead of sitting on top of it. Transitioning a conic-gradient is not
-   possible, but transitioning the registered property it is drawn from is - hence
-   @property above. */
-.chip-dahan-ring {
+/* A conic sweep masked down to an annulus, so the colour inside is never tinted by the red
+   outside. The lost share is drawn first, from twelve clockwise, and what remains is health.
+   Transitioning a conic-gradient is not possible, but transitioning the registered property
+   it is drawn from is - hence @property above.
+
+   Hidden rather than absent at full health: patchLandMeters writes the opacity every frame,
+   and a ring that had to be added to the DOM to appear would wait on a board rebuild. */
+.chip-ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
+  opacity: 0;
   background: conic-gradient(
-    var(--accent-pressure) calc(var(--dahan-progress, 0) * 360deg),
-    rgba(3, 14, 20, 0.72) 0
+    rgba(3, 14, 20, 0.72) calc(var(--health-lost, 0) * 360deg),
+    var(--accent-pressure) 0
   );
-  -webkit-mask: radial-gradient(closest-side, transparent 0 66%, #000 68% 100%);
-  mask: radial-gradient(closest-side, transparent 0 66%, #000 68% 100%);
-  transition: --dahan-progress 0.12s linear;
+  -webkit-mask: radial-gradient(closest-side, transparent 0 73%, #000 75% 100%);
+  mask: radial-gradient(closest-side, transparent 0 73%, #000 75% 100%);
+  transition: --health-lost 0.12s linear, opacity 0.12s linear;
 }
 
-.chip-dahan-mark .tok {
+/* Block so the grid centres it, and the .chip-unit nudge is cancelled - that -0.02em was
+   for a token sitting flush against its count, not one sitting inside a ring. */
+.chip-token .tok {
   display: block;
-  width: 0.5rem;
-  height: 0.5rem;
+  margin-right: 0;
   vertical-align: baseline;
 }
 
@@ -1002,7 +1142,7 @@ button.reset {
   .chip-defeat,
   .chip-blight,
   .chip-meter-fill,
-  .chip-dahan-ring,
+  .chip-ring,
   .meter-fill,
   .ability-sweep { transition: none; animation: none; }
 

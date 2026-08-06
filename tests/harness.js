@@ -118,7 +118,8 @@ function memoryStorage() {
   };
 }
 
-/* Clears a land and puts exactly the units a test cares about into it. */
+/* Clears a land and puts exactly the units a test cares about into it. The damage arrays are
+ * rebuilt to match, so a land set twice never keeps a wound from the units it used to hold. */
 function setLand(state, landId, invaders, dahan) {
   state.invaders[landId] = {
     explorers: (invaders && invaders.explorers) || 0,
@@ -126,6 +127,42 @@ function setLand(state, landId, invaders, dahan) {
     cities: (invaders && invaders.cities) || 0
   };
   state.dahan[landId] = dahan || 0;
+  state.invaderDamage = engine.normalizeInvaderDamage(state.invaders, state.invaderDamage);
+}
+
+/* Wounds the nth unit of a type in a land, for the tests that need a board where something
+ * is already part-dead. Re-sorts through the normalizer, so the array invariant holds. */
+function woundUnit(state, landId, type, index, damage) {
+  const wounds = state.invaderDamage[landId][type];
+  wounds[index] = damage;
+  state.invaderDamage = engine.normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  return state;
+}
+
+/* The health left on each living unit of a type, worst first. What most damage assertions
+ * are actually about, and unreadable when spelled out of the damage array at the call site. */
+function healthOf(state, landId, type) {
+  const max = engine.UNIT_STATS[type].health;
+  return (state.invaderDamage[landId][type] || []).map((damage) => max - damage);
+}
+
+/* Grants the active spirit's whole kit, for the suites that care about an ability's effect
+ * rather than about how it was paid for. It writes the purchase list the engine reads rather
+ * than the cooldown map, so nothing here can drift from what an actual purchase does. */
+function unlockAllAbilities(state) {
+  state.round.purchasedAbilityIds = engine.spiritAbilityIds(state).slice();
+  state.abilities = {};
+  for (const abilityId of engine.unlockedAbilityIds(state)) {
+    state.abilities[abilityId] = { cooldownRemaining: 0 };
+  }
+  return state;
+}
+
+/* Raises a tiered ability to a tier, without the Energy. Writes the same field a purchase
+ * writes, so a test tier and a bought tier are the same state. */
+function setAbilityTier(state, abilityId, tier) {
+  state.round.abilityTiers[abilityId] = tier;
+  return state;
 }
 
 function clearBoard(state) {
@@ -150,7 +187,11 @@ const HARNESS = {
   runUntilRoundEnds,
   memoryStorage,
   setLand,
-  clearBoard
+  woundUnit,
+  healthOf,
+  clearBoard,
+  unlockAllAbilities,
+  setAbilityTier
 };
 
 if (typeof module !== "undefined" && module.exports) {

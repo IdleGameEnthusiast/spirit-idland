@@ -13,7 +13,12 @@
     setLand(state, "3", { cities: 1 }, 0);
     setLand(state, "5", { towns: 1 }, 0);
 
-    for (let i = 0; i < 4000 && state.round.blight < 4; i += 1) engine.resolveContinuousCombat(state, 0.05);
+    // Stopped at three rather than four: the city land takes its third Blight at the same
+    // moment the town land takes its second, and a run halted on that tie is asking a float
+    // race which land is ahead. Three lands the city 2, the town 1, and no tie decides it.
+    for (let i = 0; i < 4000 * engine.TIME_SCALE && state.round.blight < 3; i += 1) {
+      engine.resolveContinuousCombat(state, 0.05);
+    }
 
     const summed = engine.LAND_IDS.reduce((total, id) => total + state.round.blightByLand[id], 0);
     assertEqual(summed, state.round.blight, "per-land tally must reconcile");

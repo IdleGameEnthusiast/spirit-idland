@@ -10,13 +10,29 @@
  * ==================================================================== */
 
 const SAVE_KEY = "spirit-idland-save-v1";
-const VERSION = "4.0.0";
+const VERSION = "5.0.0";
 
 /* ------------------------------------------------------------------ *
  * Constants (04-economy-formulas.md)                                   *
  * ------------------------------------------------------------------ */
 
-const WAVE_INTERVAL_SECONDS = 10;
+// How many real seconds one beat of the design costs. Every clock in the game is written as
+// its beat count times this number, and every per-second rate as its beat rate divided by it,
+// so the whole game is one dial away from running faster or slower without being rebalanced.
+//
+// At 2 the player gets twice the real time to read a board and answer it, and nothing else
+// moves: a wave still costs one wave interval, an ability still fires the same number of times
+// inside one, and a land under the same damage still takes exactly as many waves to Blight.
+// The arithmetic that guarantees it is that the fight only ever spends *damage-seconds* - a
+// doubled clock and a halved rate multiply back to the same total, at every moment of the
+// round and not merely at its end.
+//
+// The one thing it does change is what a second means to a reader: every number below is real
+// seconds, so anything comparing a constant against a stopwatch stays honest, and nothing may
+// scale a duration a second time on the way to the screen.
+const TIME_SCALE = 2;
+
+const WAVE_INTERVAL_SECONDS = 10 * TIME_SCALE;
 const BLIGHT_THRESHOLD_BASE = 10;
 const DAHAN_PER_ROUND_START_BASE = 6;
 // Reinforcement is no longer capped per land - the shop can be pushed far past the sixteen
@@ -24,37 +40,66 @@ const DAHAN_PER_ROUND_START_BASE = 6;
 // the gap: no land may stand more than two Dahan above another, so nothing reaches 3 while
 // a land is still empty.
 const DAHAN_MAX_SPREAD = 2;
+// A flash, not a clock: how long a defeat or Blight marker stays on the board. Deliberately
+// outside TIME_SCALE - it is measured against how fast an eye catches a highlight, which no
+// change of game pace moves.
 const DEFEAT_FX_MS = 1200;
-const MAX_TICK_SECONDS = 5;
+const MAX_TICK_SECONDS = 5 * TIME_SCALE;
 
 // The whole fight runs on one currency: a damage-second. One point of damage sustained for
-// one second is 2% of a Blight, and 5% of a Dahan casualty - 50 damage-seconds buys a Blight,
-// 20 buys a casualty. The two rates were equal until the Dahan proved too durable to pressure;
-// they are now deliberately apart, and the casualty clock is the one under playtest.
-const BLIGHT_PER_DAMAGE_SECOND = 0.02;
-const DAHAN_LOSS_PER_DAMAGE_SECOND = 0.05;
-
-// Two brakes on stacking Dahan into one land. Without them a stack's value grew with the
-// square of its size (each Dahan slows attrition for every Dahan behind it) on top of a hard
-// cliff to zero Blight, so one fortified land beat six defended ones by a wide margin.
+// one second is 1% of a Blight, and 2.5% of a Dahan casualty - 100 damage-seconds buys a
+// Blight, 40 buys a casualty. The two rates were equal until the Dahan proved too durable to
+// pressure; they are now deliberately apart, and the casualty clock is the one under playtest.
 //
-// The floor: a land never cancels all of its Blight, only the share above this fraction of
-// gross. Defence buys time, not immunity, so a stack has to be spent rather than parked.
+// Both are divided by TIME_SCALE, which is why the figures above are not the 50 and 20 the
+// design was tuned at. A round lasts TIME_SCALE times as long in seconds and accrues at
+// 1/TIME_SCALE the rate, so it still costs exactly 50 and 20 damage-*beats* - the ratio the
+// balance actually rests on. Retune these against the beat rates (0.02 and 0.05), never
+// against the seconds.
+const BLIGHT_PER_DAMAGE_SECOND = 0.02 / TIME_SCALE;
+const DAHAN_LOSS_PER_DAMAGE_SECOND = 0.05 / TIME_SCALE;
+
+// The brake on stacking Dahan into one land: a land never cancels all of its Blight, only
+// the share above this fraction of gross. Defence buys time, not immunity, so a stack has to
+// be spent rather than parked.
 const BLIGHT_FLOOR_FRACTION = 0.25;
-// The concentration cap: casualties still concentrate on the survivors - the death spiral
-// downward is the point - but only down to this many. Past it, attrition stops slowing, so
-// a stack's lifetime grows linearly with its size instead of quadratically.
-const DAHAN_CONCENTRATION_CAP = 2;
 
 // The Dahan's periodic strike against the invaders, on its own clock rather than the wave's.
 // It starts at the wave interval only so the two read as one rhythm at round one; the shop
 // is expected to shorten this later, and nothing should re-couple it to WAVE_INTERVAL_SECONDS.
-const DAHAN_ATTACK_INTERVAL_SECONDS = 10;
+const DAHAN_ATTACK_INTERVAL_SECONDS = 10 * TIME_SCALE;
 const DAHAN_ATTACK_DAMAGE = 1;
+
+// From this wave on, Discover stops asking whether a land is reachable and simply seeds both
+// lands of its terrain - see resolveExplorePhase. A round that survives its opening is
+// otherwise flat: the Dahan out-kill the track and nothing further threatens it. The counter
+// is per round, like everything except Fear, so every round re-earns its own difficulty.
+//
+// This is the first rung of a ladder, not the whole of it. Later rungs belong at 20, 30 and
+// beyond, and each should read as its own rule rather than a number tuned on this one.
+const EXPLORE_UNRESTRICTED_FROM_WAVE = 10;
 
 // Fear per point of defeated invader power. An explorer is worth 1 power, a town 2,
 // a city 3 - the same numbers as their damage, so a unit's threat and its worth agree.
-const FEAR_PER_POWER = 0.35;
+const FEAR_PER_POWER = 1;
+
+// Fear for living through a wave, paid when the wave resolves. The second half of the
+// income: killing pays for what you clear, this pays for what you outlast. Without it a
+// round that holds the line perfectly and kills little would earn almost nothing.
+const FEAR_PER_WAVE = 1;
+
+// Energy per point of that same power, on the same scale: killing an explorer pays 1,
+// a town 2, a city 3. Fear and Energy are deliberately drawn from one number - a unit's
+// threat is its worth, and a second scale would only ask the player to learn two. Since
+// both rates are 1, a defeat now pays the same figure into each purse; what separates them
+// is where else the income comes from, and how long it lasts.
+//
+// Energy is the round's own currency and it does not survive one: startRound zeroes it along
+// with everything bought with it. The kit is rebuilt from scratch every round, and the only
+// thing that carries is Fear - which is what the shop's permanent upgrades are drawn from.
+// So the two currencies answer two different questions: Energy is "what can this round
+// become", Fear is "what does every round start as".
+const ENERGY_PER_POWER = 1;
 
 // `damage` is now a rate: what the unit deals every second it stands in a land. A Dahan's 2
 // is what it cancels out of the invader total, which is why one Dahan holds off two
@@ -69,7 +114,8 @@ const UNIT_STATS = {
 
 const INVADER_TYPES = ["explorers", "towns", "cities"];
 
-// The Dahan strike and untargeted ability damage both spend on the biggest thing standing.
+// Strongest first. Read wherever damage has to break a tie between two units it could hit
+// equally well, and by the defeat banner when it picks which loss to name.
 const INVADER_TYPES_BY_TIER = ["cities", "towns", "explorers"];
 
 /* ------------------------------------------------------------------ *
@@ -110,71 +156,144 @@ const SPIRITS = {
     englishName: "River Surges in Sunlight",
     traits: "Schnelle Stroeme verschieben Invasoren und halten das Land beweglich. Fokus: Kontrolle, Positionierung und stetiger Fluss.",
     traitsEn: "Swift currents displace invaders and keep the land in motion. Focus: control, positioning, and steady flow.",
-    abilityIds: ["boon_of_vigor", "wash_away", "flash_floods", "rivers_bounty"],
+    // The spirit's whole kit, in bar order: the Innate first because it is the only one that
+    // grows, then the free faucet, then the three Energy unlocks in ascending price. The bar
+    // reads top to bottom as the order a round is actually built in.
+    abilityIds: ["innate_power", "boon_of_vigor", "rivers_bounty", "flash_floods", "wash_away"],
+    // What every round opens with. The rest are locked behind Energy earned in that same
+    // round, so round one is two abilities used well rather than five used at random.
+    startingAbilityIds: ["innate_power", "boon_of_vigor"],
     // The baseline Dahan placement every round starts from, before upgrades. Six across
     // eight lands, skipping 3 and 8 - the two lands hardest to reinforce later.
     roundStartDahan: { "1": 1, "2": 1, "4": 1, "5": 1, "6": 1, "7": 1 }
   }
 };
 
-// Cooldowns and effects are the placeholder kit from 04-economy-formulas.md. None of these
-// numbers are balanced; they exist so the cooldown machinery has something to drive.
+// The spirit's kit. `unlockCost` is what the ability costs in Energy this round - 0 means it
+// is in the opening hand. The ladder 5 / 10 / 20 is deliberately steep against a round's
+// income: the three unlocks together are about one early round's worth, so which two you buy
+// is the round's first real decision.
+//
+// The Innate is the one ability that grows rather than being bought once. Its `tiers` array
+// replaces the record wholesale - text, cooldown, effect and all - so tier 2 is not tier 1
+// with a modifier, it is a different ability standing in the same slot. Read one with
+// abilityRecord(), never by reaching into ABILITIES directly, or a tiered ability will
+// silently answer with its tier-1 self.
+//
+// Cooldowns rise with the tier on purpose. Throughput still improves at every step - tier 2
+// is three pushes and 2 damage per 8 beats against tier 1's one push per 4 - so the longer
+// wait buys a bigger swing rather than taxing the upgrade.
+//
+// Every cooldown here is written as beats times TIME_SCALE, the same dial the wave interval
+// turns on. That is what keeps a cast rate a cast rate: an ability that fired twice a wave at
+// scale 1 fires twice a wave at any scale, because both clocks stretched together.
 const ABILITIES = {
+  innate_power: {
+    id: "innate_power",
+    unlockCost: 0,
+    tiers: [
+      {
+        cooldownSeconds: 8 * TIME_SCALE,
+        needsTarget: true,
+        effect: "push_invaders",
+        pushCount: 1,
+        upgradeCost: 50
+      },
+      {
+        cooldownSeconds: 16 * TIME_SCALE,
+        needsTarget: true,
+        effect: "damage_and_push",
+        damage: 2,
+        pushCount: 3,
+        upgradeCost: 250
+      },
+      {
+        cooldownSeconds: 24 * TIME_SCALE,
+        needsTarget: true,
+        effect: "damage_each_invader",
+        damage: 2,
+        upgradeCost: Infinity
+      }
+    ]
+  },
   boon_of_vigor: {
     id: "boon_of_vigor",
-    cooldownSeconds: 20,
+    unlockCost: 0,
+    cooldownSeconds: 12 * TIME_SCALE,
     needsTarget: false,
-    effect: "reduce_cooldowns",
-    amount: 5
+    effect: "gain_energy",
+    amount: 1
   },
-  wash_away: {
-    id: "wash_away",
-    cooldownSeconds: 15,
+  // The one ability that picks its own land: the thinnest-held land under attack, or simply
+  // the thinnest-held land when nothing is under attack. It needs no click because there is
+  // only ever one answer to "where is this most needed", and asking would be asking the
+  // player to re-derive it.
+  rivers_bounty: {
+    id: "rivers_bounty",
+    unlockCost: 5,
+    cooldownSeconds: 15 * TIME_SCALE,
     needsTarget: false,
-    effect: "push_from_blighted"
+    effect: "add_dahan",
+    amount: 1
   },
   flash_floods: {
     id: "flash_floods",
-    cooldownSeconds: 12,
+    unlockCost: 10,
+    cooldownSeconds: 25 * TIME_SCALE,
     needsTarget: true,
-    effect: "damage_one_type",
-    amount: 2
+    effect: "flood_damage",
+    damage: 1,
+    coastalBonus: 1
   },
-  rivers_bounty: {
-    id: "rivers_bounty",
-    cooldownSeconds: 18,
+  wash_away: {
+    id: "wash_away",
+    unlockCost: 20,
+    cooldownSeconds: 35 * TIME_SCALE,
     needsTarget: true,
-    effect: "add_dahan",
-    amount: 2
+    effect: "push_invaders",
+    pushCount: 3
   }
 };
 
 const ABILITY_IDS = Object.keys(ABILITIES);
 
 // Costs scale with the tier already owned, so the shop stays a choice rather than a
-// checklist. 1.6x per tier is a placeholder curve, not a balancing decision.
+// checklist. 1.6x per tier outruns what a tier is worth: with attrition flat, a Dahan tier
+// buys about 11% more income, so the price pulls away from the payoff instead of chasing it.
 const UPGRADE_COST_GROWTH = 1.6;
 
+// Repeatable tiers first, then the one-off unlocks. The shop renders them in this order and
+// draws the line between the two halves where `repeatable` stops.
 const UPGRADES = {
   dahan_reinforcement: {
     id: "dahan_reinforcement",
     repeatable: true,
     effect: "dahan_bonus_per_tier",
-    baseCost: 4
+    baseCost: 10,
+    // Past eight the island runs out of room to spread them and the tiers stop paying.
+    maxTier: 8
   },
   blight_resilience: {
     id: "blight_resilience",
     repeatable: true,
     effect: "blight_threshold_per_tier",
-    baseCost: 6
+    // Cheap and capped on purpose. Invader power grows faster than linearly, so Blight
+    // accrues faster than the threshold can be raised: ten tiers measured at +6% round
+    // length. It is a small comfort for an early round, priced like one, and it is not the
+    // shop's growth lever - reinforcement and the one-offs are.
+    baseCost: 3,
+    maxTier: 5
   },
-  swift_currents: {
-    id: "swift_currents",
-    repeatable: true,
-    effect: "cooldown_reduction_per_tier",
-    baseCost: 5,
-    // Diminishing by construction: each tier multiplies, so tier 12 is about -46%, not -60%.
-    maxTier: 12
+
+  auto_boon: {
+    id: "auto_boon",
+    repeatable: false,
+    effect: "auto_cast_boon",
+    // Priced as comfort, not as power. Measured against a player who was already clicking the
+    // Boon on cooldown it is worth 0-2% more Fear a round: it buys back a click every twelve
+    // beats and nothing else. Roughly one round's income, which is what a convenience
+    // should cost - the shop's power lives in the ladders above.
+    baseCost: 25
   }
 };
 
@@ -283,21 +402,34 @@ const I18N = {
     activeSpiritLabel: "Aktiver Geist:",
 
     abilitiesTitle: "Faehigkeiten",
-    abilitiesHint: "Faehigkeiten haben nur eine Abklingzeit, keine Energiekosten.",
+    abilitiesHint: "Einsetzen kostet nur Abklingzeit. Energie schaltet neue Faehigkeiten frei.",
+    energyLabel: "Energie",
+    energyHint: "Energie kommt aus besiegten Invasoren: 1 pro Entdecker, 2 pro Dorf, 3 pro Stadt. Boon of Vigor gibt +1. Zu Rundenbeginn faellt sie auf 0 zurueck - und alles, was mit ihr gekauft wurde, mit ihr.",
     abilityReady: "Bereit",
     abilityArmed: "Ziel waehlen",
     abilityCooldown: "{seconds}s",
+    abilityLocked: "Gesperrt",
+    abilityUnlockBtn: "{cost} Energie",
+    abilityTierLabel: "Stufe {tier}",
+    abilityUpgradeBtn: "Stufe {tier}: {cost} Energie",
     abilityNames: {
+      innate_power: "Angeborene Kraft",
       boon_of_vigor: "Boon of Vigor",
-      wash_away: "Wash Away",
+      rivers_bounty: "River's Bounty",
       flash_floods: "Flash Floods",
-      rivers_bounty: "River's Bounty"
+      wash_away: "Wash Away"
     },
+    // The Innate carries one text per tier, in tier order. Every other ability carries one.
     abilityTexts: {
-      boon_of_vigor: "Verkuerzt die Abklingzeit aller anderen Faehigkeiten um {amount}s.",
-      wash_away: "Schiebt alle Entdecker und Doerfer aus dem am staerksten verderbten Gebiet in ein angrenzendes Gebiet.",
-      flash_floods: "{amount} Schaden auf den staerksten Invasorentyp im gewaehlten Gebiet.",
-      rivers_bounty: "+{amount} Dahan im gewaehlten Gebiet."
+      innate_power: [
+        "Schiebt {push} Entdecker/Dorf in ein angrenzendes Gebiet ohne Invasoren.",
+        "{damage} Schaden. Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet ohne Invasoren.",
+        "{damage} Schaden auf jeden Invasor im gewaehlten Gebiet."
+      ],
+      boon_of_vigor: "+{amount} Energie.",
+      rivers_bounty: "+{amount} Dahan im Gebiet mit den wenigsten Dahan und Invasoren, wenn moeglich.",
+      flash_floods: "{damage} Schaden. Liegt das Ziel an der Kueste: +{coastal} Schaden.",
+      wash_away: "Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet ohne Invasoren."
     },
 
     mapTitle: "Die Insel",
@@ -305,6 +437,7 @@ const I18N = {
     mapHintArmed: "{ability}: {requirement}",
     mapHintWave: "Naechste Welle baut in {terrain} ({lands}).",
     abilityNeedInvaders: "waehle ein Gebiet mit Invasoren.",
+    abilityNeedPushable: "waehle ein Gebiet mit Entdeckern/Doerfern und einem freien Nachbarn.",
     abilityNeedAnyLand: "waehle ein beliebiges Gebiet.",
 
     shopTitle: "Zwischen den Runden",
@@ -314,16 +447,19 @@ const I18N = {
     shopCostLabel: "{cost} Furcht",
     shopBuyBtn: "Kaufen",
     shopMaxedBtn: "Maximum",
+    // A one-off is owned, not maxed: there was never a ladder for it to reach the top of.
+    shopOwnedBtn: "Gekauft",
+    shopOneOffLabel: "Einmalig",
     startNextRoundBtn: "Naechste Runde starten",
     upgradeNames: {
       dahan_reinforcement: "Verstaerkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
-      swift_currents: "Schnelle Stroemungen"
+      auto_boon: "Segen von selbst"
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 Dahan zu Rundenbeginn, pro Stufe.",
       blight_resilience: "+1 Verderbnisgrenze, pro Stufe.",
-      swift_currents: "-5% Abklingzeit aller Faehigkeiten, pro Stufe."
+      auto_boon: "Boon of Vigor wirkt sich selbst, sobald es bereit ist."
     },
 
     logTitle: "Spielprotokoll",
@@ -359,7 +495,8 @@ const I18N = {
     buildChip: "+1 {unit}",
     buildChipNone: "nichts hier",
     blightBarLabel: "Verderbnis",
-    dahanBarLabel: "Dahan-Verluste",
+    dahanBarLabel: "Dahan-Gesundheit",
+    invaderBarLabel: "Gesundheit",
 
     invaderTrackTitle: "Invasorenleiste",
     buildLabel: "Bauen:",
@@ -400,10 +537,16 @@ const I18N = {
     abilityCancelled: "{ability} abgebrochen.",
     abilityNoTarget: "{ability} findet kein gueltiges Ziel. Abklingzeit laeuft nicht.",
     abilityIllegalTarget: "{land} ist kein gueltiges Ziel fuer {ability}.",
-    boonResolved: "Boon of Vigor: {count} Faehigkeiten um {amount}s beschleunigt.",
-    washAwayResolved: "Wash Away: {total} Einheiten von {from} nach {to} geschoben.",
-    flashFloodsResolved: "Flash Floods trifft {unit} in {land}: {damage} Schaden, {defeated} besiegt.",
-    riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}.",
+    boonResolved: "Boon of Vigor: +{amount} Energie.",
+    pushResolved: "{ability}: {total} Einheiten von {from} nach {to} geschoben.",
+    damageResolved: "{ability} in {land}: {damage} Schaden, {defeated} Invasoren besiegt.",
+    damageEachResolved: "{ability} in {land}: {damage} Schaden auf jeden Invasor, {defeated} besiegt.",
+    riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}. Jetzt {total} dort.",
+
+    abilityUnlocked: "{ability} freigeschaltet fuer {cost} Energie.",
+    abilityUnlockTooExpensive: "{ability} kostet {cost} Energie. Du hast {energy}.",
+    abilityUpgraded: "{ability} auf Stufe {tier} gebracht fuer {cost} Energie.",
+    abilityUpgradeTooExpensive: "Stufe {tier} von {ability} kostet {cost} Energie. Du hast {energy}.",
 
     roundStillRunning: "Die Runde laeuft noch.",
     upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) fuer {cost} Furcht.",
@@ -431,21 +574,33 @@ const I18N = {
     activeSpiritLabel: "Active spirit:",
 
     abilitiesTitle: "Abilities",
-    abilitiesHint: "Abilities cost only their cooldown, no energy.",
+    abilitiesHint: "Casting costs only a cooldown. Energy unlocks new abilities.",
+    energyLabel: "Energy",
+    energyHint: "Energy comes from defeated invaders: 1 per Explorer, 2 per Town, 3 per City. Boon of Vigor grants +1. It resets to 0 when a round starts - and everything bought with it goes with it.",
     abilityReady: "Ready",
     abilityArmed: "Pick a land",
     abilityCooldown: "{seconds}s",
+    abilityLocked: "Locked",
+    abilityUnlockBtn: "{cost} Energy",
+    abilityTierLabel: "Tier {tier}",
+    abilityUpgradeBtn: "Tier {tier}: {cost} Energy",
     abilityNames: {
+      innate_power: "Innate Power",
       boon_of_vigor: "Boon of Vigor",
-      wash_away: "Wash Away",
+      rivers_bounty: "River's Bounty",
       flash_floods: "Flash Floods",
-      rivers_bounty: "River's Bounty"
+      wash_away: "Wash Away"
     },
     abilityTexts: {
-      boon_of_vigor: "Cuts {amount}s from every other ability's cooldown.",
-      wash_away: "Pushes every explorer and town out of the most-Blighted land into an adjacent one.",
-      flash_floods: "{amount} damage to the strongest invader type in the chosen land.",
-      rivers_bounty: "+{amount} Dahan in the chosen land."
+      innate_power: [
+        "Push {push} Explorer/Town into an adjacent land without invaders.",
+        "Deal {damage} damage. Push up to {push} Explorers/Towns into an adjacent land without invaders.",
+        "Deal {damage} damage to each invader in the chosen land."
+      ],
+      boon_of_vigor: "Gain {amount} Energy.",
+      rivers_bounty: "+{amount} Dahan to the land with the fewest Dahan and Invaders if possible.",
+      flash_floods: "{damage} damage. If the target land is coastal, +{coastal} damage.",
+      wash_away: "Push up to {push} Explorers/Towns into an adjacent land without invaders."
     },
 
     mapTitle: "The Island",
@@ -453,6 +608,7 @@ const I18N = {
     mapHintArmed: "{ability}: {requirement}",
     mapHintWave: "Next wave builds in {terrain} ({lands}).",
     abilityNeedInvaders: "pick a land holding invaders.",
+    abilityNeedPushable: "pick a land with Explorers/Towns and a free neighbour.",
     abilityNeedAnyLand: "pick any land.",
 
     shopTitle: "Between Rounds",
@@ -462,16 +618,18 @@ const I18N = {
     shopCostLabel: "{cost} Fear",
     shopBuyBtn: "Buy",
     shopMaxedBtn: "Maxed",
+    shopOwnedBtn: "Owned",
+    shopOneOffLabel: "One-off",
     startNextRoundBtn: "Start next round",
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
-      swift_currents: "Swift Currents"
+      auto_boon: "Boon Unbidden"
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 starting Dahan, per tier.",
       blight_resilience: "+1 Blight threshold, per tier.",
-      swift_currents: "-5% to all ability cooldowns, per tier."
+      auto_boon: "Boon of Vigor casts itself whenever it is ready."
     },
 
     logTitle: "Event log",
@@ -506,7 +664,8 @@ const I18N = {
     buildChip: "+1 {unit}",
     buildChipNone: "nothing here",
     blightBarLabel: "Blight",
-    dahanBarLabel: "Dahan losses",
+    dahanBarLabel: "Dahan health",
+    invaderBarLabel: "Health",
 
     invaderTrackTitle: "Invader track",
     buildLabel: "Build:",
@@ -547,10 +706,16 @@ const I18N = {
     abilityCancelled: "{ability} cancelled.",
     abilityNoTarget: "{ability} finds no valid target. Cooldown unspent.",
     abilityIllegalTarget: "{land} is not a valid target for {ability}.",
-    boonResolved: "Boon of Vigor: {count} abilities hurried by {amount}s.",
-    washAwayResolved: "Wash Away: {total} units pushed from {from} to {to}.",
-    flashFloodsResolved: "Flash Floods hits {unit} in {land}: {damage} damage, {defeated} defeated.",
-    riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}.",
+    boonResolved: "Boon of Vigor: +{amount} Energy.",
+    pushResolved: "{ability}: {total} units pushed from {from} to {to}.",
+    damageResolved: "{ability} in {land}: {damage} damage, {defeated} invaders defeated.",
+    damageEachResolved: "{ability} in {land}: {damage} damage to each invader, {defeated} defeated.",
+    riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}. {total} standing there now.",
+
+    abilityUnlocked: "{ability} unlocked for {cost} Energy.",
+    abilityUnlockTooExpensive: "{ability} costs {cost} Energy. You have {energy}.",
+    abilityUpgraded: "{ability} raised to tier {tier} for {cost} Energy.",
+    abilityUpgradeTooExpensive: "Tier {tier} of {ability} costs {cost} Energy. You have {energy}.",
 
     roundStillRunning: "The round is still running.",
     upgradePurchased: "Purchased: {upgrade} (tier {tier}) for {cost} Fear.",
@@ -638,19 +803,32 @@ function abilityName(state, abilityId) {
   return (t.abilityNames && t.abilityNames[abilityId]) || abilityId;
 }
 
+// The record's own numbers are substituted into its description, so a kit tuned in ABILITIES
+// never leaves a card promising something the effect no longer does. A tiered ability picks
+// the text for the tier it is standing at, from the array in abilityTexts.
 function abilityText(state, abilityId) {
   const t = locale(state);
-  const raw = (t.abilityTexts && t.abilityTexts[abilityId]) || "";
-  return template(raw, { amount: (ABILITIES[abilityId] || {}).amount || 0 });
+  const entry = (t.abilityTexts && t.abilityTexts[abilityId]) || "";
+  const record = abilityRecord(state, abilityId) || {};
+  const raw = Array.isArray(entry)
+    ? (entry[clamp(record.tier || 0, 0, entry.length - 1)] || "")
+    : entry;
+
+  return template(raw, {
+    amount: record.amount || 0,
+    damage: record.damage || 0,
+    coastal: record.coastalBonus || 0,
+    push: record.pushCount || 0
+  });
 }
 
 // What an armed ability is waiting for, in words. The board dims to teach the same rule;
 // this is the sentence version of it.
 function abilityRequirementText(state, abilityId) {
   const t = locale(state);
-  const record = ABILITIES[abilityId];
+  const record = abilityRecord(state, abilityId);
   if (!record || !record.needsTarget) return "";
-  return record.effect === "damage_one_type" ? t.abilityNeedInvaders : t.abilityNeedAnyLand;
+  return record.effect === "push_invaders" ? t.abilityNeedPushable : t.abilityNeedInvaders;
 }
 
 // Everything a land's fight is doing right now, in one object. The chip, the detail panel,
@@ -659,10 +837,16 @@ function abilityRequirementText(state, abilityId) {
 // Two rates come out of the same invader damage:
 //   Blight  - net of what the Dahan standing there cancel, but never below
 //             BLIGHT_FLOOR_FRACTION of gross: a held land seeps instead of sitting at 0.
-//   Dahan   - gross, and concentrated on the survivors: the fewer defenders are left, the
-//             faster the next one falls. That is the death spiral, and it is deliberate.
-//             It stops concentrating past DAHAN_CONCENTRATION_CAP, so the spiral only runs
-//             downward - a big stack no longer buys itself slower attrition.
+//   Dahan   - gross, and flat: every land under the same damage loses its people at the same
+//             rate, however many are standing there. A stack's lifetime is therefore linear
+//             in its size, with no spiral and no discount for depth.
+//
+// The flat rate replaced a concentrated one that divided gross by the survivors (capped at
+// two). It read as a death spiral but measured as its opposite: a stack of four outlived two
+// singles by so much that reinforcement upgrades compounded, and one tier of them doubled a
+// round's length on its own. The cap meant to hold that down never bound - lands rarely hold
+// more than two Dahan - so removing it changed nothing, and removing the divisor changed
+// everything.
 function landPressure(state, landId) {
   const slot = state.invaders[landId] || { explorers: 0, towns: 0, cities: 0 };
   const gross = invaderDamageInLand(slot);
@@ -672,8 +856,7 @@ function landPressure(state, landId) {
   const net = Math.max(gross - defence, gross * BLIGHT_FLOOR_FRACTION);
 
   const blightPerSecond = net * BLIGHT_PER_DAMAGE_SECOND;
-  const concentration = Math.min(dahan, DAHAN_CONCENTRATION_CAP);
-  const dahanPerSecond = dahan > 0 ? (gross / concentration) * DAHAN_LOSS_PER_DAMAGE_SECOND : 0;
+  const dahanPerSecond = dahan > 0 ? gross * DAHAN_LOSS_PER_DAMAGE_SECOND : 0;
 
   const blightProgress = (state.round.blightProgress || {})[landId] || 0;
   const dahanProgress = (state.round.dahanProgress || {})[landId] || 0;
@@ -817,28 +1000,47 @@ function normalizeInvaderCounts(invaders) {
   });
 }
 
+// Damage is tracked per unit, not per type: one entry per living invader, holding how much
+// that individual has taken. The earlier model kept a single number per type per land, which
+// meant a land could only ever hold one wounded city - "two cities, both at one damage" was
+// not a state it could describe. Everything that spreads damage over a whole land (the
+// Innate's third tier above all) needs it to be.
+//
+// The invariant, held by normalizeInvaderDamage: one entry per living unit, each in
+// [0, health-1], sorted most-wounded first.
 function createInvaderDamage() {
-  return createInvaderCounts();
+  return createLandMap(() => ({ explorers: [], towns: [], cities: [] }));
 }
 
-// Carried damage can never exceed what the living units of that type could still absorb,
-// or a save edit (or a stale field) would show a unit at negative health.
-function clampInvaderDamageByCounts(invaders, invaderDamage) {
-  const out = normalizeInvaderCounts(invaderDamage);
+function normalizeInvaderDamage(invaders, invaderDamage) {
   const counts = normalizeInvaderCounts(invaders);
+  const merged = invaderDamage || {};
 
-  for (const landId of LAND_IDS) {
+  return createLandMap((landId) => {
+    const slot = merged[landId] || {};
+    const out = {};
+
     for (const type of INVADER_TYPES) {
       const health = UNIT_STATS[type].health;
-      if ((counts[landId][type] || 0) <= 0 || health <= 1) {
-        out[landId][type] = 0;
-      } else {
-        out[landId][type] = clamp(out[landId][type], 0, health - 1);
-      }
-    }
-  }
+      const count = counts[landId][type];
+      const raw = Array.isArray(slot[type]) ? slot[type] : [];
+      const list = [];
 
-  return out;
+      // Length follows the count, not the stored array: a unit that died elsewhere in the
+      // engine must not leave its wound behind for the next arrival to inherit. Damage caps
+      // one short of the unit's health, because a unit at full damage would be a dead one.
+      for (let i = 0; i < count; i += 1) {
+        list.push(clamp(Math.floor(Number(raw[i]) || 0), 0, health - 1));
+      }
+
+      // Most wounded first, so "which unit does this land show a health ring for" has one
+      // answer rather than depending on the order damage happened to arrive in.
+      list.sort((a, b) => b - a);
+      out[type] = list;
+    }
+
+    return out;
+  });
 }
 
 function createDahanCounts() {
@@ -970,13 +1172,12 @@ function upgradeCost(state, upgradeId) {
 
 // The permanent baseline every round starts from (04 Round Reset Formula).
 function upgradeTotals(state) {
-  const swiftTier = upgradeTier(state, "swift_currents");
   return {
     dahanBonus: upgradeTier(state, "dahan_reinforcement"),
     blightThresholdBonus: upgradeTier(state, "blight_resilience"),
-    // Multiplicative, so each tier is worth slightly less than the last. Tier 12 lands at
-    // roughly -46%, never at -60%, and the value can never cross zero.
-    cooldownReductionPct: 1 - Math.pow(0.95, swiftTier)
+    // No upgrade moves cooldowns today. The multiplier stays in the round state because the
+    // next cooldown upgrade will want it, and a round that reads 1 costs nothing to keep.
+    cooldownReductionPct: 0
   };
 }
 
@@ -1017,26 +1218,176 @@ function purchaseUpgrade(state, upgradeId) {
   return true;
 }
 
-// Fear accrues in 0.35 steps, so it is fractional by nature. One decimal is enough to see
-// a single explorer land, and integer costs stay readable against it.
+// Fear is whole-numbered at every source, so it never needs a decimal place. The function
+// stays because every readout goes through it, and a stray fraction from an old save should
+// show as the integer the shop will actually spend rather than as noise.
 function formatFear(value) {
-  return formatAmount(value);
+  return String(Math.max(0, Math.floor(Number(value) || 0)));
 }
 
 /* ------------------------------------------------------------------ *
  * Abilities (07-content-registry.md, 04-economy-formulas.md)           *
  * ------------------------------------------------------------------ */
 
-// The ability bar's contents: the spirit's own kit plus anything unlocked in the shop.
+// The ability bar's contents: the spirit's whole kit, locked entries included. The bar shows
+// a locked ability rather than hiding it - what is still out there is half of what makes
+// Energy worth banking, and a bar that grows by surprise teaches nothing.
+function spiritAbilityIds(state) {
+  return (activeSpirit(state).abilityIds || []).filter((id) => Boolean(ABILITIES[id]));
+}
+
+// The abilities that are actually castable: the spirit's starting kit, anything bought with
+// Energy this round, plus the `unlock_` shop path (which no catalogue row uses today - see
+// 07-content-registry.md - and which stays live so a sixth ability is content, not code).
 function unlockedAbilityIds(state) {
-  const own = activeSpirit(state).abilityIds || [];
-  const unlocked = own.filter((id) => Boolean(ABILITIES[id]));
-  for (const upgradeId of Object.keys(state.upgrades.purchased || {})) {
+  const kit = spiritAbilityIds(state);
+  const starting = activeSpirit(state).startingAbilityIds || [];
+  // Round state, not spirit state: Energy does not survive a round, so neither does anything
+  // bought with it. startRound empties this list along with the purse that filled it.
+  const bought = Array.isArray(state.round && state.round.purchasedAbilityIds)
+    ? state.round.purchasedAbilityIds
+    : [];
+
+  // Kit order, not purchase order: the bar must not reshuffle itself the moment something
+  // is bought, or the player loses the position they had learned.
+  const unlocked = kit.filter((id) => starting.includes(id) || bought.includes(id));
+
+  for (const upgradeId of Object.keys((state.upgrades && state.upgrades.purchased) || {})) {
     if (!upgradeId.startsWith("unlock_")) continue;
     const abilityId = upgradeId.slice("unlock_".length);
     if (ABILITIES[abilityId] && !unlocked.includes(abilityId)) unlocked.push(abilityId);
   }
+
   return unlocked;
+}
+
+function lockedAbilityIds(state) {
+  const unlocked = unlockedAbilityIds(state);
+  return spiritAbilityIds(state).filter((id) => !unlocked.includes(id));
+}
+
+function abilityIsUnlocked(state, abilityId) {
+  return unlockedAbilityIds(state).includes(abilityId);
+}
+
+/* ---------- Tiers ----------
+ *
+ * A tiered ability is one entry in the bar that changes what it is as the round goes on.
+ * Its `tiers` array holds a whole record each - cooldown, effect, text - so tier 2 is not
+ * tier 1 with a modifier applied, and nothing has to reason about which fields a tier is
+ * allowed to override.
+ *
+ * Read a record through abilityRecord, never straight out of ABILITIES: the raw entry for a
+ * tiered ability has no cooldownSeconds and no effect of its own, and a caller reaching past
+ * this would get a record that quietly does nothing.
+ */
+
+function abilityIsTiered(abilityId) {
+  return Boolean(ABILITIES[abilityId] && Array.isArray(ABILITIES[abilityId].tiers));
+}
+
+function abilityMaxTier(abilityId) {
+  return abilityIsTiered(abilityId) ? ABILITIES[abilityId].tiers.length - 1 : 0;
+}
+
+// Zero-based, so tier index 0 is what the card calls "Tier 1".
+function abilityTier(state, abilityId) {
+  if (!abilityIsTiered(abilityId)) return 0;
+  const tiers = (state.round && state.round.abilityTiers) || {};
+  return clamp(Math.floor(Number(tiers[abilityId]) || 0), 0, abilityMaxTier(abilityId));
+}
+
+function abilityRecord(state, abilityId) {
+  const base = ABILITIES[abilityId];
+  if (!base) return null;
+  if (!Array.isArray(base.tiers)) return base;
+  const tier = abilityTier(state, abilityId);
+  return { ...base, ...base.tiers[tier], tier };
+}
+
+// What the next tier costs, or Infinity at the top of the ladder.
+function abilityUpgradeCost(state, abilityId) {
+  if (!abilityIsTiered(abilityId)) return Infinity;
+  if (abilityTier(state, abilityId) >= abilityMaxTier(abilityId)) return Infinity;
+  const cost = abilityRecord(state, abilityId).upgradeCost;
+  return Number.isFinite(cost) ? cost : Infinity;
+}
+
+function upgradeAbility(state, abilityId) {
+  const t = locale(state);
+  if (!abilityIsTiered(abilityId) || !abilityIsUnlocked(state, abilityId)) return false;
+
+  const cost = abilityUpgradeCost(state, abilityId);
+  if (!Number.isFinite(cost)) return false;
+
+  const nextTier = abilityTier(state, abilityId) + 1;
+  if (state.resources.energy < cost) {
+    addLog(state, template(t.abilityUpgradeTooExpensive, {
+      ability: abilityName(state, abilityId),
+      tier: nextTier + 1,
+      cost,
+      energy: state.resources.energy
+    }));
+    return false;
+  }
+
+  state.resources.energy -= cost;
+  if (!state.round.abilityTiers || typeof state.round.abilityTiers !== "object") {
+    state.round.abilityTiers = {};
+  }
+  state.round.abilityTiers[abilityId] = nextTier;
+
+  // Ready, not cooling, for the same reason a bought ability is: the Energy was the cost, and
+  // an upgrade that cannot be used for another twenty-four beats reads as a punishment.
+  state.abilities[abilityId] = { cooldownRemaining: 0 };
+
+  addLog(state, template(t.abilityUpgraded, {
+    ability: abilityName(state, abilityId),
+    tier: nextTier + 1,
+    cost
+  }));
+  return true;
+}
+
+/* ---------- Unlocks ---------- */
+
+// Per ability, not one flat price: the kit is a ladder now (5 / 10 / 20), and which rung a
+// round can afford is the round's first real decision.
+function abilityUnlockCost(state, abilityId) {
+  const record = ABILITIES[abilityId];
+  if (!record) return Infinity;
+  return Number.isFinite(record.unlockCost) ? record.unlockCost : Infinity;
+}
+
+// Buying an ability with Energy. Mid-round by nature now: Energy is earned by killing
+// invaders and dies with the round, so the fight it came from is the only fight it can pay
+// for.
+function unlockAbility(state, abilityId) {
+  const t = locale(state);
+  if (!ABILITIES[abilityId]) return false;
+  if (!spiritAbilityIds(state).includes(abilityId)) return false;
+  if (abilityIsUnlocked(state, abilityId)) return false;
+
+  const cost = abilityUnlockCost(state, abilityId);
+  if (state.resources.energy < cost) {
+    addLog(state, template(t.abilityUnlockTooExpensive, {
+      ability: abilityName(state, abilityId),
+      cost,
+      energy: state.resources.energy
+    }));
+    return false;
+  }
+
+  state.resources.energy -= cost;
+  if (!Array.isArray(state.round.purchasedAbilityIds)) state.round.purchasedAbilityIds = [];
+  state.round.purchasedAbilityIds.push(abilityId);
+
+  // It arrives ready, not cooling: the purchase is the cost, and a bought ability that
+  // cannot be used for another twenty-five beats reads as a bug.
+  state.abilities[abilityId] = { cooldownRemaining: 0 };
+
+  addLog(state, template(t.abilityUnlocked, { ability: abilityName(state, abilityId), cost }));
+  return true;
 }
 
 function createAbilityState(state) {
@@ -1060,7 +1411,7 @@ function normalizeAbilities(state, abilities) {
 // The round's own cooldown baseline, frozen at setup so a shop purchase cannot shorten a
 // cooldown that is already ticking.
 function abilityCooldownSeconds(state, abilityId) {
-  const record = ABILITIES[abilityId];
+  const record = abilityRecord(state, abilityId);
   if (!record) return 0;
   const mult = Number.isFinite(state.round && state.round.abilityCooldownMult)
     ? state.round.abilityCooldownMult
@@ -1083,17 +1434,6 @@ function tickCooldowns(state, dt) {
   }
 }
 
-// The strongest invader type standing in a land, or null. Both the Dahan strike and Flash
-// Floods pick this way, so "hits the biggest thing" is one rule, not two.
-function strongestInvaderType(state, landId) {
-  const slot = state.invaders[landId];
-  if (!slot) return null;
-  for (const type of INVADER_TYPES_BY_TIER) {
-    if ((slot[type] || 0) > 0) return type;
-  }
-  return null;
-}
-
 function invaderCountInLand(slot) {
   if (!slot) return 0;
   return Math.max(0, slot.explorers || 0) + Math.max(0, slot.towns || 0) + Math.max(0, slot.cities || 0);
@@ -1103,137 +1443,257 @@ function invaderCountInLand(slot) {
 // highlight and the click handler can never disagree about what is legal.
 function abilityLegalLand(state, abilityId, landId) {
   if (!isLandId(landId)) return false;
-  const record = ABILITIES[abilityId];
+  const record = abilityRecord(state, abilityId);
   if (!record || !record.needsTarget) return false;
-  if (record.effect === "damage_one_type") return invaderCountInLand(state.invaders[landId]) > 0;
-  if (record.effect === "add_dahan") return true;
-  return false;
+
+  // A pure push needs somewhere to push to as well as something to push, which is why it is
+  // the one target rule that reads two lands. Everything else only needs invaders present -
+  // including the Innate's second tier, whose damage stands on its own if the push finds no
+  // room (see applyDamageAndPush).
+  if (record.effect === "push_invaders") {
+    return pushableCount(state, landId) > 0 && pushDestinations(state, landId).length > 0;
+  }
+
+  return invaderCountInLand(state.invaders[landId]) > 0;
 }
 
 function abilityLegalLands(state, abilityId) {
   return LAND_IDS.filter((landId) => abilityLegalLand(state, abilityId, landId));
 }
 
-// The land Wash Away acts on: the most-Blighted land that still holds something pushable.
-// Ties break on the lowest land id, so the effect is reproducible.
-function washAwaySourceLand(state) {
-  let best = null;
-  for (const landId of LAND_IDS) {
-    const slot = state.invaders[landId];
-    const pushable = (slot.explorers || 0) + (slot.towns || 0);
-    if (pushable <= 0) continue;
-    const blight = state.round.blightByLand[landId] || 0;
-    if (blight <= 0) continue;
-    if (!best || blight > best.blight) best = { landId, blight };
-  }
-  return best ? best.landId : null;
+/* ---------- Pushing ----------
+ *
+ * Cities are never pushed: they are built into the land, and a spirit of rivers moves what
+ * the water can carry.
+ */
+
+// Towns before explorers. A town is worth two of an explorer everywhere else in the engine,
+// so a push with a budget smaller than the land should spend it on the heavier thing.
+const PUSH_ORDER = ["towns", "explorers"];
+
+function pushableCount(state, landId) {
+  const slot = state.invaders[landId];
+  if (!slot) return 0;
+  return Math.max(0, slot.towns || 0) + Math.max(0, slot.explorers || 0);
 }
 
-// Where those units go: the adjacent land carrying the fewest invaders, so the push
-// relieves pressure instead of stacking it. Ties break on the lowest land id.
-function washAwayDestination(state, source) {
-  let best = null;
-  for (const landId of adjacentLands(source)) {
-    const load = invaderCountInLand(state.invaders[landId]);
-    if (!best || load < best.load) best = { landId, load };
-  }
-  return best ? best.landId : null;
+// Where a push can land: an adjacent land holding no invaders at all. A coastal one wins
+// outright when there is one - pushing toward the water is what this spirit does, and it is
+// also the harder land for the invaders to build back into.
+function pushDestinations(state, landId) {
+  const open = adjacentLands(landId).filter(
+    (other) => invaderCountInLand(state.invaders[other]) <= 0
+  );
+  const coastal = open.filter(landIsCoastal);
+  return coastal.length > 0 ? coastal : open;
 }
 
-function applyBoonOfVigor(state, abilityId) {
-  const t = locale(state);
-  const amount = ABILITIES[abilityId].amount;
-  let count = 0;
+// The lowest land id among those, like every other tie on this board. The water always runs
+// the same way, so a player can plan a push instead of gambling on it - and since the coastal
+// ids are the low ones, "lowest id" already lands on the coast whenever a coast is free.
+function pushDestination(state, landId) {
+  const choices = pushDestinations(state, landId);
+  if (choices.length === 0) return null;
+  return choices.slice().sort((a, b) => Number(a) - Number(b))[0];
+}
 
-  for (const otherId of Object.keys(state.abilities)) {
-    if (otherId === abilityId) continue;
-    const slot = state.abilities[otherId];
-    if (slot.cooldownRemaining <= 0) continue;
-    slot.cooldownRemaining = Math.max(0, slot.cooldownRemaining - amount);
-    count += 1;
+// Moves up to `maxCount` explorers and towns into one adjacent empty land, carrying each
+// unit's own damage with it. Returns null - so the caller can leave the cooldown unspent -
+// when there is nothing to move or nowhere to move it.
+function applyPushFrom(state, landId, maxCount) {
+  const destination = pushDestination(state, landId);
+  if (!destination) return null;
+
+  let budget = Math.max(0, Math.floor(maxCount || 0));
+  let moved = 0;
+
+  for (const type of PUSH_ORDER) {
+    while (budget > 0 && (state.invaders[landId][type] || 0) > 0) {
+      // The most wounded unit of its type leaves first, and its wound travels with it. Under
+      // the old per-type model this was an approximation; per-unit health makes it exact.
+      const carried = state.invaderDamage[landId][type].shift() || 0;
+      state.invaders[landId][type] -= 1;
+      state.invaders[destination][type] += 1;
+      state.invaderDamage[destination][type].push(carried);
+      budget -= 1;
+      moved += 1;
+    }
   }
 
-  addLog(state, template(t.boonResolved, { count, amount }));
+  if (moved <= 0) return null;
+
+  // Restores the sorted-and-sized invariant at both ends in one pass.
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  return { destination, moved };
+}
+
+/* ---------- Effects ---------- */
+
+// `quiet` is the auto-cast path: the same effect, without the log line. A click the player
+// made is worth a line; one the shop makes for them every twelve beats would bury the log.
+function applyBoonOfVigor(state, record, quiet) {
+  const amount = Math.max(0, Math.floor(record.amount || 0));
+  if (amount <= 0) return false;
+  state.resources.energy += amount;
+  if (!quiet) addLog(state, template(locale(state).boonResolved, { amount }));
   return true;
 }
 
-function applyWashAway(state) {
-  const t = locale(state);
-  const source = washAwaySourceLand(state);
-  if (!source) return false;
+function applyPushAbility(state, abilityId, record, landId) {
+  const pushed = applyPushFrom(state, landId, record.pushCount);
+  if (!pushed) return false;
 
-  const destination = washAwayDestination(state, source);
-  if (!destination) return false;
-
-  const from = state.invaders[source];
-  const to = state.invaders[destination];
-  const moved = (from.explorers || 0) + (from.towns || 0);
-  if (moved <= 0) return false;
-
-  to.explorers += from.explorers;
-  to.towns += from.towns;
-  from.explorers = 0;
-  from.towns = 0;
-
-  // Partial damage belongs to the units, so it travels with them. Two half-dead towns
-  // arriving in a land that already holds a half-dead town would need per-unit tracking to
-  // be exact; the destination keeps the worse of the two, which never resurrects a unit.
-  const fromDamage = state.invaderDamage[source];
-  const toDamage = state.invaderDamage[destination];
-  toDamage.explorers = Math.max(toDamage.explorers, fromDamage.explorers);
-  toDamage.towns = Math.max(toDamage.towns, fromDamage.towns);
-  fromDamage.explorers = 0;
-  fromDamage.towns = 0;
-  state.invaderDamage = clampInvaderDamageByCounts(state.invaders, state.invaderDamage);
-
-  addLog(state, template(t.washAwayResolved, {
-    total: moved,
-    from: landName(state, source),
-    to: landName(state, destination)
+  addLog(state, template(locale(state).pushResolved, {
+    ability: abilityName(state, abilityId),
+    total: pushed.moved,
+    from: landName(state, landId),
+    to: landName(state, pushed.destination)
   }));
   return true;
 }
 
-function applyFlashFloods(state, landId) {
-  const t = locale(state);
-  const type = strongestInvaderType(state, landId);
-  if (!type) return false;
+// One land, one pool of damage, spent by the kill-first rule in applyDamage. Every targeted
+// damage ability lands here, so "what does damage do" is one paragraph of the engine rather
+// than one per ability.
+function resolveDamageAbility(state, abilityId, landId, damage) {
+  if (invaderCountInLand(state.invaders[landId]) <= 0) return null;
 
-  const damage = ABILITIES.flash_floods.amount;
-  const result = applyDamageToInvaderType(state, landId, type, damage);
-  if (result.defeated > 0) markDefeatFx(state, landId, type, result.defeated);
+  const result = applyDamage(state, landId, damage);
+  markDefeatFxFromResult(state, landId, result);
 
-  addLog(state, template(t.flashFloodsResolved, {
-    unit: unitLabelByType(state, type),
+  addLog(state, template(locale(state).damageResolved, {
+    ability: abilityName(state, abilityId),
     land: landName(state, landId),
     damage,
-    defeated: result.defeated
+    defeated: result.totalDefeated
+  }));
+  return result;
+}
+
+// A coastal land is where the flood has water to work with, so it takes the extra point.
+function flashFloodsDamage(record, landId) {
+  return record.damage + (landIsCoastal(landId) ? record.coastalBonus : 0);
+}
+
+// The Innate at tier 2: damage, then push what survived.
+//
+// The two halves are independent. If the damage cleared the land, or every neighbour is
+// occupied so there is nowhere to push to, the cast still counts - refusing at that point
+// would rewind damage that has already been dealt and paid Fear for.
+function applyDamageAndPush(state, abilityId, record, landId) {
+  const damaged = resolveDamageAbility(state, abilityId, landId, record.damage);
+  const pushed = applyPushFrom(state, landId, record.pushCount);
+
+  if (pushed) {
+    addLog(state, template(locale(state).pushResolved, {
+      ability: abilityName(state, abilityId),
+      total: pushed.moved,
+      from: landName(state, landId),
+      to: landName(state, pushed.destination)
+    }));
+  }
+
+  return Boolean(damaged) || Boolean(pushed);
+}
+
+// The Innate at tier 3: every invader in the land takes the hit individually, which is the
+// one effect the old per-type damage model could not express at all.
+function applyDamageEachInvader(state, abilityId, record, landId) {
+  if (invaderCountInLand(state.invaders[landId]) <= 0) return false;
+
+  const result = applyDamageToEachInvader(state, landId, record.damage);
+  markDefeatFxFromResult(state, landId, result);
+
+  addLog(state, template(locale(state).damageEachResolved, {
+    ability: abilityName(state, abilityId),
+    land: landName(state, landId),
+    damage: record.damage,
+    defeated: result.totalDefeated
   }));
   return true;
 }
 
-function applyRiversBounty(state, landId) {
-  const t = locale(state);
-  const amount = ABILITIES.rivers_bounty.amount;
+// The land River's Bounty pours into: the thinnest-held land that is actually under attack.
+// Fewest Dahan among the lands holding invaders, ties on the lowest land id.
+//
+// A fight is preferred, but no longer required. With no invaders anywhere the ability still
+// resolves, into the thinnest land on the board - a quiet island is the moment to build the
+// Dahan up for the wave that follows, and refusing there only punished the player for having
+// cleared the map.
+function riversBountyLand(state) {
+  return thinnestDahanLand(state, true) || thinnestDahanLand(state, false);
+}
+
+function thinnestDahanLand(state, contestedOnly) {
+  let best = null;
+  for (const landId of LAND_IDS) {
+    if (contestedOnly && invaderCountInLand(state.invaders[landId]) <= 0) continue;
+    const dahan = Math.max(0, state.dahan[landId] || 0);
+    if (!best || dahan < best.dahan) best = { landId, dahan };
+  }
+  return best ? best.landId : null;
+}
+
+// Reinforcement out of nothing rather than a gather: the Dahan that arrives is one the
+// island did not have, so the ability adds pressure relief instead of moving it around.
+// There is always a thinnest land, so this one never fails.
+function applyRiversBounty(state, record) {
+  const landId = riversBountyLand(state);
+  if (!landId) return false;
+
+  const amount = Math.max(0, Math.floor(record.amount || 0));
+  if (amount <= 0) return false;
+
   state.dahan[landId] = (state.dahan[landId] || 0) + amount;
-  addLog(state, template(t.riversBountyResolved, { amount, land: landName(state, landId) }));
+
+  addLog(state, template(locale(state).riversBountyResolved, {
+    amount,
+    land: landName(state, landId),
+    total: state.dahan[landId]
+  }));
   return true;
 }
 
 // Runs an ability's effect. Returns false when the effect found nothing to act on, which
 // is what leaves the cooldown unspent (09 "Failure to find a target").
 function applyAbilityEffect(state, abilityId, landId) {
-  const record = ABILITIES[abilityId];
+  const record = abilityRecord(state, abilityId);
   if (!record) return false;
-  if (record.effect === "reduce_cooldowns") return applyBoonOfVigor(state, abilityId);
-  if (record.effect === "push_from_blighted") return applyWashAway(state);
-  if (record.effect === "damage_one_type") return applyFlashFloods(state, landId);
-  if (record.effect === "add_dahan") return applyRiversBounty(state, landId);
-  return false;
+
+  switch (record.effect) {
+    case "gain_energy":
+      return applyBoonOfVigor(state, record);
+    case "add_dahan":
+      return applyRiversBounty(state, record);
+    case "push_invaders":
+      return applyPushAbility(state, abilityId, record, landId);
+    case "flood_damage":
+      return Boolean(resolveDamageAbility(state, abilityId, landId, flashFloodsDamage(record, landId)));
+    case "damage_and_push":
+      return applyDamageAndPush(state, abilityId, record, landId);
+    case "damage_each_invader":
+      return applyDamageEachInvader(state, abilityId, record, landId);
+    default:
+      return false;
+  }
 }
 
 function startCooldown(state, abilityId) {
   state.abilities[abilityId].cooldownRemaining = abilityCooldownSeconds(state, abilityId);
+}
+
+// The Boon fires itself once `auto_boon` is bought. It goes straight to the effect rather
+// than through triggerAbility: there is no target to arm, no refusal to report, and nothing
+// here should ever surface as a message. The cooldown is the same one a click would spend,
+// so owning it changes who presses the button and not how often it can be pressed.
+function resolveAutoBoon(state) {
+  if (upgradeTier(state, "auto_boon") <= 0) return;
+  if (!abilityIsUnlocked(state, "boon_of_vigor")) return;
+  if (!abilityIsReady(state, "boon_of_vigor")) return;
+
+  const record = abilityRecord(state, "boon_of_vigor");
+  if (!record || !applyBoonOfVigor(state, record, true)) return;
+  startCooldown(state, "boon_of_vigor");
 }
 
 // The single entry point for the ability bar. Everything it can answer with - cancel,
@@ -1258,7 +1718,7 @@ function triggerAbility(state, abilityId) {
     return false;
   }
 
-  const record = ABILITIES[abilityId];
+  const record = abilityRecord(state, abilityId);
 
   if (record.needsTarget) {
     if (abilityLegalLands(state, abilityId).length === 0) {
@@ -1369,46 +1829,188 @@ function gainFearFromDefeat(state, unitType, defeatedCount) {
   state.round.fearEarned += gain;
 }
 
-function applyDamageToInvaderType(state, land, type, damage) {
-  const nothing = { defeated: 0, remainingHp: 0, maxHp: 0, consumed: 0 };
-  if (!isLandId(land) || !INVADER_TYPES.includes(type)) return nothing;
+// Fear for outlasting a wave. Paid once per wave, at the wave, so a round that ends between
+// two waves is paid for the ones it finished and not for the one it was standing in.
+function gainFearFromWave(state) {
+  if (FEAR_PER_WAVE <= 0) return;
+  state.meta.fear += FEAR_PER_WAVE;
+  state.round.fearEarned += FEAR_PER_WAVE;
+}
 
-  state.invaders = normalizeInvaderCounts(state.invaders);
-  state.invaderDamage = clampInvaderDamageByCounts(state.invaders, state.invaderDamage);
+// Energy from the same defeat, on the same power scale: an explorer pays 1, a town 2, a
+// city 3. Unlike Fear it is whole-numbered and spendable mid-round, which is what makes the
+// fight itself pay for the ability bar.
+function gainEnergyFromDefeat(state, unitType, defeatedCount) {
+  const defeated = Math.max(0, Math.floor(defeatedCount || 0));
+  if (defeated <= 0) return;
+  const power = (UNIT_STATS[unitType] || {}).damage || 0;
+  const gain = defeated * power * ENERGY_PER_POWER;
+  if (gain <= 0) return;
 
-  const slot = state.invaders[land];
-  const damageSlot = state.invaderDamage[land];
-  const unitCount = Math.max(0, slot[type] || 0);
-  const maxHp = UNIT_STATS[type].health;
-  if (unitCount <= 0 || maxHp <= 0) return { defeated: 0, remainingHp: 0, maxHp, consumed: 0 };
+  state.resources.energy += gain;
+}
 
-  const incoming = Math.max(0, Math.floor(damage || 0));
-  const carry = maxHp > 1 ? clamp(damageSlot[type] || 0, 0, maxHp - 1) : 0;
+/* ---------- Applying damage ----------
+ *
+ * One rule, everywhere: damage kills if it can, and only wounds when it cannot.
+ *
+ * The alternative - always spend on the biggest thing standing - meant a Dahan strike could
+ * scratch a city for a round while four explorers stood untouched beside it. Killing is what
+ * pays Fear and Energy, so damage that cannot buy a kill is damage the round did not use.
+ */
 
-  const totalPotential = incoming + carry;
-  const totalCap = unitCount * maxHp;
-  const totalApplied = Math.min(totalPotential, totalCap);
+// Every invader in a land, one entry per unit. `index` is the unit's position in its type's
+// damage array, which is what lets a caller wound or remove that individual rather than its
+// whole type. Recompute after any change: the indices move when a unit dies.
+function livingUnits(state, landId) {
+  const out = [];
+  const slot = state.invaders[landId];
+  const damage = state.invaderDamage[landId];
+  if (!slot || !damage) return out;
 
-  let defeated = Math.floor(totalApplied / maxHp);
-  let remainder = totalApplied % maxHp;
-
-  if (defeated >= unitCount) {
-    defeated = unitCount;
-    remainder = 0;
+  for (const type of INVADER_TYPES) {
+    const maxHp = UNIT_STATS[type].health;
+    const wounds = damage[type] || [];
+    for (let i = 0; i < Math.max(0, slot[type] || 0); i += 1) {
+      out.push({ type, index: i, maxHp, hp: maxHp - (wounds[i] || 0) });
+    }
   }
 
-  slot[type] = Math.max(0, unitCount - defeated);
-  damageSlot[type] = slot[type] > 0 ? remainder : 0;
+  return out;
+}
 
-  gainFearFromDefeat(state, type, defeated);
+// 0 is a city, 2 an explorer: lower is stronger, matching INVADER_TYPES_BY_TIER.
+function unitTierRank(type) {
+  return INVADER_TYPES_BY_TIER.indexOf(type);
+}
 
-  const remainingHp = slot[type] > 0 ? maxHp - damageSlot[type] : 0;
+// Of the units this damage could kill outright, the best one to spend it on: the toughest,
+// because a kill is worth its power in Fear and Energy. A tie goes to the higher tier - a
+// wounded city at 2 HP dies before a fresh town at 2 HP - and then to the lowest index, so
+// the choice is reproducible.
+function betterKill(a, b) {
+  if (a.hp !== b.hp) return a.hp > b.hp ? a : b;
+  const rankA = unitTierRank(a.type);
+  const rankB = unitTierRank(b.type);
+  if (rankA !== rankB) return rankA < rankB ? a : b;
+  return a.index <= b.index ? a : b;
+}
 
-  // How much of the incoming damage this type actually absorbed. Callers spreading damage
-  // across several types need this to avoid spending the same point twice.
-  const consumed = Math.max(0, totalApplied - carry);
+// When nothing can be killed, the damage goes on the strongest thing standing - highest tier
+// first, and within a tier the one already closest to falling, so the next hit has a kill to
+// find. Everything here has more HP left than there is damage to spend, so no clamping.
+function betterWound(a, b) {
+  const rankA = unitTierRank(a.type);
+  const rankB = unitTierRank(b.type);
+  if (rankA !== rankB) return rankA < rankB ? a : b;
+  if (a.hp !== b.hp) return a.hp < b.hp ? a : b;
+  return a.index <= b.index ? a : b;
+}
 
-  return { defeated, remainingHp, maxHp, consumed };
+function removeInvaderUnit(state, landId, type, index) {
+  state.invaders[landId][type] = Math.max(0, (state.invaders[landId][type] || 0) - 1);
+  state.invaderDamage[landId][type].splice(index, 1);
+}
+
+function woundInvaderUnit(state, landId, type, index, amount) {
+  const wounds = state.invaderDamage[landId][type];
+  wounds[index] = clamp((wounds[index] || 0) + amount, 0, UNIT_STATS[type].health - 1);
+}
+
+function emptyDefeatTally() {
+  return { explorers: 0, towns: 0, cities: 0 };
+}
+
+function creditDefeat(state, result, type) {
+  result.defeated[type] += 1;
+  result.totalDefeated += 1;
+  gainFearFromDefeat(state, type, 1);
+  gainEnergyFromDefeat(state, type, 1);
+}
+
+// Spends a pool of damage on one land, kill-first. Damage left over after a kill carries to
+// the next target, so 2 damage into a land holding a 1-HP city and an explorer takes both.
+function applyDamage(state, landId, amount) {
+  const result = { defeated: emptyDefeatTally(), totalDefeated: 0, spent: 0 };
+  if (!isLandId(landId)) return result;
+
+  state.invaders = normalizeInvaderCounts(state.invaders);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+
+  let remaining = Math.max(0, Math.floor(amount || 0));
+  const budget = remaining;
+
+  while (remaining > 0) {
+    const units = livingUnits(state, landId);
+    if (units.length === 0) break;
+
+    const killable = units.filter((unit) => unit.hp <= remaining);
+
+    if (killable.length > 0) {
+      const victim = killable.reduce(betterKill);
+      remaining -= victim.hp;
+      removeInvaderUnit(state, landId, victim.type, victim.index);
+      creditDefeat(state, result, victim.type);
+      continue;
+    }
+
+    // Nothing here can be killed with what is left, so all of it goes on one unit.
+    const victim = units.reduce(betterWound);
+    woundInvaderUnit(state, landId, victim.type, victim.index, remaining);
+    remaining = 0;
+  }
+
+  // The tie-breaks above happen to leave the arrays sorted, but the invariant should not rest
+  // on that: the ring the board draws reads index 0 and has to be the worst-off unit.
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+
+  result.spent = budget - remaining;
+  return result;
+}
+
+// The Innate's third tier: every invader takes the same hit, individually. No pooling and no
+// carry - a unit that survives is wounded by exactly `amount`, whatever its neighbours did.
+//
+// The land is snapshotted first so a unit is never spared by another dying ahead of it.
+function applyDamageToEachInvader(state, landId, amount) {
+  const result = { defeated: emptyDefeatTally(), totalDefeated: 0, spent: 0 };
+  const hit = Math.max(0, Math.floor(amount || 0));
+  if (!isLandId(landId) || hit <= 0) return result;
+
+  state.invaders = normalizeInvaderCounts(state.invaders);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+
+  const units = livingUnits(state, landId);
+  const survivors = { explorers: [], towns: [], cities: [] };
+
+  for (const unit of units) {
+    result.spent += hit;
+    if (unit.hp <= hit) {
+      creditDefeat(state, result, unit.type);
+    } else {
+      // Stored as damage taken, not health left, to match the array's contract.
+      survivors[unit.type].push(unit.maxHp - (unit.hp - hit));
+    }
+  }
+
+  for (const type of INVADER_TYPES) {
+    state.invaders[landId][type] = survivors[type].length;
+    state.invaderDamage[landId][type] = survivors[type].sort((a, b) => b - a);
+  }
+
+  return result;
+}
+
+// The floating "-2 Towns" over a land. One type only, so it names the heaviest thing that
+// fell - the number that made the cast worth watching.
+function markDefeatFxFromResult(state, landId, result) {
+  if (!result || result.totalDefeated <= 0) return;
+  for (const type of INVADER_TYPES_BY_TIER) {
+    if (result.defeated[type] > 0) {
+      markDefeatFx(state, landId, type, result.defeated[type]);
+      return;
+    }
+  }
 }
 
 function invaderDamageInLand(slot) {
@@ -1417,29 +2019,16 @@ function invaderDamageInLand(slot) {
     + (slot.cities || 0) * UNIT_STATS.cities.damage;
 }
 
-// The Dahan strike, spent automatically: 1 damage at a time on the highest tier standing,
-// until the pool or the invaders run out. No player input, nothing left pending.
+// The Dahan strike, spent automatically: one pool of damage through the same kill-first rule
+// every ability uses. No player input, nothing left pending.
+//
+// This is what the kill-first rule changed most. Under the old strongest-first rule two Dahan
+// scratched a city for 2 and the round moved on; now they take a town off the board. The
+// Dahan are meaningfully stronger for it, which is deliberate - they were too easy to ignore.
 function spendDahanAttack(state, land, pool) {
-  let remaining = Math.max(0, Math.floor(pool));
-  let defeated = 0;
-  let lastDefeatedType = null;
-
-  while (remaining > 0) {
-    const type = strongestInvaderType(state, land);
-    if (!type) break;
-
-    const result = applyDamageToInvaderType(state, land, type, 1);
-    if (result.consumed <= 0) break;
-
-    remaining -= result.consumed;
-    if (result.defeated > 0) {
-      defeated += result.defeated;
-      lastDefeatedType = type;
-    }
-  }
-
-  if (defeated > 0 && lastDefeatedType) markDefeatFx(state, land, lastDefeatedType, defeated);
-  return { defeated, spent: Math.max(0, Math.floor(pool)) - remaining };
+  const result = applyDamage(state, land, pool);
+  markDefeatFxFromResult(state, land, result);
+  return { defeated: result.totalDefeated, spent: result.spent };
 }
 
 /* ------------------------------------------------------------------ *
@@ -1570,9 +2159,22 @@ function resolveDahanAttack(state) {
  * Invader phases (09-island-board.md)                                  *
  * ------------------------------------------------------------------ */
 
+// A unit arriving on the board brings a wound list entry with it. Every place that adds an
+// invader goes through here: the damage array holds one entry per living unit, and a phase
+// that incremented the count alone would leave the two out of step until the next save.
+function addInvaderUnit(state, landId, type) {
+  state.invaders[landId][type] = (state.invaders[landId][type] || 0) + 1;
+  state.invaderDamage[landId][type].push(0);
+}
+
 // Discover only seeds explorers into a land that is coastal, or that sits next to a town or
 // city. Mountains has no coast, so it stays quiet until the invaders build their way inland.
+//
+// From EXPLORE_UNRESTRICTED_FROM_WAVE the question stops being asked: by then the invaders
+// are ashore in force and no longer need a foothold to land beside. Mountains is what this
+// opens - lands 4 and 6 have no coast, so it is the only terrain that was ever really gated.
 function landAcceptsExplorer(state, landId) {
+  if (state.round.wavesResolved >= EXPLORE_UNRESTRICTED_FROM_WAVE) return true;
   if (landIsCoastal(landId)) return true;
   return adjacentLands(landId).some((neighbour) => {
     const slot = state.invaders[neighbour];
@@ -1590,6 +2192,7 @@ function resolveBuildPhase(state) {
   }
 
   state.invaders = normalizeInvaderCounts(state.invaders);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
 
   // Each land of the terrain builds on its own count, so the two can build different units.
   for (const land of landsOfTerrain(terrain)) {
@@ -1600,7 +2203,7 @@ function resolveBuildPhase(state) {
     }
 
     const built = slot.towns > slot.cities ? "cities" : "towns";
-    slot[built] += 1;
+    addInvaderUnit(state, land, built);
     addLog(state, template(t.buildResolved, {
       land: landName(state, land),
       unit: unitLabelOne(state, built)
@@ -1618,6 +2221,7 @@ function resolveExplorePhase(state) {
   }
 
   state.invaders = normalizeInvaderCounts(state.invaders);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
 
   let seeded = 0;
   for (const land of landsOfTerrain(terrain)) {
@@ -1625,7 +2229,7 @@ function resolveExplorePhase(state) {
       addLog(state, template(t.exploreBlocked, { land: landName(state, land) }));
       continue;
     }
-    state.invaders[land].explorers += 1;
+    addInvaderUnit(state, land, "explorers");
     seeded += 1;
     addLog(state, template(t.exploreResolved, { land: landName(state, land) }));
   }
@@ -1658,11 +2262,15 @@ function shiftInvaderTrack(state) {
 // One wave: reinforcement only. A wave no longer deals a point of damage - it just adds to
 // what is already grinding the island down between waves.
 function resolveWave(state) {
+  // Counted before the phases run, not after, so the wave can read its own number while it
+  // resolves - which is what lets Discover know it has reached the tenth.
+  state.round.wavesResolved += 1;
+
   resolveBuildPhase(state);
   resolveExplorePhase(state);
   shiftInvaderTrack(state);
 
-  state.round.wavesResolved += 1;
+  gainFearFromWave(state);
   addLog(state, template(locale(state).waveResolved, { wave: state.round.wavesResolved }));
 }
 
@@ -1734,6 +2342,14 @@ function startRound(state) {
   state.round.fearEarned = 0;
   state.round.abilityCooldownMult = 1 - totals.cooldownReductionPct;
 
+  // The kit is rebuilt from nothing every round: the purse empties, every Energy unlock is
+  // given back, and the Innate drops to its first tier. What carries between rounds is Fear
+  // and the shop tiers it bought - so a round's power is earned inside that round, and the
+  // permanent progression is what decides how fast it can be earned again.
+  state.resources.energy = 0;
+  state.round.purchasedAbilityIds = [];
+  state.round.abilityTiers = {};
+
   state.invaders = createInvaderCounts();
   state.invaderDamage = createInvaderDamage();
   state.invader = normalizeInvaderPhases({ build: null, explore: drawOpeningTerrain(state) });
@@ -1789,6 +2405,9 @@ function tick(state, dt) {
 
   state.round.elapsedSeconds += step;
   tickCooldowns(state, step);
+  // Before the fight, so Energy the Boon just paid is spendable on the same tick the player
+  // sees it - the ability bar is read after the tick, not during it.
+  resolveAutoBoon(state);
 
   // The fight first: it is what actually ends the round, and resolving it before the wave
   // means a land cannot be reinforced out from under damage it had already taken this tick.
@@ -1867,7 +2486,13 @@ function createInitialState() {
       dahanAttackRemaining: DAHAN_ATTACK_INTERVAL_SECONDS,
       wavesResolved: 0,
       fearEarned: 0,
-      abilityCooldownMult: 1
+      abilityCooldownMult: 1,
+      // Both live here rather than on the spirit because both die with the round, exactly
+      // like the Energy that bought them. `purchasedAbilityIds` never lists the spirit's own
+      // startingAbilityIds - those are not bought - so it is precisely the record of what
+      // this round spent. `abilityTiers` maps a tiered ability id to its zero-based tier.
+      purchasedAbilityIds: [],
+      abilityTiers: {}
     },
     invader: { build: null, explore: null },
     invaders: createInvaderCounts(),
@@ -1919,7 +2544,9 @@ function normalizeState(raw) {
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
 
-  merged.meta.fear = Math.max(0, Number(merged.meta.fear) || 0);
+  // Floored, not just clamped: a save written while Fear was fractional loads as the whole
+  // number the shop can actually spend, and never as 6.3.
+  merged.meta.fear = Math.max(0, Math.floor(Number(merged.meta.fear) || 0));
   merged.meta.totalRoundsPlayed = Math.max(0, Math.floor(merged.meta.totalRoundsPlayed || 0));
   merged.meta.bestRoundReached = Math.max(0, Math.floor(merged.meta.bestRoundReached || 0));
 
@@ -1934,11 +2561,31 @@ function normalizeState(raw) {
   }
   merged.upgrades.purchased = purchased;
 
+  // An unknown ability id is dropped rather than carried: a save that names an ability the
+  // build no longer has would otherwise show a bar entry nothing can cast. Duplicates are
+  // collapsed too, so a double-write cannot make one purchase look like two.
+  merged.round.purchasedAbilityIds = Array.isArray(merged.round.purchasedAbilityIds)
+    ? merged.round.purchasedAbilityIds.filter(
+        (id, index, all) => Boolean(ABILITIES[id]) && all.indexOf(id) === index
+      )
+    : [];
+
+  // A tier is only meaningful for an ability that has tiers, and only up to the last one it
+  // actually defines - so shortening the ladder in the catalogue cannot strand a save above
+  // its top rung.
+  const tiers = {};
+  for (const [id, value] of Object.entries(merged.round.abilityTiers || {})) {
+    if (!abilityIsTiered(id)) continue;
+    const tier = clamp(Math.floor(Number(value) || 0), 0, abilityMaxTier(id));
+    if (tier > 0) tiers[id] = tier;
+  }
+  merged.round.abilityTiers = tiers;
+
   merged.round.number = Math.max(1, Math.floor(merged.round.number || 1));
   merged.round.status = merged.round.status === "ended" ? "ended" : "running";
   merged.round.elapsedSeconds = Math.max(0, Number(merged.round.elapsedSeconds) || 0);
   merged.round.wavesResolved = Math.max(0, Math.floor(merged.round.wavesResolved || 0));
-  merged.round.fearEarned = Math.max(0, Number(merged.round.fearEarned) || 0);
+  merged.round.fearEarned = Math.max(0, Math.floor(Number(merged.round.fearEarned) || 0));
   merged.round.blightThreshold = Math.max(1, Math.floor(merged.round.blightThreshold || BLIGHT_THRESHOLD_BASE));
   merged.round.blight = clamp(Math.floor(Number(merged.round.blight) || 0), 0, merged.round.blightThreshold);
   merged.round.blightByLand = normalizeBlightByLand(merged.round.blightByLand);
@@ -1959,15 +2606,14 @@ function normalizeState(raw) {
 
   merged.invader = normalizeInvaderPhases(merged.invader);
   merged.invaders = normalizeInvaderCounts(merged.invaders);
-  merged.invaderDamage = clampInvaderDamageByCounts(merged.invaders, merged.invaderDamage);
+  merged.invaderDamage = normalizeInvaderDamage(merged.invaders, merged.invaderDamage);
   merged.dahan = normalizeDahanCounts(merged.dahan);
   merged.essence = normalizeEssencePools(merged.essence);
   merged.resources.energy = Math.max(0, Math.floor(merged.resources.energy || 0));
 
   merged.abilities = normalizeAbilities(merged, merged.abilities);
-  merged.pendingAbilityTarget = merged.abilities[merged.pendingAbilityTarget]
-    && ABILITIES[merged.pendingAbilityTarget]
-    && ABILITIES[merged.pendingAbilityTarget].needsTarget
+  const pendingRecord = abilityRecord(merged, merged.pendingAbilityTarget);
+  merged.pendingAbilityTarget = merged.abilities[merged.pendingAbilityTarget] && pendingRecord && pendingRecord.needsTarget
     ? merged.pendingAbilityTarget
     : null;
 
@@ -2040,12 +2686,12 @@ function saveState(state, storage) {
 const ENGINE_EXPORTS = {
   SAVE_KEY,
   VERSION,
+  TIME_SCALE,
   WAVE_INTERVAL_SECONDS,
   BLIGHT_THRESHOLD_BASE,
   BLIGHT_PER_DAMAGE_SECOND,
   DAHAN_LOSS_PER_DAMAGE_SECOND,
   BLIGHT_FLOOR_FRACTION,
-  DAHAN_CONCENTRATION_CAP,
   DAHAN_ATTACK_INTERVAL_SECONDS,
   DAHAN_ATTACK_DAMAGE,
   DAHAN_PER_ROUND_START_BASE,
@@ -2053,6 +2699,9 @@ const ENGINE_EXPORTS = {
   DEFEAT_FX_MS,
   MAX_TICK_SECONDS,
   FEAR_PER_POWER,
+  FEAR_PER_WAVE,
+  EXPLORE_UNRESTRICTED_FROM_WAVE,
+  ENERGY_PER_POWER,
   UNIT_STATS,
   INVADER_TYPES,
   INVADER_TERRAINS,
@@ -2099,14 +2748,27 @@ const ENGINE_EXPORTS = {
   upgradeCost,
   upgradeTotals,
   purchaseUpgrade,
+  spiritAbilityIds,
   unlockedAbilityIds,
+  lockedAbilityIds,
+  abilityIsUnlocked,
+  abilityUnlockCost,
+  unlockAbility,
+  abilityIsTiered,
+  abilityMaxTier,
+  abilityTier,
+  abilityRecord,
+  abilityUpgradeCost,
+  upgradeAbility,
   abilityCooldownSeconds,
   abilityIsReady,
   abilityLegalLand,
   abilityLegalLands,
-  washAwaySourceLand,
-  washAwayDestination,
-  strongestInvaderType,
+  pushableCount,
+  pushDestinations,
+  pushDestination,
+  applyPushFrom,
+  riversBountyLand,
   waveLands,
   effectiveSelectedLand,
   landRenderStates,
@@ -2114,9 +2776,14 @@ const ENGINE_EXPORTS = {
   invaderDamageInLand,
   triggerAbility,
   resolveAbilityTarget,
-  applyDamageToInvaderType,
+  livingUnits,
+  applyDamage,
+  applyDamageToEachInvader,
   spendDahanAttack,
   gainFearFromDefeat,
+  gainFearFromWave,
+  gainEnergyFromDefeat,
+  resolveAutoBoon,
   addBlight,
   blightReached,
   resolveLandCombat,
@@ -2141,6 +2808,8 @@ const ENGINE_EXPORTS = {
   createDahanCounts,
   createBlightByLand,
   createProgressByLand,
+  normalizeInvaderCounts,
+  normalizeInvaderDamage,
   normalizeState,
   migrateSave,
   loadState,

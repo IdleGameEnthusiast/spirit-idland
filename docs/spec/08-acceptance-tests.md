@@ -30,17 +30,18 @@ files are listed by hand in `tests.html`; adding one means adding a `<script>` l
 ## Round Setup Checks
 
 1. A fresh round starts with `round.status = "running"`, `round.blight = 0`,
-   `round.elapsedSeconds = 0`, and every ability's `cooldownRemaining` at 0.
+   `round.elapsedSeconds = 0`, and every *unlocked* ability's `cooldownRemaining` at 0. The
+   `abilities` map holds one slot per unlocked ability and no slot for a locked one.
 2. Round setup seeds Dahan per `roundStartDahan` plus every purchased `dahan_reinforcement`
    tier — none are dropped, however many are bought.
 3. However deep reinforcement is bought, no two lands end round setup more than
    `DAHAN_MAX_SPREAD` Dahan apart: no land reaches 3 while another is still empty.
 4. Round setup seeds `round.blightThreshold` from `BLIGHT_THRESHOLD_BASE` plus any purchased
    `blight_resilience` tiers.
-5. Round setup clears `invaders` and `invaderDamage` to zero everywhere and resets the
-   invader track, then runs the opening Discover: at least one land holds an explorer at
-   second zero, every seeded land is of the terrain now in the Build slot, and nothing but
-   explorers stands on the board.
+5. Round setup clears `invaders` and `invaderDamage` everywhere and resets the invader track,
+   then runs the opening Discover: at least one land holds an explorer at second zero, every
+   seeded land is of the terrain now in the Build slot, nothing but explorers stands on the
+   board, and every one of them arrives at full health.
 6. The opening Discover is not a wave: `wavesResolved` is 0, `waveTimerRemaining` is a full
    `WAVE_INTERVAL_SECONDS`, and no Blight has accrued.
 7. The opening Discover never draws a terrain it cannot seed — over many rounds it never
@@ -107,6 +108,63 @@ The fight is continuous. Every check here is about a *rate*, because the rates a
    the cooldown.
 6. An ability that needs no land applies immediately on trigger with no `pendingAbilityTarget`
    change.
+7. An ability that finds nothing to act on returns false and leaves its cooldown unspent.
+
+### Applying Damage
+
+The kill-first rule, shared by every ability and by the Dahan strike.
+
+8. 2 damage into 4 explorers, 2 towns and 2 cities takes a **town** — the biggest kill it can
+   afford — not two explorers and not a scratch on a city.
+9. With one of those cities already at 2 health, the same 2 damage takes the **city**: a tie
+   on health goes to the higher tier.
+10. 1 damage into that land takes an explorer.
+11. With no kill available, all of it lands on the strongest thing standing — and within a
+    tier, on the one already closest to falling.
+12. Damage left over after a kill carries to the next target.
+13. Damage the land cannot absorb is left unspent, and pays nothing for what it did not kill.
+14. Two units of one type carry their wounds independently.
+15. `invaderDamage[land][type]` always holds one entry per living unit, each in
+    `[0, health-1]`, sorted worst-first — after waves, strikes, pushes and abilities alike.
+
+### Pushing
+
+16. Towns are pushed before explorers; cities are never pushed.
+17. The destination is an adjacent land holding no invaders, preferring a coastal one, and
+    among equals the **lowest land id** — the same destination every time, never random.
+18. Each pushed unit carries its own wound with it, exactly.
+19. A land with nothing pushable, or with no empty neighbour, is not a legal push target.
+
+### The Innate Power
+
+20. It opens unlocked at tier 1, free, on an 8-beat cooldown.
+21. Tier 2 (16 beats) deals 2 damage and pushes up to 3; the damage still lands when there is
+    nowhere to push, and the cast still counts.
+22. Tier 3 (24 beats) deals 2 to **each** invader individually: against 4 explorers, 2 towns and 2
+    cities it clears everything but the cities and leaves both of those at 1 health.
+23. Buying a tier spends its Energy, swaps the ability wholesale, and hands it back **ready**.
+24. The ladder is 50 then 250, and refuses past the top.
+
+### Energy and the Ability Lock
+
+25. A fresh round has exactly its `startingAbilityIds` unlocked; the rest of the kit is locked
+    and listed in kit order.
+26. A locked ability cannot be triggered and holds no cooldown slot.
+27. Buying one spends that ability's own `unlockCost` — 5, 10, 20 — and hands it over **ready**.
+28. Too little Energy buys nothing, and an ability already owned cannot be bought twice.
+29. **A new round takes back the Energy, every unlock bought with it, and every Innate tier.**
+    Fear is untouched by the same reset.
+30. A defeated invader pays Energy equal to its attack: explorer 1, town 2, city 3.
+31. Damage that defeats nothing pays nothing, and a Dahan casualty pays nothing.
+
+### River's Bounty
+
+32. It resolves on the trigger itself, with no `pendingAbilityTarget`, and **creates** a Dahan
+    rather than moving one — no other land loses anything.
+33. It picks the land with the fewest Dahan among those holding invaders; a contested land
+    beats an emptier quiet one, and ties go to the lowest land id.
+34. With no invaders anywhere it still resolves, into the land with the fewest Dahan on the
+    board. It is, with `boon_of_vigor`, one of the two abilities that never fail.
 
 ## Fear and Shop Checks
 
@@ -138,8 +196,10 @@ The fight is continuous. Every check here is about a *rate*, because the rates a
 
 1. The Blight meter, wave timer, and Dahan strike timer are visible without opening any panel,
    at all times while a round is running.
-2. Every ability's state (ready, on cooldown with remaining time, or armed) is visible
-   without hovering.
+2. Every ability's state (locked with its price, ready, on cooldown with remaining time, or
+   armed) is visible without hovering.
+2b. The Energy purse is visible in the ability panel, and a locked ability reads as
+   affordable or not without the player comparing two numbers by hand.
 3. A land under a legal ability target renders distinctly from a land that isn't.
 4. The shop appears the instant `round.status` becomes `ended`, with no extra
    acknowledge-the-loss click required.
