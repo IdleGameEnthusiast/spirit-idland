@@ -6,8 +6,7 @@ Define the canonical save shape for the round-based redesign.
 
 ## Rules
 
-- Field names in this document are the target shape; the live implementation has not been
-  migrated to it yet (see [index.md](./index.md)).
+- Field names in this document are the live shape, implemented in `engine.js`.
 - Save files must carry `schemaVersion`.
 - New fields must normalize safely when older saves are loaded.
 
@@ -36,6 +35,7 @@ Define the canonical save shape for the round-based redesign.
   "ui": {
     "language": "de",
     "defeatFx": null,
+    "blightFx": null,
     "selectedLand": null
   },
   "round": {
@@ -43,9 +43,12 @@ Define the canonical save shape for the round-based redesign.
     "status": "running",
     "elapsedSeconds": 0,
     "blight": 0,
+    "blightByLand": { "1": 0, "...": 0, "8": 0 },
     "blightThreshold": 10,
     "waveTimerRemaining": 8,
-    "wavesResolved": 0
+    "wavesResolved": 0,
+    "fearEarned": 0,
+    "abilityCooldownMult": 1
   },
   "invader": {
     "ravage": null,
@@ -115,9 +118,28 @@ them:
 - `blightThreshold` is copied from the current permanent-upgrade baseline at round setup, so
   a mid-round upgrade purchase (not currently possible; upgrades only apply between rounds)
   can't retroactively change an already-running round's threshold.
-- `waveTimerRemaining` counts down in whole seconds; at 0 a wave resolves and it resets to
-  `WAVE_INTERVAL_SECONDS`.
+- `waveTimerRemaining` counts down in real seconds and is stored as a float; the HUD rounds
+  it up for display. At 0 a wave resolves and it resets to `WAVE_INTERVAL_SECONDS`.
 - `wavesResolved` is a display/debug counter, incremented once per wave.
+
+### Fields added during implementation
+
+Four fields the first draft of this contract did not have. Each earns its place:
+
+- **`round.blightByLand`** — per-land Blight tally, summing to `round.blight`. The original
+  contract said Blight was "a single value for the whole round, not tracked per land", but
+  `wash_away` targets "the most-Blighted ravaged land", which that shape cannot answer. The
+  tally is also what lets the board show *which* land cost the round, which
+  [06-ui-contract.md](./06-ui-contract.md) asks for. `round.blight` stays the authoritative
+  total; the tally is a breakdown of it, never a second source of truth.
+- **`round.fearEarned`** — Fear earned in this round alone. `meta.fear` is the purse and
+  never resets; the shop's "you earned N this round" line needs the delta, and recomputing
+  it from a purse that the player also spends from is not possible.
+- **`round.abilityCooldownMult`** — the cooldown multiplier copied from the upgrade baseline
+  at round setup, for exactly the reason `blightThreshold` is copied: a purchase must not
+  shorten a cooldown that is already ticking.
+- **`ui.blightFx`** — the transient counterpart to `ui.defeatFx`, marking the lands that
+  just took Blight. Same lifetime (`DEFEAT_FX_MS`), same normalize-to-null rule.
 
 ## `abilities` Shape
 
@@ -167,9 +189,14 @@ mid-turn card hand to a mid-round ability target), migration is a **hard reset**
 - `meta.fear` starts at `0` — the old build's tracked `resources.fear` is not carried over,
   since it was never spendable there and porting an arbitrary head start would distort the
   new shop's early balance.
-- Everything else initializes from `createFreshRoundState()` as if no save existed.
-- The migration logs a one-line notice so a returning player understands why their old run
-  is gone, rather than assuming data loss is a bug.
+- Everything else initializes from `createFreshGameState()` as if no save existed, with one
+  exception: **`ui.language` survives**. It is a display preference, not run state, and
+  coming back to a wiped run in the wrong language would read as a second bug on top of the
+  first.
+- The migration logs a one-line notice naming the old version, so a returning player
+  understands why their old run is gone rather than assuming data loss is a bug.
+- Anything that is not a `3.0.0` save takes this path — an older version, a corrupt file, a
+  hand-edited one. There is no partial-recovery branch.
 
 This is a one-time cost specific to this redesign, not a precedent — future schema bumps
 within the round-based shape should still migrate field by field where a mapping exists.

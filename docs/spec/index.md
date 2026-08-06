@@ -3,11 +3,17 @@
 This folder specifies the round-based redesign of the prototype: a real-time survival round
 with a permanent meta-progression shop, replacing the earlier turn-based slice.
 
-**Status: spec-first.** This pack now describes the *target* design. The live code
-(`app.js`, `index.html`) still runs the older turn-based, presence-driven prototype;
-it has not caught up yet. Implementation follows this spec incrementally — see
-[Implementation Microtasks](../tasks/implementation-microtasks.md) for the build plan.
-Anything a doc calls "implemented" is aspirational until its microtask is marked complete.
+**Status: implemented.** The round-based design described here is live. The turn-based
+prototype it replaced (`app.js`) is deleted; the build is now `engine.js` (all rules, no
+DOM) plus `ui.js` (all DOM, no rules), loaded as two classic scripts by `index.html`.
+
+The loop is playable end to end — a round resolves itself, loses to Blight, hands off to
+the shop, and starts again stronger. What is *not* settled is the balance: every number in
+[04 Economy and Formulas](./04-economy-formulas.md) is still the placeholder pass, and one
+of them is known to be wrong — see [Known Balance Problems](#known-balance-problems) below.
+
+Run it by opening `index.html` from disk; no server and no build step. Run the regression
+suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 
 ## Reading Order
 
@@ -44,19 +50,36 @@ Anything a doc calls "implemented" is aspirational until its microtask is marked
   counterattack.
 - Per-land Essence generation and presence placement range.
 
-## Not Yet Decided
+## Known Balance Problems
 
-- The exact ability kit's effects and numbers (cooldowns, damage, reinforcement amounts).
-- The permanent upgrade shop's full catalogue and costs.
-- Blight's exact gain formula and threshold value, beyond the first placeholder pass.
+Found by playing the implemented loop, not by reading it. Both are numbers, not structure.
+
+- **An unattended round earns zero Fear.** Every land starts with at most 1 Dahan (2 health),
+  and by the time a land is Ravaged it holds enough invaders to deal 3+ damage, so the Dahan
+  die before they can counterattack — every round, in every land. Fear therefore only ever
+  comes from abilities. The meta loop still works, but only for a player who acts; an idle
+  first round buys nothing at all.
+- **A round lasts about 64 seconds** (8 waves at the default threshold of 10). That is short
+  enough that the shop arrives before the board is legible.
+
+Neither is a design flaw in the loop; both are the placeholder numbers meeting each other.
+See [Implementation Microtasks](../tasks/implementation-microtasks.md#what-to-build-next)
+for the shortlist of fixes.
+
+## Still Open
+
+- The exact ability kit's effects and numbers (cooldowns, damage, reinforcement amounts) —
+  implemented as specified, but never balanced.
+- The permanent upgrade shop's catalogue beyond the three placeholder entries, and its cost
+  curve.
 - Whether a spent resource (Energy or otherwise) ever returns alongside ability cooldowns.
-- Whether a round in progress needs to survive a page reload, or only meta-state between
-  rounds does.
+  `resources.energy` stays parked in the schema until this is answered.
+- Whether a round in progress needs to survive a page reload. It currently does: a save
+  resumes exactly as written, crediting nothing for the time the tab was closed.
 
-## Current Playable Goals
+## Playable Goals — Met
 
-- First few seconds of a round should show invaders and Dahan already resolving
-  automatically, so the round reads as a countdown, not a queue of turns.
-- First round should let the player trigger at least one ability and watch Blight climb.
-- Losing a round should hand off cleanly into spending Fear in the upgrade shop.
-- A save can be resumed later without losing Fear, purchased upgrades, or round count.
+- A round resolves invaders and Dahan on its own clock, with no queue of turns. ✓
+- The player can trigger abilities against a live board and watch Blight climb. ✓
+- Losing a round hands off into the shop with no acknowledge-the-loss click. ✓
+- A save resumes without losing Fear, purchased upgrades, or round count. ✓

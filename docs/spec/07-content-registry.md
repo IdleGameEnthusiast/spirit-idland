@@ -7,8 +7,7 @@ upgrades, terrain, board, and units.
 
 ## Rules
 
-- IDs in this file are the target IDs for the round-based design; they are not all live in
-  code yet (see [index.md](./index.md)).
+- Every ID in this file is live in `engine.js`.
 - Content documented here is limited to what this pack actually specifies.
 - Content marked placeholder is for internal consistency while the loop is built, not a
   balancing decision.
@@ -69,16 +68,22 @@ for the numbers.
 
 - Cooldown: 15s
 - Needs target: no
-- Effect: push all explorers/towns out of the most-Blighted ravaged land into an adjacent
-  land.
+- Effect: push all explorers/towns out of the most-Blighted land into an adjacent land.
+  "Most-Blighted" reads `round.blightByLand`, restricted to lands that still hold something
+  pushable; the destination is the adjacent land with the fewest invaders. Both tie-break on
+  the lowest land id — see
+  [04-economy-formulas.md](./04-economy-formulas.md#tie-breaks-the-one-click-model-forced).
+- Cities do not move. Carried damage travels with the units.
 
 #### `flash_floods`
 
 - Cooldown: 12s
 - Needs target: yes, one land holding at least one invader
-- Effect: 2 damage to one invader type in the clicked land. (The turn-based wetlands damage
-  bonus is dropped for now — pending a decision on whether terrain should still matter to
-  abilities.)
+- Effect: 2 damage to the **highest tier present** in the clicked land — cities, then towns,
+  then explorers. The one-click model has no room to ask which type, and reusing the
+  counterattack's rule means "hits the biggest thing standing" is one rule in the game
+  rather than two. (The turn-based wetlands damage bonus is dropped for now — pending a
+  decision on whether terrain should still matter to abilities.)
 
 #### `rivers_bounty`
 
@@ -104,10 +109,15 @@ for the numbers.
 See [05-progression.md](./05-progression.md#placeholder-upgrade-catalogue) for the full
 table and cost-curve note.
 
-- `dahan_reinforcement` — repeatable, +1 starting Dahan per tier.
-- `blight_resilience` — repeatable, +1 Blight threshold per tier.
-- `swift_currents` — repeatable, -5% ability cooldowns per tier, diminishing.
+- `dahan_reinforcement` — repeatable, +1 starting Dahan per tier. `baseCost` 4.
+- `blight_resilience` — repeatable, +1 Blight threshold per tier. `baseCost` 6.
+- `swift_currents` — repeatable, -5% ability cooldowns per tier, diminishing. `baseCost` 5,
+  capped at tier 12.
 - `unlock_<ability_id>` — one-time, adds an ability to the active spirit's `abilityIds`.
+  **The machinery is implemented and has nothing to unlock**: all four abilities are in the
+  starter kit, so the shop does not list any `unlock_` row today. `unlockedAbilityIds()`
+  already reads these keys, and normalization already accepts them, so a fifth ability is
+  content work and not code work.
 
 ## Terrain Registry
 
@@ -155,8 +165,15 @@ consequences.
 
 ## Localization Registry
 
-- All visible player-facing strings are defined in the `I18N.de` and `I18N.en` tables.
+- All visible player-facing strings are defined in the `I18N.de` and `I18N.en` tables in
+  `engine.js` — including log lines, which the engine writes and the UI only displays.
 - New content must provide both German and English display strings.
+- German strings transliterate umlauts (`ae`, `oe`, `ue`) and the source stays ASCII-only.
+  That is a deliberate robustness choice, not a stylistic one: this file has already been
+  corrupted once by a tool that re-encoded it, and a table of display strings is the worst
+  possible place for a silent mojibake.
+- Lines that name exactly one unit use the singular labels (`townsOne`, `citiesOne`), so a
+  build log reads "+1 Dorf" rather than "+1 Doerfer".
 
 ## Acceptance
 

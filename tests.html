@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spirit Idland - regression harness</title>
+  <!--
+    Open this file directly, or run it headless:
+      msedge --headless --disable-gpu --dump-dom tests.html
+    Test files are listed below by hand. There is no build step in this project and the
+    tests do not get one either.
+  -->
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 24px 28px 60px;
+      background: #0a1620; color: #e8eef2;
+      font: 14px/1.5 "Consolas", "SF Mono", ui-monospace, monospace;
+    }
+    h1 { font-size: 18px; letter-spacing: 0.04em; margin: 0 0 4px; }
+    .hint { color: #7f95a3; margin: 0 0 18px; }
+    #summary {
+      display: inline-block; padding: 6px 14px; border-radius: 4px;
+      font-weight: 700; margin-bottom: 18px;
+      background: rgba(124, 198, 116, 0.16); color: #9fdd97;
+      border: 1px solid rgba(124, 198, 116, 0.4);
+    }
+    #summary[data-status="fail"] {
+      background: rgba(231, 103, 85, 0.16); color: #f0a294;
+      border-color: rgba(231, 103, 85, 0.45);
+    }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; padding: 3px 0; }
+    li.fail { grid-template-columns: 48px minmax(0, 1fr); color: #f0a294; }
+    .mark { color: #6f8a99; }
+    li.fail .mark { color: #e76755; font-weight: 700; }
+    .why { grid-column: 2; color: #f0a294; opacity: 0.85; padding-left: 12px; }
+    .name { color: #cfe0ea; }
+    li.pass .name { color: #a9bfcc; }
+  </style>
+</head>
+<body>
+  <h1>Spirit Idland regression harness</h1>
+  <p class="hint">docs/spec/08-acceptance-tests.md</p>
+  <div id="summary" data-status="pass">running...</div>
+  <ul id="results"></ul>
+
+  <script src="engine.js"></script>
+  <script src="tests/harness.js"></script>
+  <script src="tests/board.test.js"></script>
+  <script src="tests/setup.test.js"></script>
+  <script src="tests/wave.test.js"></script>
+  <script src="tests/ravage.test.js"></script>
+  <script src="tests/blight.test.js"></script>
+  <script src="tests/ability.test.js"></script>
+  <script src="tests/shop.test.js"></script>
+  <script src="tests/save.test.js"></script>
+  <script src="tests/landstate.test.js"></script>
+  <script src="tests/browser.js"></script>
+</body>
+</html>

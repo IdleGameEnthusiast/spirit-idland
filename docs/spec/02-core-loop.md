@@ -156,6 +156,19 @@ Unchanged from the turn-based build:
   waves within a round. There is no "end turn" to clear it against anymore — it only clears
   on round reset.
 
+## What The Player Actually Controls
+
+Worth naming, because "Blight only goes up and the round always ends" reads at first like
+the player has no lever at all. They have two, both indirect:
+
+- **A land with no invaders adds no Blight when its terrain Ravages.** Clearing a land
+  outright — with `flash_floods`, or by pushing its occupants away with `wash_away` — denies
+  the Blight that land would have cost. This is the main lever.
+- **A land with Dahan in it adds 1 Blight instead of 2.** Keeping Dahan alive, or seeding
+  more with `rivers_bounty`, halves what an undefended land costs.
+
+Neither stops the round; both buy waves. How many waves you bought is the score.
+
 ## Acceptance
 
 - A round's Blight only increases; nothing in this slice reduces it.

@@ -306,8 +306,12 @@ Worth knowing before changing any of this.
 
 ## Verification
 
-The board, phases, adjacency, and colour rules were verified end to end against the
-turn-based build (62 headless checks). That verification predates the round-based redesign
-and covered click-driven phase resolution and player-assigned counterattacks specifically —
-it needs to be re-run and extended once the automatic wave timer and auto-counterattack are
-implemented, not assumed to still hold as-is.
+The board, phases, adjacency, and colour rules were originally verified against the
+turn-based build (62 headless checks). That verification covered click-driven phase
+resolution and player-assigned counterattacks, so it was **not** carried over on trust.
+
+The board invariants are now re-asserted from scratch in `tests/board.test.js` — eight
+lands, two per terrain, three coastal, mountains landlocked, fourteen edges, symmetric
+adjacency, no terrain pair touching — and the phase rules in `tests/ravage.test.js`,
+including the Discover cases this board's landlocked mountains make into a third of every
+early round. See [08-acceptance-tests.md](./08-acceptance-tests.md) for how to run them.

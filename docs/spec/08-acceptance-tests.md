@@ -2,15 +2,30 @@
 
 ## Intent
 
-Define the regression checks for the round-based redesign, once implemented.
+Define the regression checks for the round-based redesign, and say how to run them.
 
 ## Rules
 
 - Each shipped mechanic must have at least one concrete verification step.
-- Manual smoke tests are acceptable until an automated test harness exists.
 - Save/load and state normalization remain mandatory regression checks.
 - This checklist targets the round-based design; the retired turn-based checklist is
   superseded, not merged with this one.
+
+## Running The Suite
+
+The checks below are automated. There is no build step and no package manager, for the same
+reason the game has neither: a browser is the one runtime this project is guaranteed to
+have.
+
+```txt
+open tests.html                                     in any browser
+powershell -File tests\headless.ps1                 headless Edge or Chrome, exits 1 on failure
+node tests/run.js [name-filter]                     if node happens to be installed
+```
+
+`tests/harness.js` injects the engine's clock and RNG, which is why a suite that plays
+dozens of whole rounds finishes in milliseconds and produces the same board every run. Test
+files are listed by hand in `tests.html`; adding one means adding a `<script>` line.
 
 ## Round Setup Checks
 
@@ -110,14 +125,30 @@ Define the regression checks for the round-based redesign, once implemented.
 
 ## Current Validation Status
 
-- Code-level validation currently relies on editor error checks plus manual browser smoke
-  testing.
-- No automated browser or unit test suite is implemented yet.
-- None of the checks in this file are passing yet, since the round-based design is not yet
-  implemented; see [Implementation Microtasks](../tasks/implementation-microtasks.md).
+**109 automated checks, all passing.** Coverage by file:
+
+| File | Covers |
+| --- | --- |
+| `tests/board.test.js` | Board invariants and adjacency (09) |
+| `tests/setup.test.js` | Round setup, upgrade baseline, round reset |
+| `tests/wave.test.js` | Wave timing, phase order, track shift, the tick cap |
+| `tests/ravage.test.js` | Combat math, auto-counterattack, Build, Discover |
+| `tests/blight.test.js` | Blight gain, the undefended bonus, round end |
+| `tests/ability.test.js` | Cooldowns, arming, cancelling, each ability's effect |
+| `tests/shop.test.js` | Fear persistence, purchases, tiers, next round |
+| `tests/save.test.js` | Round-trip, no offline credit, migration, normalization |
+| `tests/landstate.test.js` | Land state precedence (06) |
+
+Not automated, and verified by hand instead:
+
+- Rendering itself — that the island draws, that chips sit on their lands, that colours are
+  tellable apart. Screenshots via headless Edge, not assertions.
+- The click wiring was verified end to end by driving the real controls in a headless
+  browser (arm, dim, illegal click, legal click, cancel), but that probe was not kept as a
+  standing test; it needs a DOM the harness does not currently build.
 
 ## Acceptance
 
-- A contributor can manually verify every shipped round-loop mechanic from this file.
-- The tests reflect the round-based design, not the retired turn-based prototype.
+- A contributor can verify every shipped round-loop mechanic from this file. ✓
+- The tests reflect the round-based design, not the retired turn-based prototype. ✓
 - New mechanic work should extend this checklist before expanding scope.

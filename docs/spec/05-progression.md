@@ -40,15 +40,21 @@ shop it funds, and what carries across rounds versus what resets.
 First-draft shop entries, for internal consistency while the loop is being built. Costs and
 magnitudes are not balanced yet.
 
-| Upgrade id | Effect | Repeatable |
-| --- | --- | --- |
-| `dahan_reinforcement` | +1 starting Dahan | Yes, stacking |
-| `blight_resilience` | +1 Blight threshold | Yes, stacking |
-| `swift_currents` | -5% to all ability cooldowns | Yes, stacking, diminishing |
-| `unlock_<ability_id>` | Unlocks a new ability for the ability bar | No, one-time |
+| Upgrade id | Effect | Repeatable | Base cost |
+| --- | --- | --- | --- |
+| `dahan_reinforcement` | +1 starting Dahan | Yes, stacking | 4 |
+| `blight_resilience` | +1 Blight threshold | Yes, stacking | 6 |
+| `swift_currents` | -5% to all ability cooldowns | Yes, stacking, diminishing, max tier 12 | 5 |
+| `unlock_<ability_id>` | Unlocks a new ability for the ability bar | No, one-time | — |
 
 Costs scale with the tier already purchased so the shop stays a real choice instead of a
-flat checklist; the exact curve is a balancing task, not a loop mechanic.
+flat checklist; the curve is `baseCost * 1.6 ^ tier`, rounded to whole Fear. It is a
+placeholder — see
+[04-economy-formulas.md](./04-economy-formulas.md#upgrade-cost-curve).
+
+`unlock_<ability_id>` has no row in the shop today, because all four abilities ship in the
+starter kit and there is nothing to unlock. The path that reads these keys is implemented
+and normalization accepts them, so adding a fifth ability is content work.
 
 ## What Is Not Yet Progression
 
@@ -66,8 +72,18 @@ turn-based build's `progression` object did.
 ## Acceptance
 
 - A reader can tell which progression systems are functional today versus placeholder
-  content, per [Implementation Microtasks](../tasks/implementation-microtasks.md).
-- Fear earned in a round survives that round ending, regardless of outcome.
+  content, per [Implementation Microtasks](../tasks/implementation-microtasks.md). ✓
+- Fear earned in a round survives that round ending, regardless of outcome. ✓
 - A purchased upgrade is still in effect after any number of further rounds, without being
-  re-purchased.
-- `meta.bestRoundReached` never decreases.
+  re-purchased. ✓
+- `meta.bestRoundReached` never decreases. ✓
+
+All four are asserted in `tests/shop.test.js`, including the case that matters most for a
+meta loop: a tier bought after round 1 still applies in round 5.
+
+## Known Gap
+
+Progression only turns over if a round produces Fear, and at the current placeholder numbers
+an unattended round produces none — the Dahan die before they can counterattack. The
+machinery is right; the inputs are not. See
+[index.md](./index.md#known-balance-problems).

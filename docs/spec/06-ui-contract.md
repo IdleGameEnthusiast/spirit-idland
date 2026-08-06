@@ -12,8 +12,8 @@ island board, and the between-round shop.
   panel.
 - A round in progress must communicate, at a glance and without opening any panel, how close
   Blight is to ending it.
-- The shop replaces the board's action area only while `round.status` is `ended`; the board
-  itself stays visible underneath as the frozen result of the round just lost.
+- The shop appears in the side rail while `round.status` is `ended`; the board stays visible
+  beside it as the frozen result of the round just lost.
 
 ## Required Screen Sections
 
@@ -36,12 +36,12 @@ island board, and the between-round shop.
 - The board itself: eight lands drawn as one island, ocean along the coast edge, cliffs on
   the others
 - Per land, on the board: land number, terrain, invader glyphs with counts (nonzero only),
-  and Dahan pips
-- On the land the pending invader phase (current wave, mid-resolution) is acting on: a
-  colour-coded banner naming what's happening there
+  Dahan pips, and the Blight already taken there when it is nonzero
+- On a land the next wave will Ravage: a colour-coded banner naming the damage it will take,
+  the Dahan it will cost, and the counterattack that would answer
 - On the land a pending ability target applies to: highlight it as a legal click
 - A land detail panel for one selected land: invader counts with partial-HP hints, Dahan,
-  and its neighbours
+  Blight taken here, and its neighbours
 
 4. Between-round shop (visible only while `round.status` is `ended`)
 - The round just lost: its number and the Fear it earned
@@ -85,12 +85,25 @@ A land renders in at most one state, listed by precedence:
 | State | Meaning |
 | --- | --- |
 | `legal` | A valid click for the currently armed ability. |
-| `wave-active` | A land the wave currently resolving is acting on. |
+| `wave-active` | A land the next wave's Ravage will act on. |
 | `selected` | Open in the detail panel. |
-| `out` | Dimmed. Not a legal target for the armed ability, and not part of the active wave step. |
+| `out` | Dimmed. Not a legal target for the armed ability. |
+| `idle` | Nothing pending here. |
 
 Dimming what isn't a legal target is what makes an ability's targeting rule teachable without
 a rulebook.
+
+Two clarifications the implementation forced:
+
+- **`wave-active` means the *next* wave, not one mid-resolution.** A wave resolves
+  atomically inside a single tick, so there is no interval during which the player could see
+  a Ravage "in progress". What is worth showing is the wave being counted down to, which is
+  also the only one the player can still act against.
+- **Arming an ability is exclusive.** While `pendingAbilityTarget` is set, every land reads
+  as either `legal` or `out` — a wave target that is not a legal click still dims. Legality
+  is the only question on screen at that moment, and a second highlight competing with it
+  would blunt exactly the teaching that dimming is for. The selection ring is drawn
+  independently of the state, so the selected land never disappears.
 
 ## Live Update Rules
 
@@ -123,12 +136,39 @@ a rulebook.
 - Blight gain should be visible at the moment it happens, not only reflected in the meter's
   end value — the player should see *which* land just cost them Blight.
 
+## Layout
+
+Implemented as a twelve-column grid over three regions:
+
+- **HUD**, full width: four tiles (Blight, next wave, Fear, round) plus the invader track
+  and the spirit's trait line.
+- **Board**, eight columns: map hint, island, land detail panel.
+- **Rail**, four columns: ability bar, then the shop when a round has ended, then the log.
+  A single flex column, so the shop appearing pushes the log down rather than displacing
+  the board.
+
+Below 1180px the board and rail each take the full width; below 720px the HUD drops from
+four tiles to two, because a Blight meter narrower than its own label stops being a meter.
+
 ## Acceptance
 
-- A player can tell how close the round is to ending without opening any panel.
-- Every ability's state (ready, on cooldown, armed) is visible without hovering.
-- A player can tell what the current wave step is doing, and where, without it needing to be
-  explained.
-- The board is legible at a glance: which lands are under pressure, where Dahan still stand.
+- A player can tell how close the round is to ending without opening any panel. ✓
+- Every ability's state (ready, on cooldown, armed) is visible without hovering. ✓
+- A player can tell what the next wave will do, and where, without it needing to be
+  explained. ✓
+- The board is legible at a glance: which lands are under pressure, where Dahan still
+  stand, which lands have already cost Blight. ✓
 - The shop is reachable the instant a round ends, with no extra click to "acknowledge" the
-  loss first.
+  loss first. ✓
+
+## Implementation Notes
+
+- `ui.js` holds every DOM call and no rules; `engine.js` holds every rule and no DOM. The
+  land-state precedence above lives in `engine.js` precisely because it is a rule, which is
+  what lets the suite assert it.
+- Three render caches gate the expensive work: the board rebuilds only when its own
+  signature changes, the ability bar only when the ability set or language changes, the shop
+  only when Fear or a tier changes. The HUD, the map hint and the ability countdowns are
+  patched in place on every tick instead — no node is created ten times a second.
+- The dev fixture `vis.html` paints a mid-round board for layout work without playing to it;
+  `vis.html?ended` does the same for the shop.

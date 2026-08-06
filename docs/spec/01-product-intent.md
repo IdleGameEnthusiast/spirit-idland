@@ -24,15 +24,18 @@ every wave I turn back, and every Dahan I keep standing, buys the next attempt m
 
 ## Current Session Promise
 
+All four are live. The one asterisk is on the third, and it is a balance problem, not a
+structural one — see [index.md](./index.md#known-balance-problems).
+
 - In the first few seconds of a round: see invaders and Dahan already resolving
-  automatically, and understand that the round is a countdown, not a queue of turns.
+  automatically, and understand that the round is a countdown, not a queue of turns. ✓
 - Within the first round: trigger at least one ability, see its cooldown start, and watch
-  Blight visibly climb toward its threshold.
+  Blight visibly climb toward its threshold. ✓
 - On losing a round: see the Fear earned, and spend it on at least one permanent upgrade
-  before the next round starts.
-- On return after leaving the page: resume the meta-progression (Fear, purchased upgrades,
-  round count) exactly as saved. Whether an in-progress round itself survives a reload is
-  still open — see [03-state-contract.md](./03-state-contract.md).
+  before the next round starts. ✓ *— but a player who triggers no abilities earns no Fear at
+  the current numbers, so there is nothing to spend.*
+- On return after leaving the page: resume exactly as saved, including an in-progress round,
+  which is credited nothing for the time the tab was closed. ✓
 
 ## Design Pillars
 
@@ -57,7 +60,7 @@ every wave I turn back, and every Dahan I keep standing, buys the next attempt m
 
 - A new reader can explain the round loop (active abilities, passive battle, Blight loss,
   Fear shop, reset) in under 60 seconds.
-- The difference between this round-based target design and the retired turn-based
-  prototype is explicit.
-- The docs match the target design this pack specifies, with implementation status tracked
-  in [Implementation Microtasks](../tasks/implementation-microtasks.md).
+- The difference between this round-based design and the retired turn-based prototype is
+  explicit.
+- The docs match the shipped build, with remaining work tracked in
+  [Implementation Microtasks](../tasks/implementation-microtasks.md#what-to-build-next).

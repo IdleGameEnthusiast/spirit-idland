@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Spirit Idland - Erste Spielversion</title>
+  <title>Spirit Idland</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
@@ -52,10 +52,6 @@
           <rect x="3.7" y="13.2" width="8.6" height="1.8" rx="0.8"/>
         </g>
       </symbol>
-      <symbol id="si-presence" viewBox="0 0 16 16">
-        <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="2.2"/>
-        <circle cx="8" cy="8" r="1.7" fill="currentColor"/>
-      </symbol>
     </defs>
   </svg>
 
@@ -65,6 +61,7 @@
   <header class="topbar">
     <div>
       <h1>Spirit Idland</h1>
+      <p><strong id="activeSpiritLabel">Aktiver Geist:</strong> <span id="spiritName">-</span></p>
     </div>
     <div class="topbar-controls">
       <button id="languageToggleBtn" class="small-btn lang-btn">English</button>
@@ -72,43 +69,44 @@
   </header>
 
   <main class="layout">
-    <section class="panel metrics">
-      <h2 id="metricsTitle">Kernwerte</h2>
-      <div class="metric-grid">
-        <article>
-          <h3 id="energyLabel">Energie</h3>
-          <p id="energyValue" class="value">0</p>
-          <small id="energyRate">0/s</small>
+    <!-- Round HUD: everything that decides whether the round is going badly, with no
+         panel to open first. -->
+    <section class="panel hud">
+      <div class="hud-grid">
+        <article class="hud-tile hud-blight">
+          <h3 id="blightLabel">Verderbnis</h3>
+          <p id="blightValue" class="value">0 / 10</p>
+          <div class="meter"><span id="blightFill" class="meter-fill"></span></div>
         </article>
-        <article>
+        <article class="hud-tile hud-wave">
+          <h3 id="waveLabel">Naechste Welle</h3>
+          <p id="waveValue" class="value">8s</p>
+          <div class="meter"><span id="waveFill" class="meter-fill"></span></div>
+        </article>
+        <article class="hud-tile hud-fear">
           <h3 id="fearLabel">Furcht</h3>
           <p id="fearValue" class="value">0</p>
-          <small id="fearRate">0/s</small>
+          <small><span id="waveCountLabel">Wellen</span>: <span id="waveCountValue">0</span></small>
+        </article>
+        <article class="hud-tile hud-round">
+          <h3 id="roundLabel">Runde</h3>
+          <p id="roundValue" class="value">1</p>
+          <small><span id="bestRoundLabel">Beste Runde</span>: <span id="bestRoundValue">0</span></small>
         </article>
       </div>
-      <h4 id="invaderTrackTitle">Invasorenphasen</h4>
-      <small id="invaderTrackHint" class="action-info">Loese die Phasen der Reihe nach auf.</small>
-      <div class="invader-phase-cards">
-        <button type="button" class="invader-phase-card" id="ravagePhaseBtn" data-invader-step="ravage">
-          <strong id="ravageLabel">Verwuesten:</strong>
-          <span id="ravageArea">-</span>
-          <small id="ravagePhaseState" class="invader-phase-state"></small>
-        </button>
-        <button type="button" class="invader-phase-card" id="buildPhaseBtn" data-invader-step="build">
-          <strong id="buildLabel">Bauen:</strong>
-          <span id="buildArea">-</span>
-          <small id="buildPhaseState" class="invader-phase-state"></small>
-        </button>
-        <button type="button" class="invader-phase-card" id="discoverPhaseBtn" data-invader-step="explore">
-          <strong id="discoverLabel">Entdecken:</strong>
-          <span id="discoverArea">-</span>
-          <small id="discoverPhaseState" class="invader-phase-state"></small>
-        </button>
+
+      <h4 id="invaderTrackTitle">Invasorenleiste</h4>
+      <div class="track-strip">
+        <span class="track-slot-ravage"><strong id="ravageLabel">Verwuesten:</strong> <span id="ravageTerrain">-</span></span>
+        <span><strong id="buildLabel">Bauen:</strong> <span id="buildTerrain">-</span></span>
+        <span><strong id="discoverLabel">Entdecken:</strong> <span id="discoverTerrain">-</span></span>
       </div>
-      <button id="executeAllPhasesBtn" class="small-btn">Alle Invasorenphasen ausfuehren</button>
+      <p id="spiritTraits" class="hint"></p>
+    </section>
+
+    <section class="panel board">
       <h2 id="mapTitle">Die Insel</h2>
-      <small id="mapPlanHint" class="action-info">Acht Gebiete, drei an der Kueste. Waehle ein Gebiet fuer Details.</small>
-      <div id="essenceRail" class="essence-rail"></div>
+      <small id="mapPlanHint" class="action-info">Acht Gebiete, drei an der Kueste.</small>
       <div class="board-frame">
         <svg id="islandSvg" viewBox="0 0 760 500" role="group" aria-label="Inselkarte"></svg>
         <div id="landChips" class="board-overlay"></div>
@@ -116,53 +114,31 @@
       <div id="landDetail" class="land-detail"></div>
     </section>
 
-    <section class="panel actions">
-      <h2 id="cardsTitle">Geisterkarten</h2>
-      <h3 id="turnTitle">Rundenablauf</h3>
-      <small id="turnInfo" class="action-info">Waehle pro Runde genau eine Wachstumsoption. Die neuen Systeme sind vorerst Platzhalter.</small>
-      <div class="deck-row">
-        <span><strong id="turnLabel">Runde:</strong> <span id="turnNumber">1</span></span>
-        <span><strong id="growthChosenLabel">Wachstum:</strong> <span id="growthChosenValue">-</span></span>
-      </div>
-      <div id="growthOptions" class="growth-options"></div>
+    <!-- The rail sits beside the board rather than under it, so the shop can appear the
+         instant a round ends without pushing the frozen board off screen. -->
+    <div class="rail">
+      <section class="panel abilities">
+        <h2 id="abilitiesTitle">Faehigkeiten</h2>
+        <small id="abilitiesHint" class="action-info"></small>
+        <div id="abilityBar" class="ability-bar"></div>
+      </section>
 
-      <h3 id="tracksTitle">Geisterleisten</h3>
-      <small id="tracksHint" class="action-info">Praesenz wird von den Leisten genommen. Jede Platzierung deckt den naechsten Wert auf.</small>
-      <div id="spiritTracks" class="spirit-tracks"></div>
+      <section class="panel shop" id="shopPanel" hidden>
+        <h2 id="shopTitle">Zwischen den Runden</h2>
+        <p id="shopSummary" class="action-info"></p>
+        <div class="shop-purse">
+          <span id="shopFearLabel">Verfuegbare Furcht</span>
+          <strong id="shopFearValue">0</strong>
+        </div>
+        <div id="upgradeList" class="upgrade-list"></div>
+        <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
+      </section>
 
-      <button id="endTurnBtn" class="small-btn">Runde beenden</button>
-
-      <div class="deck-row">
-        <span><strong id="discardLabel">Ablage:</strong> <span id="discardCount">0</span></span>
-        <span><strong id="handLabel">Hand:</strong> <span id="handCount">0</span></span>
-      </div>
-      <div id="handCards" class="hand-cards"></div>
-      <small id="playHint" class="action-info"></small>
-      <div id="noFailHint" class="hint">Furcht ist zentral und wird spaeter als Waehrung fuer neue Zykluslogik genutzt.</div>
-    </section>
-
-    <section class="panel spirits">
-      <h2 id="spiritTitle">Geisterfokus (Phase 1)</h2>
-      <p><strong id="activeSpiritLabel">Aktiver Geist:</strong> <span id="spiritFixedName">Reissende Fluten im Sonnenlicht</span></p>
-      <small id="spiritPhaseHint" class="hint">Diese Version ist absichtlich auf einen Geist begrenzt, damit wir Mechaniken Schritt fuer Schritt aufbauen koennen.</small>
-      <p id="spiritTraits" class="hint"></p>
-    </section>
-
-    <section class="panel progression">
-      <h2 id="progressionTitle">Fortschritt</h2>
-      <ul class="stats-list">
-        <li><strong>Aktiver Geist:</strong> <span id="activeSpiritName">-</span></li>
-        <li><strong>Laufzeit:</strong> <span id="runTime">0m</span></li>
-        <li><strong>Wachstumsstufe:</strong> <span id="growthLevel">0</span></li>
-        <li><strong>Freigeschaltete Geister:</strong> <span id="spiritsUnlocked">1</span></li>
-      </ul>
-      <div id="milestoneNotice" class="notice"></div>
-    </section>
-
-    <section class="panel log">
-      <h2 id="logTitle">Spielprotokoll</h2>
-      <ol id="eventLog"></ol>
-    </section>
+      <section class="panel log">
+        <h2 id="logTitle">Spielprotokoll</h2>
+        <ol id="eventLog"></ol>
+      </section>
+    </div>
   </main>
 
   <footer>
@@ -173,6 +149,7 @@
     <small id="autosaveHint">Autosave alle 10s.</small>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="engine.js"></script>
+  <script src="ui.js"></script>
 </body>
 </html>
