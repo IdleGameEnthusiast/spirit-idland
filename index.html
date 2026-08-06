@@ -64,6 +64,16 @@
       <p><strong id="activeSpiritLabel">Aktiver Geist:</strong> <span id="spiritName">-</span></p>
     </div>
     <div class="topbar-controls">
+      <!-- The speed dial, beside the language toggle because it is the same kind of thing:
+           a setting for how the game is read, not a move inside it. 1x is the game as it
+           ships, at a twenty-second wave; 2x runs it twice as fast for a ten-second wave;
+           0x stops the clock entirely. -->
+      <div class="speed-group" id="speedGroup" role="group">
+        <span class="speed-label" id="speedLabel">Tempo</span>
+        <button type="button" class="speed-btn" data-game-speed="0">0x</button>
+        <button type="button" class="speed-btn" data-game-speed="1">1x</button>
+        <button type="button" class="speed-btn" data-game-speed="2">2x</button>
+      </div>
       <button id="languageToggleBtn" class="small-btn lang-btn">English</button>
     </div>
   </header>
@@ -92,6 +102,15 @@
             <h3 id="waveLabel">Naechste Welle</h3>
             <p id="waveValue" class="value">20s</p>
             <div class="meter"><span id="waveFill" class="meter-fill"></span></div>
+            <!-- The only part of the strip that takes a click, so it is also the only part
+                 that switches pointer events back on - everything around it stays inert and
+                 the lands underneath stay reachable. Both controls answer the same question
+                 the bar above them asks, which is why they live under it: whether the next
+                 wave arrives on its own, and when. -->
+            <div class="wave-controls">
+              <button type="button" id="autoWaveBtn" class="hud-btn" aria-pressed="false">Auto: Aus</button>
+              <button type="button" id="startNextWaveBtn" class="hud-btn is-call">Welle starten</button>
+            </div>
           </div>
           <div class="board-hud-tile hud-dahan">
             <h3 id="dahanAttackLabel">Dahan-Angriff</h3>

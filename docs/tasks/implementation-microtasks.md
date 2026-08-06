@@ -22,7 +22,8 @@ What remains is balance and content, not structure — see
 ### Task R2: Automatic Wave Resolution — *done*
 
 - `tick()` drives the wave timer; at 0 a full wave resolves and the timer resets. No control
-  anywhere can pause, skip or trigger one.
+  shortens that interval or pulls a wave forward — the pacing controls added later (Task P1)
+  stop the clock, they never skip ahead on it.
 - The tick cap (`MAX_TICK_SECONDS = 5 * TIME_SCALE`) sits below one wave interval, so a
   machine waking from sleep resolves no waves at all rather than a burst. Asserted. It is
   written against the dial so it stays half an interval whatever the game's pace.
@@ -108,6 +109,29 @@ land at once.
   and patched in place, or the board would rebuild ten times a second.
 - Covered by `tests/combat.test.js`; `tests/wave.test.js` and `tests/blight.test.js` were
   rewritten around it, and `tests/ravage.test.js` is deleted.
+
+---
+
+## Pacing Controls — Complete
+
+### Task P1: Player-set speed, and a wave the player calls — *done*
+
+Two settings over one thing: how fast the round reaches the player. Neither changes what the
+round costs; both are spelled out in [02-core-loop.md](../spec/02-core-loop.md#pacing).
+
+- **The speed dial** (`ui.gameSpeed`, one of `GAME_SPEEDS = [0, 1, 2]`, default `1`) is how
+  many game seconds one real second buys: `1x` ships the twenty-second wave, `2x` halves it,
+  `0x` stops the clock. It is a single multiplier on `dt` inside `tick()`, so nothing
+  downstream of the tick knows a speed exists, and no constant is scaled twice.
+- **The wave gate** (`ui.autoProceed`, off by default, and `round.awaitingWave`) stops every
+  clock in the round at the end of a wave timer until the player calls the wave. A round also
+  opens on a held gate, with the timer still full, so the opening call starts the clock
+  without costing a wave; leaving the shop is itself that call.
+- **Countdowns are drawn in real seconds** at the current speed — wave, Dahan strike, and
+  every ability cooldown — or two clocks that run together stop reading as one.
+- Both settings persist and survive a migration reset, like the language toggle.
+- Covered by `tests/pacing.test.js`; `tests/harness.js` opts its fixture into auto-proceed,
+  since every older suite is written against a clock that simply runs.
 
 ---
 

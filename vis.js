@@ -22,6 +22,9 @@
   // Written against the intervals rather than as seconds, so the fixture keeps showing a wave
   // most of the way in and a strike halfway however TIME_SCALE is set.
   state.round.waveTimerRemaining = WAVE_INTERVAL_SECONDS * 0.3;
+  // The fixture paints a round in motion, so it opens the wave gate a fresh game closes: a
+  // board frozen behind "waiting" is a different screen from the one being judged here.
+  state.round.awaitingWave = false;
   state.round.dahanAttackRemaining = DAHAN_ATTACK_INTERVAL_SECONDS * 0.6;
   state.round.wavesResolved = 9;
   state.round.fearEarned = 4.2;

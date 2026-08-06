@@ -8,14 +8,16 @@ upgrade shop between rounds.
 
 ## Rules
 
-- A round runs in real time. Nothing in it waits for player input; the clock keeps moving
-  regardless of whether the player acts.
+- A round runs in real time. Nothing *inside* it waits for player input: no wave, no strike
+  and no Blight ever stops to ask. The clock the round runs on is the player's, though — they
+  set how fast it turns and whether it stops at each wave. See [Pacing](#pacing).
 - Exactly one loss condition exists: Blight reaching `round.blightThreshold`. There is no
   other way for a round to end.
 - Casting an ability is cooldown-gated, not resource-gated. Energy gates *access* to an
   ability rather than each use of it. See [Energy](#energy).
-- Waves resolve automatically on a fixed interval; the player cannot speed them up, pause
-  them, or resolve them early.
+- Waves resolve on a fixed interval of *game* seconds, and always the whole interval: the
+  player can change how fast those seconds pass, and can make the round wait at the end of one,
+  but can never pull a wave forward or shorten the interval before it.
 - Fear earned during a round is never lost, including when the round ends.
 - Energy, and the abilities bought with it, survive a round the same way Fear does. The two
   currencies differ in where they are spent, not in whether a loss takes them: Fear buys
@@ -40,7 +42,8 @@ upgrade shop between rounds.
    - The Dahan strike timer counts down. At 0, every land holding both Dahan and invaders
      strikes, and the timer resets.
    - The wave timer counts down. At 0, resolve one wave (Build, then Discover, then shift the
-     invader track) and reset the timer. See [Wave Resolution](#wave-resolution).
+     invader track) and reset the timer — or, with auto-proceed off, hold the gate there and
+     resolve nothing until the player calls it. See [Wave Resolution](#wave-resolution).
    - At any moment an ability is off cooldown, the player may trigger it. See
      [Abilities](#abilities).
    - After the fight resolves each tick, check `round.blight >= round.blightThreshold`. If
@@ -102,6 +105,37 @@ pressed.
 Ability *upgrades* (spending Energy to improve an ability already owned) are the intended
 next use of the currency and are not implemented; the flat unlock price is a placeholder
 until there is a curve to tune it against.
+
+## Pacing
+
+Two controls over one thing: how fast the round reaches the player. Neither changes what the
+round *costs*. A wave still takes one whole wave interval, an ability still fires the same
+number of times inside one, and a land under the same damage still takes exactly as many
+waves to Blight — because only the map from real seconds to game seconds moves.
+
+**The speed dial** (`ui.gameSpeed`, one of `GAME_SPEEDS`) is how many game seconds one real
+second buys. `1x` is the game as it ships, at the twenty-second wave `TIME_SCALE` sets; `2x`
+runs it at double speed for a ten-second wave; `0x` stops every clock in the round — the
+fight, both timers, the cooldowns and `elapsedSeconds` alike. The engine only ever thinks in
+the seconds it was authored in, so the whole of the dial is that one multiplication on `dt`,
+and nothing downstream of the tick knows a speed exists.
+
+**The wave gate** (`ui.autoProceed`, off by default) decides whether a wave may arrive
+unasked. With it on, the loop is exactly as it was: the timer empties, the wave resolves, the
+timer refills. With it off:
+
+- The round opens on a held gate. The wave timer is already full there, so the first call
+  starts the clock without costing a wave. Leaving the shop is itself that call, so only a
+  round reached without the shop — the first of a new game — asks for it.
+- When the bar empties, the wave comes due and *nothing* resolves it but the player. Every
+  clock stops with it, not just the wave timer: no Blight accrues, no Dahan fall or strike,
+  no cooldown runs. The round is a still frame until it is called.
+- Calling it resolves exactly one wave and refills the timer to a whole interval. The
+  overshoot past 0 is dropped rather than carried — the click buys the interval the refilled
+  bar is promising.
+- Switching auto-proceed on releases a gate that is already holding, without resolving
+  anything itself: the next tick finds the timer at 0 and runs the wave down the same path
+  every automatic wave takes.
 
 ## Wave Resolution
 
@@ -285,7 +319,12 @@ Neither stops the round; both buy time. How long you bought is the score.
   but the concentration stops at `DAHAN_CONCENTRATION_CAP`, so stacking cannot outrun it.
 - The Dahan strike runs on its own timer, independent of the wave timer.
 - Waves deal no damage; they only Build, Discover, and shift the track.
-- Waves resolve on their own without any player input, at a fixed interval.
+- Waves resolve on their own without any player input, at a fixed interval — unless the
+  player has switched auto-proceed off, in which case the round stops at the end of the
+  interval and every clock in it stops too, until the wave is called.
+- The speed dial changes only how much real time a game second costs. At any scale the same
+  wave interval buys the same wave, and the same damage buys the same Blight.
+- A scale of 0 stops the round outright, and the round resumes exactly where it stopped.
 - An ability is only usable when its cooldown has fully elapsed, and using it resets that
   cooldown immediately.
 - Fear earned during a lost round is still spendable in the following shop.

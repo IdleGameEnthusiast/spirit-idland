@@ -14,6 +14,9 @@ island board, and the between-round shop.
   Blight is to ending it.
 - The shop appears in the side rail while `round.status` is `ended`; the board stays visible
   beside it as the frozen result of the round just lost.
+- A stopped clock must always say why it stopped. There are two reasons — the speed dial at
+  `0x`, and a wave gate waiting to be called — and the wave tile names whichever holds, with
+  the gate named first because it is the one with a button waiting to be pressed.
 
 ## Required Screen Sections
 
@@ -25,10 +28,29 @@ island board, and the between-round shop.
 - Round number, and best round reached
 - Blight meter: current value against `round.blightThreshold`, always visible, not hidden
   in a panel
-- Wave timer: seconds remaining until the next automatic wave
+- Wave timer: seconds remaining until the next wave, in **real** seconds rather than game
+  seconds. At `2x` a twenty-second interval really is ten seconds away, and a tile still
+  reading twenty would be counting down twice a second in front of the player. Every other
+  countdown on the page — the Dahan strike, every ability cooldown — converts the same way,
+  or two clocks that run together stop reading as one
+- Wave controls, in the wave tile because they answer the question the bar above them asks:
+  the **auto-proceed toggle**, and the **call button** that opens a held gate. They are the
+  only part of the strip that takes pointer events; the row around them stays inert, so the
+  island keeps every pixel it is not actually covering. The call button stays on the strip
+  while it is dead rather than being hidden — it is the one control the manual mode is played
+  through, and a button that came and went would move the two beside it every wave
 - Dahan strike timer: seconds remaining until the next Dahan attack, shown separately from
   the wave timer because the two are separate clocks and will drift apart
 - Fear total (`meta.fear`)
+
+1a. Pacing controls — in the top bar, beside the language toggle
+- Three buttons, `0x / 1x / 2x`, drawn as one segmented control with the chosen speed lit.
+  Three equal buttons in a row would read as three separate commands rather than one dial.
+  `1x` is the game as it ships, `2x` is double speed, `0x` stops it
+- They belong beside the language toggle because they are the same kind of thing: settings
+  for how the game is read, not moves inside it
+- `0x` is a state the whole board is in rather than a preference like the other two, so the
+  button holding it there wears the page's warning colour
 
 1b. Invader track — in the side rail
 - The Build and Discover terrains. There is no Ravage slot
@@ -225,8 +247,9 @@ Two clarifications the implementation forced:
 
 Implemented as a twelve-column grid over three regions:
 
-- **HUD**, full width: four tiles (Blight, next wave, Fear, round) plus the invader track
-  and the spirit's trait line.
+- **Top bar**, full width: the spirit line, the speed dial, the language toggle.
+- **HUD**, laid over the board: five tiles (Blight, next wave with its controls, Dahan
+  strike, Fear, round).
 - **Board**, eight columns: map hint, island, land detail panel.
 - **Rail**, four columns: ability bar, then the shop when a round has ended, then the log.
   A single flex column, so the shop appearing pushes the log down rather than displacing
@@ -245,6 +268,10 @@ four tiles to two, because a Blight meter narrower than its own label stops bein
   stand, which lands have already cost Blight. ✓
 - The shop is reachable the instant a round ends, with no extra click to "acknowledge" the
   loss first. ✓
+- A player can slow the game down, speed it up, or stop it, without leaving the board or
+  losing a second of the round. ✓
+- A player who wants to think between waves can have the game wait for them, and can see at
+  a glance that it is waiting rather than broken. ✓
 
 ## Implementation Notes
 

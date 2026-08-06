@@ -10,6 +10,10 @@
 
 const dom = {
   languageToggleBtn: document.getElementById("languageToggleBtn"),
+  speedGroup: document.getElementById("speedGroup"),
+  speedLabel: document.getElementById("speedLabel"),
+  autoWaveBtn: document.getElementById("autoWaveBtn"),
+  startNextWaveBtn: document.getElementById("startNextWaveBtn"),
 
   roundLabel: document.getElementById("roundLabel"),
   roundValue: document.getElementById("roundValue"),
@@ -334,6 +338,17 @@ function worstInvaderWound(state, landId, unitType) {
 
 function fmtSeconds(value) {
   return String(Math.max(0, Math.ceil(value)));
+}
+
+// Every countdown on screen is shown in real seconds, not the game seconds the engine holds
+// them in. At 2x a twenty-second wave interval really is ten seconds away, and a HUD that
+// still said twenty would be counting down twice a second in front of the player.
+//
+// A stopped clock has no rate to divide by, so it reports the game's own seconds. Nothing is
+// moving then, so the reading is a frozen snapshot either way.
+function displaySeconds(state, gameSeconds) {
+  const speed = gameSpeed(state);
+  return fmtSeconds(speed > 0 ? gameSeconds / speed : gameSeconds);
 }
 
 // The banner naming what the incoming wave will build here. Without it, the outline says
@@ -706,7 +721,7 @@ function patchAbilityBar(state) {
 
     button.querySelector('[data-role="state"]').textContent = armed
       ? t.abilityArmed
-      : (ready ? t.abilityReady : template(t.abilityCooldown, { seconds: fmtSeconds(remaining) }));
+      : (ready ? t.abilityReady : template(t.abilityCooldown, { seconds: displaySeconds(state, remaining) }));
 
     // The sweep drains left to right as the cooldown runs down, so "how long still" is
     // readable at a glance without reading the number.
@@ -808,24 +823,64 @@ function patchHud(state) {
   // The meter turns as the round turns: a round two thirds gone should look like one.
   dom.blightFill.classList.toggle("is-critical", blightPct >= 70);
 
+  // Three readings, and only one of them is a countdown. A held gate is named before a stopped
+  // clock because it is the more specific answer to "why is nothing moving" - and the only one
+  // of the two with a button waiting to be pressed.
   const running = state.round.status === "running";
-  dom.waveValue.textContent = running
-    ? template(t.secondsShort, { seconds: fmtSeconds(state.round.waveTimerRemaining) })
-    : "-";
+  const held = waveGateHeld(state);
+  const stopped = gameSpeed(state) <= 0;
+  dom.waveValue.textContent = !running
+    ? "-"
+    : held
+      ? t.waveHeldValue
+      : (stopped ? t.wavePausedValue : template(t.secondsShort, { seconds: displaySeconds(state, state.round.waveTimerRemaining) }));
   dom.waveFill.style.width = running
     ? `${Math.max(0, Math.min(100, (state.round.waveTimerRemaining / WAVE_INTERVAL_SECONDS) * 100))}%`
     : "0%";
 
   // The Dahan swing on their own clock, so it gets its own countdown rather than being read
-  // off the wave timer - the two will drift apart the moment the shop can shorten one.
+  // off the wave timer - the two will drift apart the moment the shop can shorten one. It
+  // keeps showing its number while the clock is stopped rather than repeating the word beside
+  // it: a frozen countdown is already legible as frozen next to one that says so.
   dom.dahanAttackValue.textContent = running
-    ? template(t.secondsShort, { seconds: fmtSeconds(state.round.dahanAttackRemaining) })
+    ? template(t.secondsShort, { seconds: displaySeconds(state, state.round.dahanAttackRemaining) })
     : "-";
 
   dom.buildTerrain.textContent = terrainName(state, state.invader.build);
   dom.discoverTerrain.textContent = terrainName(state, state.invader.explore);
 
   document.body.classList.toggle("round-ended", !running);
+}
+
+// The two pacing controls, patched together because they are read together: how fast the
+// round is allowed to run, and whether it is allowed to run on without being asked. Both wear
+// their state rather than describing it - the chosen scale is the lit button, and the toggle
+// says what it is, not what it would do.
+function patchPacingControls(state) {
+  const t = locale(state);
+  const speed = gameSpeed(state);
+
+  for (const button of dom.speedGroup.querySelectorAll("[data-game-speed]")) {
+    const value = Number(button.getAttribute("data-game-speed"));
+    const active = value === speed;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.title = value === 0 ? t.speedPausedTitle : template(t.speedOptionTitle, { speed: value });
+  }
+
+  const auto = autoProceedOn(state);
+  dom.autoWaveBtn.textContent = auto ? t.autoWaveOnBtn : t.autoWaveOffBtn;
+  dom.autoWaveBtn.setAttribute("aria-pressed", String(auto));
+  dom.autoWaveBtn.classList.toggle("is-on", auto);
+  dom.autoWaveBtn.title = t.autoWaveHint;
+
+  // Pressable only while the gate actually holds. It stays on the strip the rest of the time
+  // rather than being hidden: it is the one control the manual mode is played through, and a
+  // button that came and went would move the two beside it every wave.
+  const held = waveGateHeld(state);
+  dom.startNextWaveBtn.textContent = t.startNextWaveBtn;
+  dom.startNextWaveBtn.disabled = !held;
+  document.body.classList.toggle("wave-held", held);
 }
 
 function patchMapHint(state) {
@@ -861,6 +916,8 @@ function applyStaticLanguage(state) {
   document.documentElement.lang = currentLang(state);
 
   dom.languageToggleBtn.textContent = t.langToggle;
+  dom.speedLabel.textContent = t.speedLabel;
+  dom.speedGroup.setAttribute("aria-label", t.speedLabel);
   dom.roundLabel.textContent = t.roundLabel;
   dom.bestRoundLabel.textContent = t.bestRoundLabel;
   dom.blightLabel.textContent = t.blightLabel;
@@ -939,6 +996,7 @@ function updateUI(state) {
   }
 
   patchHud(state);
+  patchPacingControls(state);
   patchMapHint(state);
 
   const nextAbilitySig = abilityBarSignature(state);
@@ -1006,6 +1064,30 @@ updateUI(state);
 
 dom.languageToggleBtn.addEventListener("click", () => {
   state.ui.language = currentLang(state) === "de" ? "en" : "de";
+  updateUI(state);
+  persist();
+});
+
+dom.speedGroup.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest("[data-game-speed]");
+  if (!button) return;
+  if (!setGameSpeed(state, Number(button.getAttribute("data-game-speed")))) return;
+  updateUI(state);
+  persist();
+});
+
+dom.autoWaveBtn.addEventListener("click", () => {
+  setAutoProceed(state, !autoProceedOn(state));
+  // Nothing is resolved here even when a wave is standing due: the gate simply stops holding,
+  // and the next tick runs the wave it was waiting on, on the same path every other wave takes.
+  updateUI(state);
+  persist();
+});
+
+dom.startNextWaveBtn.addEventListener("click", () => {
+  if (!startNextWave(state)) return;
   updateUI(state);
   persist();
 });

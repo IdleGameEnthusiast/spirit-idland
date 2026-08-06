@@ -45,6 +45,15 @@ damage-seconds, and a doubled clock against a halved rate is the same product at
 of the round, not merely at its end. `TIME_SCALE` was raised from 1 to 2 for reaction time
 alone, and no balance figure was touched with it.
 
+The player has a dial of their own (`ui.gameSpeed`, see
+[02-core-loop.md](./02-core-loop.md#pacing)), and it is deliberately *not* a second copy of
+these constants: the engine keeps thinking in the seconds it was authored in, and the setting
+becomes one multiplier on `dt` — game seconds per real second, `0` while paused. Nothing
+downstream of `tick` knows the difference, which is what makes the guarantee above hold for
+the player's dial exactly as it holds for this one. Only the display converts back: a
+countdown is drawn in real seconds, or two clocks that run together would stop reading as
+one.
+
 Verified rather than assumed: an unattended round traced at scale 1 and at scale 2, sampled
 every beat, is identical at every mark — same waves, same Blight, same board, same Fear, same
 ending beat — as long as both are stepped the same number of times per beat.
@@ -110,14 +119,22 @@ settles somewhere else, only this constant moves; nothing is derived from the tw
 ## Wave Timing
 
 ```txt
-waveTimerRemaining -= dt, each tick
+step = min(MAX_TICK_SECONDS, dt * ui.gameSpeed)                (0 while paused)
+
+waveTimerRemaining -= step, each tick
 when waveTimerRemaining <= 0:
-    resolve one wave (Build, Discover, track shift)
-    waveTimerRemaining = WAVE_INTERVAL_SECONDS
+    with auto-proceed on:
+        resolve one wave (Build, Discover, track shift)
+        waveTimerRemaining += WAVE_INTERVAL_SECONDS     (the overshoot is carried)
+    with auto-proceed off:
+        waveTimerRemaining = 0                          (the overshoot is dropped)
+        awaitingWave = true, and no clock advances until the player calls the wave
 ```
 
-There is no player control over this timer. It runs whenever the round is `running`, and it
-deals no damage.
+The interval itself is not a player control: nothing shortens it and nothing pulls a wave
+forward. What the player sets is how fast its seconds are handed out, and whether the round
+carries on past the end of one — see [02-core-loop.md](./02-core-loop.md#pacing). The timer
+runs whenever the round is `running` and no gate is held, and it deals no damage.
 
 ## Blight Formula
 

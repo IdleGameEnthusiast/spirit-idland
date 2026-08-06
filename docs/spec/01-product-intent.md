@@ -46,7 +46,9 @@ structural one — see [index.md](./index.md#known-balance-problems).
 - Permanence matters: Fear and the upgrades it buys are the only state that survives a lost
   round. Everything else — invaders, Dahan, Blight — resets clean each round.
 - Readability matters: the board must make clear which lands are under the most pressure
-  without the player hunting for it, since there is no pause button on the clock.
+  without the player hunting for it. There is a pause now, and a wave the player can be asked
+  to call, but a board that is only legible while stopped has failed — the controls exist to
+  set the pace, not to make up for a board nobody can read in motion.
 
 ## Non-Goals For This Slice
 

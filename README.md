@@ -5,6 +5,11 @@ time: invaders and Dahan fight automatically while Blight climbs, and the player
 with cooldown-gated abilities. Every round is eventually lost to Blight — how long you lasted
 is the score, and the Fear you earned buys permanent upgrades for the next attempt.
 
+The clock is the player's: a speed dial in the top bar runs the round at `1x`, doubles it to
+`2x`, or stops it dead at `0x`, and an auto-proceed toggle beside the wave timer decides
+whether the next wave arrives on its own or waits to be called. Neither changes what a round costs — see
+[docs/spec/02-core-loop.md](docs/spec/02-core-loop.md#pacing).
+
 ## Running it
 
 Open `index.html`. That is the whole procedure — no server, no build step, no dependencies.
@@ -30,8 +35,8 @@ powershell -File tests\headless.ps1          headless Edge or Chrome; exits 1 on
 node tests/run.js [filter]                   if node is installed
 ```
 
-168 checks covering the board, round setup, wave timing, combat, Blight, abilities, the
-shop, save/migration, and the land-state rules. The engine takes its clock and RNG by
+200 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
+the shop, save/migration, and the land-state rules. The engine takes its clock and RNG by
 injection, so the whole suite is deterministic and finishes instantly.
 
 ## The spec

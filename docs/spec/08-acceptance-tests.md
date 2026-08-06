@@ -57,7 +57,34 @@ files are listed by hand in `tests.html`; adding one means adding a `<script>` l
 3. A wave deals no damage of its own: no Dahan lost, no Blight gained, from the wave itself.
 4. The invader track has two slots; `invader.ravage` does not exist.
 5. `round.wavesResolved` increments exactly once per wave.
-6. The wave timer cannot be paused, skipped, or manually triggered by any control.
+6. The wave timer cannot be skipped or pulled forward: no control resolves a wave before its
+   interval has run. It can be stopped — see [Pacing Checks](#pacing-checks) — but only in
+   place, never past a wave.
+
+## Pacing Checks
+
+The speed dial and the wave gate, in `tests/pacing.test.js`. Most of these are one assertion:
+neither control may change what the round costs.
+
+1. A fresh game runs at `1x`, where one real second buys one game second.
+2. At `2x` the same wave resolves in half the real seconds, and at `0x` no clock in the round
+   moves at all — not the fight, not either timer, not `elapsedSeconds`.
+3. A paused round resumes exactly where it stopped when a speed is set back.
+4. A speed outside `GAME_SPEEDS` is refused, leaving the previous one standing.
+5. The fight costs the same damage-seconds at every speed: the same game time under the same
+   invaders accrues the same Blight, however fast those seconds were handed out.
+6. A fresh game holds the wave gate: no wave arrives, the wave timer never starts, and the
+   round does not age.
+7. The opening call starts the clock without spending a wave; the call at an empty bar
+   resolves exactly one and refills the timer to a whole interval.
+8. While the gate holds, the fight is frozen with it — no Blight accrues.
+9. Calling a wave mid-interval does nothing: no wave is pulled forward.
+10. Switching auto-proceed on releases a gate already holding, and the waiting wave resolves
+    on the next tick rather than at the switch.
+11. Switching it off stops the round at the next empty bar rather than immediately.
+12. Leaving the shop is itself the opening call: the next round's clock runs without one.
+13. Both settings survive a save with the gate they were standing at; a nonsense speed loads
+    at `DEFAULT_GAME_SPEED`, and an ended round never loads behind a gate.
 
 ## Blight Checks
 
@@ -210,16 +237,21 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    every tick rather than rebuilding the board ten times a second.
 8. The board always shows eight lands, three of them coastal, two per terrain (unchanged
    from the turn-based build; see [09-island-board.md](./09-island-board.md)).
+9. Every countdown on the page is shown in real seconds at the current speed, so two clocks
+   that run together read as one.
+10. A stopped clock says which of the two things stopped it, and the call button is live
+    exactly when the gate holds.
 
 ## Current Validation Status
 
-**115 automated checks, all passing.** Coverage by file:
+**200 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
 | `tests/board.test.js` | Board invariants and adjacency (09) |
 | `tests/setup.test.js` | Round setup, upgrade baseline, round reset |
 | `tests/wave.test.js` | Wave timing, Build, Discover, track shift, the tick cap |
+| `tests/pacing.test.js` | The speed dial and the wave gate (02 Pacing) |
 | `tests/combat.test.js` | Blight and casualty rates, concentration, the Dahan strike |
 | `tests/blight.test.js` | Blight accrual, the per-land tally, round end |
 | `tests/ability.test.js` | Cooldowns, arming, cancelling, each ability's effect |
@@ -232,8 +264,10 @@ Not automated, and verified by hand instead:
 - Rendering itself — that the island draws, that chips sit on their lands, that colours are
   tellable apart. Screenshots via headless Edge, not assertions.
 - The click wiring was verified end to end by driving the real controls in a headless
-  browser (arm, dim, illegal click, legal click, cancel), but that probe was not kept as a
-  standing test; it needs a DOM the harness does not currently build.
+  browser (arm, dim, illegal click, legal click, cancel; and for the pacing controls: the
+  gate at a fresh game, the call, each speed button, the auto toggle, and the labels in both
+  languages), but those probes were not kept as standing tests; they need a DOM the harness
+  does not currently build.
 
 ## Acceptance
 

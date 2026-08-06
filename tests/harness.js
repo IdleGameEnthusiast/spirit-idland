@@ -77,6 +77,14 @@ function newGame(options) {
 
   const state = engine.createFreshGameState();
   if (opts.language) state.ui.language = opts.language;
+  // A fresh game ships with auto-proceed off, which means it opens on a held wave gate and no
+  // clock at all. Almost every suite here is about what a running round does, so the fixture
+  // opts into the automatic mode and opens the gate; `newGame({ manualWaves: true })` keeps
+  // the shipped default for the suites that are about the gate itself.
+  if (!opts.manualWaves) {
+    engine.setAutoProceed(state, true);
+    state.round.awaitingWave = false;
+  }
   return { state, clock };
 }
 

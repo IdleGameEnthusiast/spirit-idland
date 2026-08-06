@@ -34,6 +34,8 @@ Define the canonical save shape for the round-based redesign.
   },
   "ui": {
     "language": "de",
+    "gameSpeed": 1,
+    "autoProceed": false,
     "defeatFx": null,
     "blightFx": null,
     "selectedLand": null
@@ -49,6 +51,7 @@ Define the canonical save shape for the round-based redesign.
     "blightThreshold": 10,
     "waveTimerRemaining": 20,
     "dahanAttackRemaining": 20,
+    "awaitingWave": false,
     "wavesResolved": 0,
     "fearEarned": 0,
     "abilityCooldownMult": 1,
@@ -171,10 +174,16 @@ Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
   A filled bar subtracts exactly 1 and carries the remainder; it never resets to 0, except
   `dahanProgress` when a land's last Dahan falls.
 - `wavesResolved` is a display/debug counter, incremented once per wave.
+- `awaitingWave` is the wave gate: `true` while the round is standing still because the
+  player has not called the next wave. It is a flag rather than a third `status`, because
+  everything else about the round is still true while it holds — the board, the timers and
+  the cooldowns are exactly where they were, and only the clock is not moving. It is set at
+  round setup when `ui.autoProceed` is off, and again whenever `waveTimerRemaining` hits 0
+  with auto-proceed off. See [02-core-loop.md](./02-core-loop.md#pacing).
 
 ### Fields added during implementation
 
-Four fields the first draft of this contract did not have. Each earns its place:
+Seven fields the first draft of this contract did not have. Each earns its place:
 
 - **`round.blightByLand`** — per-land Blight tally, summing to `round.blight`. The original
   contract said Blight was "a single value for the whole round, not tracked per land"; the
@@ -191,6 +200,14 @@ Four fields the first draft of this contract did not have. Each earns its place:
   shorten a cooldown that is already ticking.
 - **`ui.blightFx`** — the transient counterpart to `ui.defeatFx`, marking the lands that
   just took Blight. Same lifetime (`DEFEAT_FX_MS`), same normalize-to-null rule.
+- **`ui.gameSpeed`** — the speed dial: how many game seconds one real second buys, one of
+  `GAME_SPEEDS` (`0`, `1`, `2`). It lives in `ui` rather than `round` because it is a
+  preference like the language toggle, not a property of the round being played, and it
+  survives a reset for the same reason.
+- **`ui.autoProceed`** — whether a wave is allowed to arrive without being asked for. Also a
+  preference, also outside `round`: it outlives every round it is read in.
+- **`round.awaitingWave`** — the gate itself, described above. It is in `round` and not `ui`
+  precisely because it *is* round state: it dies with the round that raised it.
 
 ## `abilities` Shape
 
@@ -218,6 +235,13 @@ to resume mid-effect beyond "which ability is waiting for a click."
 ## Normalization Requirements
 
 - Unknown language values must normalize to `de` unless explicitly `en`.
+- `ui.gameSpeed` must be one of `GAME_SPEEDS` (`0`, `1`, `2`); anything else normalizes to
+  `DEFAULT_GAME_SPEED` (`1`), the speed the game ships at.
+- `ui.autoProceed` normalizes to `false` unless it is exactly `true`.
+- `round.awaitingWave` normalizes to `false` unless it is exactly `true` **and**
+  `round.status` is `running`. An ended round holds no gate: the shop is what the player is
+  looking at, and a flag left set by a save written mid-gate would freeze the round it starts
+  next.
 - `essence` and `invaders`/`invaderDamage`/`dahan` must be filled for every terrain key or
   land ID respectively.
 - `round.status` must be `running` or `ended`, and normalizes to `running` otherwise.

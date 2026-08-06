@@ -32,6 +32,17 @@ const VERSION = "5.0.0";
 // scale a duration a second time on the way to the screen.
 const TIME_SCALE = 2;
 
+// The player's speed dial: how many game seconds one real second buys. 1x is the game as it
+// ships - the twenty-second wave TIME_SCALE above sets - 2x runs it at double speed for a
+// ten-second wave, and 0x stops every clock in the round.
+//
+// It multiplies dt and nothing else, which is what keeps it a setting rather than a rule: a
+// wave still costs one whole wave interval, an ability still fires the same number of times
+// inside one, and a land under the same damage still takes exactly as many waves to Blight.
+// Only the map from real seconds to game seconds moves.
+const GAME_SPEEDS = [0, 1, 2];
+const DEFAULT_GAME_SPEED = 1;
+
 const WAVE_INTERVAL_SECONDS = 10 * TIME_SCALE;
 const BLIGHT_THRESHOLD_BASE = 10;
 const DAHAN_PER_ROUND_START_BASE = 6;
@@ -398,6 +409,17 @@ const I18N = {
     fearLabel: "Furcht",
     waveCountLabel: "Wellen",
     secondsShort: "{seconds}s",
+    // The two readings the wave tile has that are not a countdown: a stopped clock, and a
+    // wave standing due behind the gate waiting to be called.
+    wavePausedValue: "Pause",
+    waveHeldValue: "Wartet",
+    startNextWaveBtn: "Welle starten",
+    autoWaveOnBtn: "Auto: An",
+    autoWaveOffBtn: "Auto: Aus",
+    autoWaveHint: "Naechste Welle laeuft von selbst an. Aus: am Ende der Leiste haelt die Zeit an, bis du die Welle startest.",
+    speedLabel: "Tempo",
+    speedOptionTitle: "Spieltempo {speed}x",
+    speedPausedTitle: "Pause - die Zeit steht still",
     blightMeter: "{value} / {max}",
     activeSpiritLabel: "Aktiver Geist:",
 
@@ -570,6 +592,15 @@ const I18N = {
     fearLabel: "Fear",
     waveCountLabel: "Waves",
     secondsShort: "{seconds}s",
+    wavePausedValue: "Paused",
+    waveHeldValue: "Waiting",
+    startNextWaveBtn: "Start wave",
+    autoWaveOnBtn: "Auto: on",
+    autoWaveOffBtn: "Auto: off",
+    autoWaveHint: "Let the next wave start by itself. Off: time stops at the end of the bar until you start the wave.",
+    speedLabel: "Speed",
+    speedOptionTitle: "Game speed {speed}x",
+    speedPausedTitle: "Paused - time stands still",
     blightMeter: "{value} / {max}",
     activeSpiritLabel: "Active spirit:",
 
@@ -2281,6 +2312,7 @@ function endRound(state) {
   state.round.status = "ended";
   state.round.waveTimerRemaining = 0;
   state.round.dahanAttackRemaining = 0;
+  state.round.awaitingWave = false;
   state.pendingAbilityTarget = null;
 
   state.meta.totalRoundsPlayed += 1;
@@ -2338,6 +2370,10 @@ function startRound(state) {
   state.round.blightThreshold = BLIGHT_THRESHOLD_BASE + totals.blightThresholdBonus;
   state.round.waveTimerRemaining = WAVE_INTERVAL_SECONDS;
   state.round.dahanAttackRemaining = DAHAN_ATTACK_INTERVAL_SECONDS;
+  // A manual round opens on a held gate, so the island stands still until the player has read
+  // it. The timer is already full here, so that first click starts the clock without costing
+  // a wave - see startNextWave.
+  state.round.awaitingWave = !autoProceedOn(state);
   state.round.wavesResolved = 0;
   state.round.fearEarned = 0;
   state.round.abilityCooldownMult = 1 - totals.cooldownReductionPct;
@@ -2389,6 +2425,70 @@ function startNextRound(state) {
   if (state.round.status !== "ended") return false;
   state.round.number += 1;
   startRound(state);
+  // Leaving the shop is itself the click that starts the round, so the wave gate does not ask
+  // for a second one on the way out.
+  state.round.awaitingWave = false;
+  return true;
+}
+
+/* ------------------------------------------------------------------ *
+ * Pacing: the speed dial and the wave gate (02-core-loop.md Pacing)     *
+ *                                                                      *
+ * Two controls over the same thing - how fast the round is allowed to   *
+ * reach the player - and both are settings rather than rules: neither   *
+ * changes what a wave costs, only when it is spent.                     *
+ * ------------------------------------------------------------------ */
+
+// Game seconds per real second, and the whole of the speed dial: the engine only ever thinks
+// in the seconds it was authored in, so the setting never reaches past this one multiplication
+// on dt. It is read through a function rather than off the state because an unknown value has
+// to fall back to the shipped speed, not stop the game.
+function gameSpeed(state) {
+  const value = Number(state.ui.gameSpeed);
+  return GAME_SPEEDS.includes(value) ? value : DEFAULT_GAME_SPEED;
+}
+
+function setGameSpeed(state, value) {
+  const next = Number(value);
+  if (!GAME_SPEEDS.includes(next)) return false;
+  state.ui.gameSpeed = next;
+  return true;
+}
+
+function autoProceedOn(state) {
+  return state.ui.autoProceed === true;
+}
+
+// Turning it on releases a gate that is already holding: the flag stays set, and waveGateHeld
+// simply stops reading it. Nothing has to be resolved here - the next tick finds the wave
+// timer at zero and runs the wave it was waiting on.
+function setAutoProceed(state, on) {
+  state.ui.autoProceed = on === true;
+  return state.ui.autoProceed;
+}
+
+// Whether the round is currently standing still because the player has not called the next
+// wave. It is one flag rather than a round status, because everything else about the round is
+// still true while it waits: the board, the timers and the cooldowns are all exactly where
+// they were, and only the clock is not moving.
+function waveGateHeld(state) {
+  return state.round.awaitingWave === true && !autoProceedOn(state);
+}
+
+// The player's own clock, and the only way past a held gate. Two gates use it and the wave
+// timer is what tells them apart: at the start of a round it is still full and the click
+// merely lets time begin, and at the end of a wave it is empty and the click is what resolves
+// the wave that came due.
+function startNextWave(state) {
+  if (state.round.status !== "running" || state.round.awaitingWave !== true) return false;
+
+  state.round.awaitingWave = false;
+  if (state.round.waveTimerRemaining <= 0) {
+    // Refilled before the wave resolves, so a wave that ends the round leaves endRound's zero
+    // standing rather than a fresh interval nothing will ever count down.
+    state.round.waveTimerRemaining = WAVE_INTERVAL_SECONDS;
+    resolveWave(state);
+  }
   return true;
 }
 
@@ -2397,11 +2497,13 @@ function startNextRound(state) {
  * ------------------------------------------------------------------ */
 
 function tick(state, dt) {
-  const step = Math.max(0, Math.min(MAX_TICK_SECONDS, Number(dt) || 0));
+  // Real seconds in, game seconds out. Capped after the conversion, not before: the cap is
+  // there to swallow a jump after sleep, and that jump is a jump in game time.
+  const step = Math.min(MAX_TICK_SECONDS, Math.max(0, Number(dt) || 0) * gameSpeed(state));
   state.time.totalSeconds += step;
   pruneFx(state);
 
-  if (state.round.status !== "running" || step <= 0) return;
+  if (state.round.status !== "running" || waveGateHeld(state) || step <= 0) return;
 
   state.round.elapsedSeconds += step;
   tickCooldowns(state, step);
@@ -2428,11 +2530,22 @@ function tick(state, dt) {
 
   state.round.waveTimerRemaining -= step;
 
+  // The gate closes the instant the bar empties: with auto-proceed off the wave is due, but
+  // nothing resolves it except the player, and no clock moves again until they say so. The
+  // overshoot is dropped rather than carried - the click buys a whole fresh interval, which
+  // is what the bar it refills is promising.
+  if (state.round.waveTimerRemaining <= 0 && !autoProceedOn(state)) {
+    state.round.waveTimerRemaining = 0;
+    state.round.awaitingWave = true;
+    return;
+  }
+
   // A capped tick is shorter than a wave interval today, but the loop is written to survive
   // a longer one rather than silently swallowing the extra waves.
   let guard = 0;
   while (state.round.status === "running" && state.round.waveTimerRemaining <= 0 && guard < 16) {
     state.round.waveTimerRemaining += WAVE_INTERVAL_SECONDS;
+    state.round.awaitingWave = false;
     resolveWave(state);
     guard += 1;
   }
@@ -2469,6 +2582,10 @@ function createInitialState() {
     },
     ui: {
       language: "de",
+      // Both pacing controls are preferences, not run state: they sit beside the language
+      // toggle in every sense, and survive a reset the same way it does.
+      gameSpeed: DEFAULT_GAME_SPEED,
+      autoProceed: false,
       defeatFx: null,
       blightFx: null,
       selectedLand: null
@@ -2484,6 +2601,9 @@ function createInitialState() {
       blightThreshold: BLIGHT_THRESHOLD_BASE,
       waveTimerRemaining: WAVE_INTERVAL_SECONDS,
       dahanAttackRemaining: DAHAN_ATTACK_INTERVAL_SECONDS,
+      // Set by startRound from the auto-proceed preference; false here so a state that never
+      // starts a round is not stuck behind a gate nothing would draw.
+      awaitingWave: false,
       wavesResolved: 0,
       fearEarned: 0,
       abilityCooldownMult: 1,
@@ -2540,6 +2660,10 @@ function normalizeState(raw) {
   if (merged.spirit.unlockedSpiritIds.length === 0) merged.spirit.unlockedSpiritIds = ["core_spirit_01"];
 
   merged.ui.language = merged.ui.language === "en" ? "en" : "de";
+  merged.ui.gameSpeed = GAME_SPEEDS.includes(Number(merged.ui.gameSpeed))
+    ? Number(merged.ui.gameSpeed)
+    : DEFAULT_GAME_SPEED;
+  merged.ui.autoProceed = merged.ui.autoProceed === true;
   merged.ui.selectedLand = isLandId(merged.ui.selectedLand) ? merged.ui.selectedLand : null;
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
@@ -2583,6 +2707,9 @@ function normalizeState(raw) {
 
   merged.round.number = Math.max(1, Math.floor(merged.round.number || 1));
   merged.round.status = merged.round.status === "ended" ? "ended" : "running";
+  // An ended round holds no gate: the shop is what the player is looking at, and a flag left
+  // set by a save written mid-gate would freeze the round it starts next.
+  merged.round.awaitingWave = merged.round.awaitingWave === true && merged.round.status === "running";
   merged.round.elapsedSeconds = Math.max(0, Number(merged.round.elapsedSeconds) || 0);
   merged.round.wavesResolved = Math.max(0, Math.floor(merged.round.wavesResolved || 0));
   merged.round.fearEarned = Math.max(0, Math.floor(Number(merged.round.fearEarned) || 0));
@@ -2633,9 +2760,19 @@ function migrateSave(raw) {
   const fromVersion = raw && typeof raw === "object" && raw.schemaVersion ? String(raw.schemaVersion) : "?";
   const fresh = createFreshGameState();
 
-  // The language toggle is a display preference, not run state, so it survives the reset.
-  // Coming back to a wiped run in the wrong language would read as a second bug.
-  if (raw && raw.ui && raw.ui.language === "en") fresh.ui.language = "en";
+  // The three toggles are display preferences, not run state, so they survive the reset.
+  // Coming back to a wiped run in the wrong language - or at a speed the player did not pick -
+  // would read as a second bug.
+  const prefs = (raw && raw.ui) || {};
+  if (prefs.language === "en") fresh.ui.language = "en";
+  if (GAME_SPEEDS.includes(Number(prefs.gameSpeed))) fresh.ui.gameSpeed = Number(prefs.gameSpeed);
+  // Set after the round has already started, so the gate startRound closed on the default has
+  // to be reopened by hand here - waveGateHeld would ignore it, but the flag would outlive the
+  // preference the moment auto-proceed was switched back off.
+  if (prefs.autoProceed === true) {
+    setAutoProceed(fresh, true);
+    fresh.round.awaitingWave = false;
+  }
 
   addLog(fresh, template(locale(fresh).migrationReset, { version: fromVersion }));
   return { state: fresh, reset: true, fromVersion };
@@ -2687,6 +2824,8 @@ const ENGINE_EXPORTS = {
   SAVE_KEY,
   VERSION,
   TIME_SCALE,
+  GAME_SPEEDS,
+  DEFAULT_GAME_SPEED,
   WAVE_INTERVAL_SECONDS,
   BLIGHT_THRESHOLD_BASE,
   BLIGHT_PER_DAMAGE_SECOND,
@@ -2798,6 +2937,12 @@ const ENGINE_EXPORTS = {
   startRound,
   startNextRound,
   endRound,
+  gameSpeed,
+  setGameSpeed,
+  autoProceedOn,
+  setAutoProceed,
+  waveGateHeld,
+  startNextWave,
   seedRoundDahan,
   seedRoundExplore,
   tick,

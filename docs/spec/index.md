@@ -38,6 +38,9 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 
 - A round is a real-time survival attempt: invaders and Dahan fight continuously while
   Blight climbs, and the player intervenes with cooldown-gated abilities.
+- The pace of that clock is a setting, not a rule: the player picks a speed (`1x`, `2x`, or
+  `0x` to stop it) and whether each wave arrives unasked or waits to be called. Neither changes what the
+  round costs — see [02-core-loop.md](./02-core-loop.md#pacing).
 - A round always ends the same way: Blight reaches its threshold and the round is lost.
   There is no separate "win" state — how long you lasted is the score.
 - Fear earned during a round survives the loss and buys permanent upgrades between rounds:
@@ -110,6 +113,7 @@ What is left:
 ## Playable Goals — Met
 
 - A round resolves invaders and Dahan on its own clock, with no queue of turns. ✓
+- That clock runs at the pace the player asks for, including stopped. ✓
 - The player can trigger abilities against a live board and watch Blight climb. ✓
 - Losing a round hands off into the shop with no acknowledge-the-loss click. ✓
 - A save resumes without losing Fear, purchased upgrades, or round count. ✓
