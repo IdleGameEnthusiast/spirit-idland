@@ -751,24 +751,13 @@ function renderShop(state) {
   dom.shopFearValue.textContent = formatFear(state.meta.fear);
 
   dom.upgradeList.innerHTML = "";
-  // The registry is ordered repeatables first, one-offs after, so the list only has to notice
-  // where the two halves meet rather than sort anything itself.
-  let seenOneOff = false;
 
-  for (const upgradeId of UPGRADE_IDS) {
+  function renderRow(upgradeId) {
     const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
     const tier = upgradeTier(state, upgradeId);
     const maxed = tier >= upgradeMaxTier(upgradeId);
     const cost = upgradeCost(state, upgradeId);
     const affordable = !maxed && state.meta.fear >= cost;
-
-    if (!repeatable && !seenOneOff) {
-      seenOneOff = true;
-      const rule = document.createElement("div");
-      rule.className = "upgrade-divider";
-      rule.textContent = t.shopOneOffLabel;
-      dom.upgradeList.appendChild(rule);
-    }
 
     // A one-off has no ladder, so it shows nothing where a tier would go and reads "Owned"
     // rather than "Maxed" once it is bought.
@@ -793,6 +782,28 @@ function renderShop(state) {
     `;
     dom.upgradeList.appendChild(row);
   }
+
+  // Two passes, not one sorted list: anything sold out - a maxed ladder or a bought one-off -
+  // sinks below everything still worth a look, and within each half the catalogue stays
+  // repeatables first, one-offs after. Splitting the passes keeps a maxed ladder from landing
+  // under the "One-off" divider it has nothing to do with just because it sorted next to one.
+  const maxedId = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
+  const buyable = UPGRADE_IDS.filter((id) => !maxedId(id));
+  const soldOut = UPGRADE_IDS.filter(maxedId);
+
+  let seenOneOff = false;
+  for (const upgradeId of buyable) {
+    const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
+    if (!repeatable && !seenOneOff) {
+      seenOneOff = true;
+      const rule = document.createElement("div");
+      rule.className = "upgrade-divider";
+      rule.textContent = t.shopOneOffLabel;
+      dom.upgradeList.appendChild(rule);
+    }
+    renderRow(upgradeId);
+  }
+  for (const upgradeId of soldOut) renderRow(upgradeId);
 }
 
 /* ------------------------------------------------------------------ *

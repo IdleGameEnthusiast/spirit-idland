@@ -377,16 +377,18 @@ which land?         the player's click
 which units?        towns before explorers, up to the ability's push count. A town is worth
                     two of an explorer everywhere else in the engine, so a push with a budget
                     smaller than the land spends it on the heavier thing
-pushed where?       one adjacent land holding no invaders at all. A coastal one wins outright
-                    when there is one; among equals the lowest land id
+pushed where?       one adjacent land holding no invaders at all. A land already holding Dahan
+                    wins outright when there is one - the push throws the unit at a defender
+                    instead of leaving it free to seep Blight; failing that, a coastal one wins;
+                    among equals the lowest land id
 ```
 
 The destination is deterministic, like every other tie on this board: the water always runs the
 same way, so a push can be planned rather than gambled on. An earlier draft picked randomly
 among the equals to stop a player farming one land into a permanent sink; predictability turned
-out to be worth more than that. Note that the coastal preference and the lowest-id tie-break
-never disagree here — the three coastal lands are `1`, `2` and `3`, the lowest ids on the board
-— so the rule reads simply as "the lowest-numbered adjacent land with no invaders".
+out to be worth more than that. The Dahan preference is why "lowest land id" is no longer the
+whole story: the three coastal lands are `1`, `2` and `3`, the lowest ids on the board, but a
+Dahan-held land with a higher id now outranks them - defence matters more than geography.
 
 A unit carries its own damage with it, exactly — which is what per-unit health bought. Under
 the old per-type model the destination kept the worse of the two wounds and the rest was lost.

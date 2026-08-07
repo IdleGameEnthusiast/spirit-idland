@@ -305,6 +305,16 @@ const UPGRADES = {
     // beats and nothing else. Roughly one round's income, which is what a convenience
     // should cost - the shop's power lives in the ladders above.
     baseCost: 25
+  },
+  auto_innate: {
+    id: "auto_innate",
+    repeatable: false,
+    effect: "auto_cast_innate",
+    // Priced well above auto_boon (25): the Innate fires more often at every tier (8/16/24
+    // beats against the Boon's flat 12) and, unlike the Boon, its cast is a real decision -
+    // which land - that this buys back rather than a fixed no-target effect. It stays a
+    // one-time comfort purchase, just a pricier one.
+    baseCost: 100
   }
 };
 
@@ -475,12 +485,14 @@ const I18N = {
     upgradeNames: {
       dahan_reinforcement: "Verstaerkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
-      auto_boon: "Segen von selbst"
+      auto_boon: "Segen von selbst",
+      auto_innate: "Angeborener Instinkt"
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 Dahan zu Rundenbeginn, pro Stufe.",
       blight_resilience: "+1 Verderbnisgrenze, pro Stufe.",
-      auto_boon: "Boon of Vigor wirkt sich selbst, sobald es bereit ist."
+      auto_boon: "Boon of Vigor wirkt sich selbst, sobald es bereit ist.",
+      auto_innate: "Die Angeborene Kraft wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt."
     },
 
     logTitle: "Spielprotokoll",
@@ -653,12 +665,14 @@ const I18N = {
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
-      auto_boon: "Boon Unbidden"
+      auto_boon: "Boon Unbidden",
+      auto_innate: "Innate Instinct"
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 starting Dahan, per tier.",
       blight_resilience: "+1 Blight threshold, per tier.",
-      auto_boon: "Boon of Vigor casts itself whenever it is ready."
+      auto_boon: "Boon of Vigor casts itself whenever it is ready.",
+      auto_innate: "The Innate casts itself whenever it is ready, at whichever tier you own."
     },
 
     logTitle: "Event log",
@@ -1184,6 +1198,18 @@ function upgradeTier(state, upgradeId) {
   return Math.max(0, Math.floor(Number(raw) || 0));
 }
 
+// The catalogue in shop order, except an upgrade already at its top tier sinks below every
+// upgrade that still has something to sell. A maxed repeatable and a bought one-off are both
+// "nothing left here" from the shop's point of view, so they leave together rather than the
+// one-off keeping its spot at the bottom of a now-pointless ladder. Order is otherwise stable
+// within each half, so the split never reshuffles anything the player already learned.
+function orderedUpgradeIds(state) {
+  const maxed = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
+  const buyable = UPGRADE_IDS.filter((id) => !maxed(id));
+  const soldOut = UPGRADE_IDS.filter(maxed);
+  return buyable.concat(soldOut);
+}
+
 function upgradeMaxTier(upgradeId) {
   const record = UPGRADES[upgradeId];
   if (!record) return 0;
@@ -1506,13 +1532,20 @@ function pushableCount(state, landId) {
   return Math.max(0, slot.towns || 0) + Math.max(0, slot.explorers || 0);
 }
 
-// Where a push can land: an adjacent land holding no invaders at all. A coastal one wins
-// outright when there is one - pushing toward the water is what this spirit does, and it is
-// also the harder land for the invaders to build back into.
+// Where a push can land: an adjacent land holding no invaders at all. A land with Dahan
+// already standing on it wins outright when there is one - the pushed unit lands straight in
+// front of a defender instead of sitting somewhere undefended racking up Blight for free.
+// Failing that, a coastal one wins - pushing toward the water is what this spirit does, and
+// it is also the harder land for the invaders to build back into.
 function pushDestinations(state, landId) {
   const open = adjacentLands(landId).filter(
     (other) => invaderCountInLand(state.invaders[other]) <= 0
   );
+  const defended = open.filter((other) => (state.dahan[other] || 0) > 0);
+  if (defended.length > 0) {
+    const coastalDefended = defended.filter(landIsCoastal);
+    return coastalDefended.length > 0 ? coastalDefended : defended;
+  }
   const coastal = open.filter(landIsCoastal);
   return coastal.length > 0 ? coastal : open;
 }
@@ -1568,34 +1601,38 @@ function applyBoonOfVigor(state, record, quiet) {
   return true;
 }
 
-function applyPushAbility(state, abilityId, record, landId) {
+function applyPushAbility(state, abilityId, record, landId, quiet) {
   const pushed = applyPushFrom(state, landId, record.pushCount);
   if (!pushed) return false;
 
-  addLog(state, template(locale(state).pushResolved, {
-    ability: abilityName(state, abilityId),
-    total: pushed.moved,
-    from: landName(state, landId),
-    to: landName(state, pushed.destination)
-  }));
+  if (!quiet) {
+    addLog(state, template(locale(state).pushResolved, {
+      ability: abilityName(state, abilityId),
+      total: pushed.moved,
+      from: landName(state, landId),
+      to: landName(state, pushed.destination)
+    }));
+  }
   return true;
 }
 
 // One land, one pool of damage, spent by the kill-first rule in applyDamage. Every targeted
 // damage ability lands here, so "what does damage do" is one paragraph of the engine rather
 // than one per ability.
-function resolveDamageAbility(state, abilityId, landId, damage) {
+function resolveDamageAbility(state, abilityId, landId, damage, quiet) {
   if (invaderCountInLand(state.invaders[landId]) <= 0) return null;
 
   const result = applyDamage(state, landId, damage);
   markDefeatFxFromResult(state, landId, result);
 
-  addLog(state, template(locale(state).damageResolved, {
-    ability: abilityName(state, abilityId),
-    land: landName(state, landId),
-    damage,
-    defeated: result.totalDefeated
-  }));
+  if (!quiet) {
+    addLog(state, template(locale(state).damageResolved, {
+      ability: abilityName(state, abilityId),
+      land: landName(state, landId),
+      damage,
+      defeated: result.totalDefeated
+    }));
+  }
   return result;
 }
 
@@ -1609,11 +1646,11 @@ function flashFloodsDamage(record, landId) {
 // The two halves are independent. If the damage cleared the land, or every neighbour is
 // occupied so there is nowhere to push to, the cast still counts - refusing at that point
 // would rewind damage that has already been dealt and paid Fear for.
-function applyDamageAndPush(state, abilityId, record, landId) {
-  const damaged = resolveDamageAbility(state, abilityId, landId, record.damage);
+function applyDamageAndPush(state, abilityId, record, landId, quiet) {
+  const damaged = resolveDamageAbility(state, abilityId, landId, record.damage, quiet);
   const pushed = applyPushFrom(state, landId, record.pushCount);
 
-  if (pushed) {
+  if (pushed && !quiet) {
     addLog(state, template(locale(state).pushResolved, {
       ability: abilityName(state, abilityId),
       total: pushed.moved,
@@ -1627,18 +1664,20 @@ function applyDamageAndPush(state, abilityId, record, landId) {
 
 // The Innate at tier 3: every invader in the land takes the hit individually, which is the
 // one effect the old per-type damage model could not express at all.
-function applyDamageEachInvader(state, abilityId, record, landId) {
+function applyDamageEachInvader(state, abilityId, record, landId, quiet) {
   if (invaderCountInLand(state.invaders[landId]) <= 0) return false;
 
   const result = applyDamageToEachInvader(state, landId, record.damage);
   markDefeatFxFromResult(state, landId, result);
 
-  addLog(state, template(locale(state).damageEachResolved, {
-    ability: abilityName(state, abilityId),
-    land: landName(state, landId),
-    damage: record.damage,
-    defeated: result.totalDefeated
-  }));
+  if (!quiet) {
+    addLog(state, template(locale(state).damageEachResolved, {
+      ability: abilityName(state, abilityId),
+      land: landName(state, landId),
+      damage: record.damage,
+      defeated: result.totalDefeated
+    }));
+  }
   return true;
 }
 
@@ -1684,24 +1723,25 @@ function applyRiversBounty(state, record) {
 }
 
 // Runs an ability's effect. Returns false when the effect found nothing to act on, which
-// is what leaves the cooldown unspent (09 "Failure to find a target").
-function applyAbilityEffect(state, abilityId, landId) {
+// is what leaves the cooldown unspent (09 "Failure to find a target"). `quiet` is the
+// auto-cast path: the same effect, without the log line - see applyBoonOfVigor.
+function applyAbilityEffect(state, abilityId, landId, quiet) {
   const record = abilityRecord(state, abilityId);
   if (!record) return false;
 
   switch (record.effect) {
     case "gain_energy":
-      return applyBoonOfVigor(state, record);
+      return applyBoonOfVigor(state, record, quiet);
     case "add_dahan":
       return applyRiversBounty(state, record);
     case "push_invaders":
-      return applyPushAbility(state, abilityId, record, landId);
+      return applyPushAbility(state, abilityId, record, landId, quiet);
     case "flood_damage":
-      return Boolean(resolveDamageAbility(state, abilityId, landId, flashFloodsDamage(record, landId)));
+      return Boolean(resolveDamageAbility(state, abilityId, landId, flashFloodsDamage(record, landId), quiet));
     case "damage_and_push":
-      return applyDamageAndPush(state, abilityId, record, landId);
+      return applyDamageAndPush(state, abilityId, record, landId, quiet);
     case "damage_each_invader":
-      return applyDamageEachInvader(state, abilityId, record, landId);
+      return applyDamageEachInvader(state, abilityId, record, landId, quiet);
     default:
       return false;
   }
@@ -1723,6 +1763,268 @@ function resolveAutoBoon(state) {
   const record = abilityRecord(state, "boon_of_vigor");
   if (!record || !applyBoonOfVigor(state, record, true)) return;
   startCooldown(state, "boon_of_vigor");
+}
+
+/* ---------- Auto-cast: the Innate's own judgement ----------
+ *
+ * `auto_innate` is not just buying back a click the way `auto_boon` is - the Innate always
+ * needs a target, so automating it means picking one. Each tier gets the ranked list of
+ * reasons to cast that were agreed on with the player: the highest-priority reason that
+ * currently applies picks the land, and if nothing on the list applies the ability sits idle
+ * rather than firing on a land that did not need it. A tick that finds nothing to do costs
+ * nothing - the cooldown is only ever spent on a cast that would have been worth making by
+ * hand.
+ */
+
+// The lowest id among a set of candidate lands - the same tie-break every other choice on this
+// board uses.
+function lowestLandId(landIds) {
+  return landIds.slice().sort((a, b) => Number(a) - Number(b))[0];
+}
+
+// Among lands already holding some Dahan, the one with the fewest - the stack closest to
+// losing its last defender, since the loss rate is flat regardless of stack size (see
+// landPressure). Ties go to the lowest land id.
+function thinnestDefendedLand(state, landIds) {
+  return landIds.slice().sort((a, b) => {
+    const diff = (state.dahan[a] || 0) - (state.dahan[b] || 0);
+    return diff !== 0 ? diff : Number(a) - Number(b);
+  })[0];
+}
+
+// A throwaway copy of exactly what damage, pushing, and the Dahan strike touch. Lets the
+// auto-caster run the real effect against a scratch board and see whether it is worth
+// spending the real cooldown on, without ever mutating the state that counts. `ui` is along
+// for the ride only because spendDahanAttack writes a defeat fx as a side effect of killing
+// something - the scratch board never reads it back.
+function cloneCombatState(state) {
+  return {
+    invaders: JSON.parse(JSON.stringify(state.invaders)),
+    invaderDamage: JSON.parse(JSON.stringify(state.invaderDamage)),
+    dahan: JSON.parse(JSON.stringify(state.dahan)),
+    meta: { fear: 0 },
+    resources: { energy: 0 },
+    round: { fearEarned: 0 },
+    ui: {}
+  };
+}
+
+// Would this wave's Dahan strike, on its own, clear a land - i.e. is it already safe to leave
+// alone? Simulated rather than reasoned about by hand, so it can never drift from what the
+// real strike (resolveDahanAttack) actually does.
+function landClearsToDahanStrike(state, landId) {
+  const dahan = state.dahan[landId] || 0;
+  if (dahan <= 0) return false;
+  const scratch = cloneCombatState(state);
+  spendDahanAttack(scratch, landId, dahan * DAHAN_ATTACK_DAMAGE);
+  return invaderCountInLand(scratch.invaders[landId]) <= 0;
+}
+
+// Would `damage` followed by a push of up to `pushCount` empty this land completely?
+// Simulated for the same reason - the kill-first order and the push's own destination rule
+// are real engine behaviour, not something worth re-deriving by hand.
+function landClearsWithDamageAndPush(state, landId, damage, pushCount) {
+  const scratch = cloneCombatState(state);
+  applyDamage(scratch, landId, damage);
+  applyPushFrom(scratch, landId, pushCount);
+  return invaderCountInLand(scratch.invaders[landId]) <= 0;
+}
+
+function landClearsWithDamageEach(state, landId, damage) {
+  const scratch = cloneCombatState(state);
+  applyDamageToEachInvader(scratch, landId, damage);
+  return invaderCountInLand(scratch.invaders[landId]) <= 0;
+}
+
+// The lands the next Build phase will thicken, or [] when nothing is on the track yet.
+function buildThreatLands(state) {
+  const terrain = state.invader.build;
+  return terrain ? landsOfTerrain(terrain) : [];
+}
+
+// The steepest live Blight source on the board, or null when nothing is bleeding. Shared by
+// tiers 2 and 3, which both fall back to "put the damage where it hurts most" once nothing
+// more specific applies.
+function worstBlightLand(state) {
+  const candidates = LAND_IDS.filter((land) => landPressure(state, land).blightPerSecond > 0);
+  if (candidates.length === 0) return null;
+  return candidates.slice().sort((a, b) => {
+    const diff = landPressure(state, b).blightPerSecond - landPressure(state, a).blightPerSecond;
+    return diff !== 0 ? diff : Number(a) - Number(b);
+  })[0];
+}
+
+/* Tier 1 - push_invaders, pushCount 1 */
+
+// Prio 1: a build-terrain land holding exactly one pushable unit and nothing else, that the
+// Dahan strike will not clear on its own before Build resolves. Pushing it out is the only
+// thing that stops the build.
+function innateT1BreakBuildLands(state) {
+  return buildThreatLands(state).filter((land) => {
+    const slot = state.invaders[land];
+    if (!slot || (slot.cities || 0) > 0) return false;
+    if (pushableCount(state, land) !== 1) return false;
+    if (!abilityLegalLand(state, "innate_power", land)) return false;
+    return !landClearsToDahanStrike(state, land);
+  });
+}
+
+// Prio 2: an undefended land, pushed into a neighbour that already holds Dahan - now that
+// pushDestinations prefers a defended neighbour on its own, this only has to check whether the
+// push this land would make lands on one.
+function innateT1RouteToCoverLands(state) {
+  return LAND_IDS.filter((land) => {
+    if ((state.dahan[land] || 0) > 0) return false;
+    if (!abilityLegalLand(state, "innate_power", land)) return false;
+    const destination = pushDestination(state, land);
+    return Boolean(destination) && (state.dahan[destination] || 0) > 0;
+  });
+}
+
+// Prio 3: pull an invader off whichever defended land has the fewest Dahan left, before that
+// stack runs out.
+function innateT1ProtectThinDahanLands(state) {
+  return LAND_IDS.filter((land) => {
+    if ((state.dahan[land] || 0) <= 0) return false;
+    return abilityLegalLand(state, "innate_power", land);
+  });
+}
+
+function pickInnateTargetTier1(state) {
+  const breakBuild = innateT1BreakBuildLands(state);
+  if (breakBuild.length > 0) return lowestLandId(breakBuild);
+
+  const routeToCover = innateT1RouteToCoverLands(state);
+  if (routeToCover.length > 0) return lowestLandId(routeToCover);
+
+  const protectThin = innateT1ProtectThinDahanLands(state);
+  if (protectThin.length > 0) return thinnestDefendedLand(state, protectThin);
+
+  return null;
+}
+
+/* Tier 2 - damage_and_push: 2 damage, then push up to 3 */
+
+// Prio 1: a build-terrain land the damage-then-push would empty outright.
+function innateT2BreakBuildLands(state) {
+  return buildThreatLands(state).filter((land) => {
+    const slot = state.invaders[land];
+    if (!slot || (slot.cities || 0) > 0) return false;
+    if (invaderCountInLand(slot) <= 0) return false;
+    return landClearsWithDamageAndPush(state, land, 2, 3);
+  });
+}
+
+// Prio 2: the same routing idea as Tier 1 - just needs a pushable unit and a defended
+// destination; the damage half is free value riding along on top.
+function innateT2RouteToCoverLands(state) {
+  return LAND_IDS.filter((land) => {
+    if ((state.dahan[land] || 0) > 0) return false;
+    if (invaderCountInLand(state.invaders[land]) <= 0) return false;
+    if (pushableCount(state, land) <= 0) return false;
+    const destination = pushDestination(state, land);
+    return Boolean(destination) && (state.dahan[destination] || 0) > 0;
+  });
+}
+
+function pickInnateTargetTier2(state) {
+  const breakBuild = innateT2BreakBuildLands(state);
+  if (breakBuild.length > 0) return lowestLandId(breakBuild);
+
+  const routeToCover = innateT2RouteToCoverLands(state);
+  if (routeToCover.length > 0) return lowestLandId(routeToCover);
+
+  const blight = worstBlightLand(state);
+  if (blight) return blight;
+
+  const protectThin = LAND_IDS.filter((land) =>
+    (state.dahan[land] || 0) > 0 && invaderCountInLand(state.invaders[land]) > 0
+  );
+  if (protectThin.length > 0) return thinnestDefendedLand(state, protectThin);
+
+  return null;
+}
+
+/* Tier 3 - damage_each_invader: 2 to every unit individually, no push */
+
+// Prio 1: a build-terrain land the AoE would wipe outright.
+function innateT3BreakBuildLands(state) {
+  return buildThreatLands(state).filter((land) => {
+    const slot = state.invaders[land];
+    if (!slot || (slot.cities || 0) > 0) return false;
+    if (invaderCountInLand(slot) <= 0) return false;
+    return landClearsWithDamageEach(state, land, 2);
+  });
+}
+
+// Prio 3: the land with the most bodies to hit - two or more, so a lone unit falls through to
+// the toughest-thing fallback rather than winning this slot by default.
+function innateT3MostInvadersLand(state) {
+  const candidates = LAND_IDS.filter((land) => invaderCountInLand(state.invaders[land]) >= 2);
+  if (candidates.length === 0) return null;
+  return candidates.slice().sort((a, b) => {
+    const diff = invaderCountInLand(state.invaders[b]) - invaderCountInLand(state.invaders[a]);
+    return diff !== 0 ? diff : Number(a) - Number(b);
+  })[0];
+}
+
+// Prio 4: the toughest single thing still standing, when nothing else qualified.
+function innateT3ToughestLand(state) {
+  const candidates = LAND_IDS.filter((land) => invaderCountInLand(state.invaders[land]) > 0);
+  if (candidates.length === 0) return null;
+  const toughestRank = (land) => {
+    const slot = state.invaders[land];
+    for (let i = 0; i < INVADER_TYPES_BY_TIER.length; i += 1) {
+      if ((slot[INVADER_TYPES_BY_TIER[i]] || 0) > 0) return i;
+    }
+    return INVADER_TYPES_BY_TIER.length;
+  };
+  return candidates.slice().sort((a, b) => {
+    const diff = toughestRank(a) - toughestRank(b);
+    return diff !== 0 ? diff : Number(a) - Number(b);
+  })[0];
+}
+
+function pickInnateTargetTier3(state) {
+  const breakBuild = innateT3BreakBuildLands(state);
+  if (breakBuild.length > 0) return lowestLandId(breakBuild);
+
+  const blight = worstBlightLand(state);
+  if (blight) return blight;
+
+  const mostInvaders = innateT3MostInvadersLand(state);
+  if (mostInvaders) return mostInvaders;
+
+  return innateT3ToughestLand(state);
+}
+
+// Dispatches on whichever tier is currently owned - the Innate replaces its own record
+// wholesale per tier (see abilityRecord), so the auto-caster only has to read `effect`.
+function pickInnateAutoTarget(state) {
+  const record = abilityRecord(state, "innate_power");
+  if (!record) return null;
+  switch (record.effect) {
+    case "push_invaders": return pickInnateTargetTier1(state);
+    case "damage_and_push": return pickInnateTargetTier2(state);
+    case "damage_each_invader": return pickInnateTargetTier3(state);
+    default: return null;
+  }
+}
+
+// The Innate acts on its own once `auto_innate` is bought, at whichever tier is currently
+// owned - tiering up later never has to re-buy this. Unlike the Boon it has real judgement to
+// exercise (see pickInnateAutoTarget), so a tick that satisfies no priority leaves the
+// cooldown alone rather than spending it on a land that did not need it.
+function resolveAutoInnate(state) {
+  if (upgradeTier(state, "auto_innate") <= 0) return;
+  if (!abilityIsUnlocked(state, "innate_power")) return;
+  if (!abilityIsReady(state, "innate_power")) return;
+
+  const landId = pickInnateAutoTarget(state);
+  if (!landId) return;
+
+  if (!applyAbilityEffect(state, "innate_power", landId, true)) return;
+  startCooldown(state, "innate_power");
 }
 
 // The single entry point for the ability bar. Everything it can answer with - cancel,
@@ -2508,6 +2810,7 @@ function tick(state, dt) {
   // Before the fight, so Energy the Boon just paid is spendable on the same tick the player
   // sees it - the ability bar is read after the tick, not during it.
   resolveAutoBoon(state);
+  resolveAutoInnate(state);
 
   // The fight first: it is what actually ends the round, and resolving it before the wave
   // means a land cannot be reinforced out from under damage it had already taken this tick.
@@ -2921,6 +3224,28 @@ const ENGINE_EXPORTS = {
   gainFearFromWave,
   gainEnergyFromDefeat,
   resolveAutoBoon,
+  orderedUpgradeIds,
+  lowestLandId,
+  thinnestDefendedLand,
+  cloneCombatState,
+  landClearsToDahanStrike,
+  landClearsWithDamageAndPush,
+  landClearsWithDamageEach,
+  buildThreatLands,
+  worstBlightLand,
+  innateT1BreakBuildLands,
+  innateT1RouteToCoverLands,
+  innateT1ProtectThinDahanLands,
+  innateT2BreakBuildLands,
+  innateT2RouteToCoverLands,
+  innateT3BreakBuildLands,
+  innateT3MostInvadersLand,
+  innateT3ToughestLand,
+  pickInnateTargetTier1,
+  pickInnateTargetTier2,
+  pickInnateTargetTier3,
+  pickInnateAutoTarget,
+  resolveAutoInnate,
   addBlight,
   blightReached,
   resolveLandCombat,

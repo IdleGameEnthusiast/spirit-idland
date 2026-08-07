@@ -157,8 +157,9 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 ### Pushing
 
 16. Towns are pushed before explorers; cities are never pushed.
-17. The destination is an adjacent land holding no invaders, preferring a coastal one, and
-    among equals the **lowest land id** — the same destination every time, never random.
+17. The destination is an adjacent land holding no invaders, preferring one already holding
+    Dahan, then a coastal one, and among equals the **lowest land id** — the same destination
+    every time, never random.
 18. Each pushed unit carries its own wound with it, exactly.
 19. A land with nothing pushable, or with no empty neighbour, is not a legal push target.
 
@@ -171,26 +172,31 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     cities it clears everything but the cities and leaves both of those at 1 health.
 23. Buying a tier spends its Energy, swaps the ability wholesale, and hands it back **ready**.
 24. The ladder is 50 then 250, and refuses past the top.
+25. Once `auto_innate` is bought, the Innate casts itself on cooldown at whichever tier is
+    currently owned - tiering up never needs a second purchase - picking its own land from
+    that tier's priority list. A tick where no priority is satisfied spends nothing and leaves
+    the cooldown untouched, so automation is never worse than a player who simply waits for a
+    good target. Like the Boon's auto-cast, it writes no log line.
 
 ### Energy and the Ability Lock
 
-25. A fresh round has exactly its `startingAbilityIds` unlocked; the rest of the kit is locked
+26. A fresh round has exactly its `startingAbilityIds` unlocked; the rest of the kit is locked
     and listed in kit order.
-26. A locked ability cannot be triggered and holds no cooldown slot.
-27. Buying one spends that ability's own `unlockCost` — 5, 10, 20 — and hands it over **ready**.
-28. Too little Energy buys nothing, and an ability already owned cannot be bought twice.
-29. **A new round takes back the Energy, every unlock bought with it, and every Innate tier.**
+27. A locked ability cannot be triggered and holds no cooldown slot.
+28. Buying one spends that ability's own `unlockCost` — 5, 10, 20 — and hands it over **ready**.
+29. Too little Energy buys nothing, and an ability already owned cannot be bought twice.
+30. **A new round takes back the Energy, every unlock bought with it, and every Innate tier.**
     Fear is untouched by the same reset.
-30. A defeated invader pays Energy equal to its attack: explorer 1, town 2, city 3.
-31. Damage that defeats nothing pays nothing, and a Dahan casualty pays nothing.
+31. A defeated invader pays Energy equal to its attack: explorer 1, town 2, city 3.
+32. Damage that defeats nothing pays nothing, and a Dahan casualty pays nothing.
 
 ### River's Bounty
 
-32. It resolves on the trigger itself, with no `pendingAbilityTarget`, and **creates** a Dahan
+33. It resolves on the trigger itself, with no `pendingAbilityTarget`, and **creates** a Dahan
     rather than moving one — no other land loses anything.
-33. It picks the land with the fewest Dahan among those holding invaders; a contested land
+34. It picks the land with the fewest Dahan among those holding invaders; a contested land
     beats an emptier quiet one, and ties go to the lowest land id.
-34. With no invaders anywhere it still resolves, into the land with the fewest Dahan on the
+35. With no invaders anywhere it still resolves, into the land with the fewest Dahan on the
     board. It is, with `boon_of_vigor`, one of the two abilities that never fail.
 
 ## Fear and Shop Checks
@@ -207,6 +213,12 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 6. `meta.totalRoundsPlayed` increments once per round ended.
 7. `meta.bestRoundReached` updates only when the ended round's number exceeds it, and never
    decreases.
+8. `auto_innate` is a one-time 100 Fear purchase, priced above `auto_boon`'s 25 because it
+   automates a higher-uptime ability with a real target to pick rather than a fixed no-target
+   effect; the second buy is refused once owned, same as any one-off.
+9. The shop list sinks anything sold out - a maxed repeatable or a bought one-off - below
+   everything still purchasable, in both directions preserving the catalogue's own order
+   within each half.
 
 ## Save and Migration Checks
 

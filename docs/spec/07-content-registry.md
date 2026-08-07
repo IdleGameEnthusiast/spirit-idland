@@ -178,6 +178,15 @@ table and cost-curve note.
   now Energy's job and does not go through the shop at all; this key remains the path for a
   fifth ability from outside the kit. `unlockedAbilityIds()` still reads it, and normalization
   still accepts it, so that fifth ability is content work and not code work.
+- `auto_boon` — one-time, `boon_of_vigor` casts itself once ready, no click needed. `baseCost`
+  25 — priced as comfort, roughly one round's income, since the effect it buys back has no
+  target and no decision in it.
+- `auto_innate` — one-time, `innate_power` casts itself once ready, at whichever tier is
+  currently owned; tiering up later never re-arms this. `baseCost` 100 — priced well above
+  `auto_boon` because the Innate fires more often at every tier and, unlike the Boon, casting
+  it is a real decision: which land. The auto-cast runs a per-tier priority list (see
+  [08-acceptance-tests.md](./08-acceptance-tests.md#the-innate-power)) and skips the tick
+  entirely, cooldown untouched, whenever no priority applies.
 
 ## Terrain Registry
 

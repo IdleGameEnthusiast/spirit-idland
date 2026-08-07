@@ -456,6 +456,29 @@
     }
   });
 
+  test("push: a Dahan-held neighbour wins over an empty coastal one", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 2 borders coastal 1 and 3 (both empty, no Dahan) and inland 5 and 6.
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "6", null, 1);   // inland, undefended coast loses to this
+
+    assertDeepEqual(engine.pushDestinations(state, "2"), ["6"], "Dahan beats coastal");
+    assertEqual(engine.pushDestination(state, "2"), "6");
+  });
+
+  test("push: among several Dahan-held neighbours a coastal one still wins", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 2 borders coastal 1 and 3 and inland 5 and 6; give three of them Dahan.
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "1", null, 1);   // coastal, defended
+    setLand(state, "5", null, 1);   // inland, defended
+    setLand(state, "6", null, 1);   // inland, defended
+
+    assertDeepEqual(engine.pushDestinations(state, "2"), ["1"], "defended and coastal beats defended alone");
+  });
+
   test("push: an occupied neighbour is never a destination", () => {
     const { state } = fullKit();
     clearBoard(state);
@@ -730,6 +753,113 @@
     assert(!engine.upgradeAbility(state, "innate_power"), "the upgrade must refuse");
     assertEqual(state.resources.energy, 49, "Energy untouched");
     assertEqual(engine.abilityTier(state, "innate_power"), 0, "still tier 1");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Auto-cast: the Innate's own judgement (auto_innate)                 *
+   * ---------------------------------------------------------------- */
+
+  test("auto-innate tier 1: breaks a build by pushing the lone unit that would trigger it", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.invader.build = "wetlands";           // lands 1 and 7
+    setLand(state, "7", { explorers: 1 }, 0);    // undefended, alone - Build would thicken it
+    state.upgrades.purchased.auto_innate = 1;
+
+    advance(ctx, 1);
+
+    assertEqual(state.invaders["7"].explorers, 0, "the lone unit was pushed out before Build");
+    assertEqual(state.invaders["4"].explorers, 1, "landed on 7's lowest free, undefended neighbour");
+    assert(state.abilities.innate_power.cooldownRemaining > 0, "the real cooldown was spent");
+
+    const innateLines = (state._log || []).filter((line) => line.includes(engine.abilityName(state, "innate_power")));
+    assertEqual(innateLines.length, 0, "the auto-cast does not narrate itself, same as the Boon's");
+  });
+
+  test("auto-innate tier 1: a lone city cannot be broken, so it waits rather than wasting the cast", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.invader.build = "wetlands";
+    setLand(state, "7", { cities: 1 }, 0);       // nothing pushable, no Dahan anywhere either
+    state.upgrades.purchased.auto_innate = 1;
+
+    const cooldown = engine.abilityCooldownSeconds(state, "innate_power");
+    advance(ctx, cooldown * 3);
+
+    assertEqual(state.invaders["7"].cities, 1, "the city never moved, never could");
+    assertEqual(state.abilities.innate_power.cooldownRemaining, 0, "never fired, so still ready");
+  });
+
+  test("auto-innate tier 1: routes an undefended stack into Dahan cover when nothing needs breaking", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    // Land 5 (hub) is undefended; its neighbour 8 holds no invaders but does hold a Dahan.
+    setLand(state, "5", { explorers: 1 }, 0);
+    setLand(state, "8", null, 1);
+    state.upgrades.purchased.auto_innate = 1;
+
+    advance(ctx, 1);
+
+    assertEqual(state.invaders["5"].explorers, 0, "pushed off the undefended land");
+    assertEqual(state.invaders["8"].explorers, 1, "and landed in front of the Dahan already there");
+    assertEqual(state.dahan["8"], 1, "the defender itself did not move");
+  });
+
+  test("auto-innate tier 1: protects whichever defended stack is thinnest", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    setLand(state, "5", { explorers: 1 }, 2);    // defended, two Dahan
+    setLand(state, "6", { explorers: 1 }, 1);    // defended, one Dahan - closer to losing it
+    state.upgrades.purchased.auto_innate = 1;
+
+    advance(ctx, 1);
+
+    assertEqual(state.invaders["6"].explorers, 0, "the thinner stack's attacker was pulled");
+    assertEqual(state.invaders["5"].explorers, 1, "the thicker stack was left as it was");
+  });
+
+  test("auto-innate keeps working at tier 2 without a second purchase", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    setAbilityTier(state, "innate_power", 1);
+    clearBoard(state);
+    state.invader.build = "wetlands";
+    setLand(state, "7", { towns: 1 }, 0);        // 2 damage kills a town outright
+    state.upgrades.purchased.auto_innate = 1;
+
+    advance(ctx, 1);
+
+    assertEqual(state.invaders["7"].towns, 0, "the tier 2 damage half cleared it alone");
+  });
+
+  test("auto-innate keeps working at tier 3 without a second purchase", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    setAbilityTier(state, "innate_power", 2);
+    clearBoard(state);
+    state.invader.build = "wetlands";
+    setLand(state, "7", { explorers: 2 }, 0);    // 2 damage each kills both outright
+    state.upgrades.purchased.auto_innate = 1;
+
+    advance(ctx, 1);
+
+    assertEqual(state.invaders["7"].explorers, 0, "the AoE cleared the build threat");
+  });
+
+  test("auto-innate: with auto_innate not owned, the Innate never fires on its own", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.invader.build = "wetlands";
+    setLand(state, "7", { explorers: 1 }, 0);
+
+    advance(ctx, engine.abilityCooldownSeconds(state, "innate_power") * 2);
+
+    assertEqual(state.invaders["7"].explorers, 1, "nothing automated without the upgrade");
   });
 
   /* ---------------------------------------------------------------- *

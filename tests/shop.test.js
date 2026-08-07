@@ -1,7 +1,7 @@
 /* Fear and shop checks - docs/spec/08-acceptance-tests.md#fear-and-shop-checks */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   test("shop: Fear earned mid-round is still there when the round ends", () => {
     const ctx = newGame();
@@ -180,6 +180,43 @@
 
     assert(!engine.purchaseUpgrade(state, "auto_boon"), "the second buy is refused");
     assertEqual(engine.upgradeTier(state, "auto_boon"), 1, "still one");
+  });
+
+  test("shop: auto_innate is a 100 Fear one-off, priced above auto_boon", () => {
+    const { state } = newGame();
+    engine.endRound(state);
+    state.meta.fear = 1e9;
+
+    assertEqual(engine.upgradeCost(state, "auto_innate"), 100, "base cost is 100 Fear");
+    assert(
+      engine.upgradeCost(state, "auto_innate") > engine.upgradeCost(state, "auto_boon"),
+      "it automates more, so it costs more"
+    );
+    assertEqual(engine.upgradeMaxTier("auto_innate"), 1, "a one-off has a single tier");
+
+    assert(engine.purchaseUpgrade(state, "auto_innate"), "the first buy lands");
+    assertEqual(engine.upgradeTier(state, "auto_innate"), 1, "owned");
+
+    assert(!engine.purchaseUpgrade(state, "auto_innate"), "the second buy is refused");
+    assertEqual(engine.upgradeTier(state, "auto_innate"), 1, "still one");
+  });
+
+  test("shop: orderedUpgradeIds sinks anything sold out below what is still buyable", () => {
+    const { state } = newGame();
+    engine.endRound(state);
+    state.meta.fear = 1e9;
+
+    // dahan_reinforcement is maxed out, auto_boon is bought (also maxed, being a one-off).
+    // blight_resilience and auto_innate are left untouched.
+    const max = engine.upgradeMaxTier("dahan_reinforcement");
+    for (let i = 0; i < max; i += 1) engine.purchaseUpgrade(state, "dahan_reinforcement");
+    engine.purchaseUpgrade(state, "auto_boon");
+
+    assertDeepEqual(
+      engine.orderedUpgradeIds(state),
+      ["blight_resilience", "auto_innate", "dahan_reinforcement", "auto_boon"],
+      "the two sold-out upgrades sink to the bottom, catalogue order preserved on both sides"
+    );
   });
 
   test("shop: an ability defeat during a round feeds the same purse the shop spends", () => {
