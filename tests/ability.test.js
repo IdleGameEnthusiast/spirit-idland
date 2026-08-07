@@ -786,6 +786,10 @@
     state.upgrades.purchased.auto_innate = 1;
 
     const cooldown = engine.abilityCooldownSeconds(state, "innate_power");
+    // Held past the window below, so no wave resolves and Discover cannot seed a fresh,
+    // genuinely pushable explorer onto some other, empty land - this is about the lone city
+    // and nothing else, so the rest of the board has to stay inert for the whole test.
+    state.round.waveTimerRemaining = cooldown * 3 + 1;
     advance(ctx, cooldown * 3);
 
     assertEqual(state.invaders["7"].cities, 1, "the city never moved, never could");
