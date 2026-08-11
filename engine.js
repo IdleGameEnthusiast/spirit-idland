@@ -81,14 +81,72 @@ const BLIGHT_FLOOR_FRACTION = 0.25;
 const DAHAN_ATTACK_INTERVAL_SECONDS = 10 * TIME_SCALE;
 const DAHAN_ATTACK_DAMAGE = 1;
 
-// From this wave on, Discover stops asking whether a land is reachable and simply seeds both
-// lands of its terrain - see resolveExplorePhase. A round that survives its opening is
-// otherwise flat: the Dahan out-kill the track and nothing further threatens it. The counter
-// is per round, like everything except Fear, so every round re-earns its own difficulty.
-//
-// This is the first rung of a ladder, not the whole of it. Later rungs belong at 20, 30 and
-// beyond, and each should read as its own rule rather than a number tuned on this one.
+/* ---------- The difficulty ladder ----------
+ *
+ * A round that survives its opening used to be flat: the Dahan out-kill the track and nothing
+ * further threatens it. The ladder is what keeps a round finite. Every rung is keyed to the
+ * wave count, which is per round like everything except Fear - so every round re-earns its own
+ * difficulty, and reaching wave 60 in round 90 is exactly as hard as reaching it in round 2.
+ * Nothing here reads the round number, and nothing should.
+ *
+ * Each rung is its own rule rather than a number tuned on the last one:
+ *
+ *    0  Discover runs at setup, so the island is never empty (see seedRoundExplore)
+ *   10  Discover stops asking whether a land is reachable
+ *   20  Discover seeds two Explorers per land instead of one
+ *   30  A Town appears each wave in some land that has none
+ *   40  Discover takes one extra land, off-terrain
+ *   50  Discover draws two terrains instead of one
+ *   60  Build runs twice
+ *   70  Discover draws three terrains
+ *   80  Discover draws every terrain
+ *   90  Invaders hit harder, and again every 20 waves after
+ *  100  Invaders are tougher, and again every 20 waves after
+ *
+ * Because the track slides forward (see shiftInvaderTrack), every rung that widens Discover
+ * widens Build one wave later - the terrains discovered this wave are the ones built next.
+ * That coupling is the point: the player watches a terrain thicken before it does.
+ */
 const EXPLORE_UNRESTRICTED_FROM_WAVE = 10;
+const EXPLORE_DOUBLE_SEED_FROM_WAVE = 20;
+const BONUS_TOWN_FROM_WAVE = 30;
+const EXPLORE_EXTRA_LAND_FROM_WAVE = 40;
+const BUILD_TWICE_FROM_WAVE = 60;
+
+// How many terrains Discover draws, by wave. Read in order, first match wins - so the table
+// reads top-down as the ladder climbs rather than as a chain of comparisons. `Infinity` is
+// "every terrain there is", clamped against INVADER_TERRAINS at the point of use so this
+// table never has to know how many that is.
+const EXPLORE_TERRAIN_RUNGS = [
+  { fromWave: 80, terrains: Infinity },
+  { fromWave: 70, terrains: 3 },
+  { fromWave: 50, terrains: 2 }
+];
+
+// The last two rungs never stop. From wave 90 every point of Invader damage is +1, and again
+// every 20 waves; health does the same from 100, so the two alternate every ten waves forever
+// and a round can always be out-scaled eventually. Damage is deliberately the first of the
+// pair: power is read off damage (see gainFearFromDefeat), so a damage rung raises what an
+// Invader is worth in the same stroke as what it threatens, and the two stay in agreement.
+const INVADER_DAMAGE_RUNG_FROM_WAVE = 90;
+const INVADER_HEALTH_RUNG_FROM_WAVE = 100;
+const INVADER_STAT_RUNG_INTERVAL = 20;
+
+/* ---------- The two Fear pools ----------
+ *
+ * Fear is earned into `round.fearEarned` and banked into `meta.fear` when the round ends.
+ * Only the banked pool can be spent.
+ *
+ * The split exists because the shop no longer closes. Auto Start Round removes the pause
+ * between rounds, so "Fear is a between-round currency" could no longer be enforced by the
+ * clock - there is no longer a moment the shop is the only thing on screen. The rule is the
+ * same one it always was, moved from *when* the player may spend to *which pool* they spend:
+ * a round is paid out for what it survived, once, after it has survived it.
+ *
+ * What this stops is a round buying its own way out - banking a kill mid-fight and spending
+ * it on Blight Resilience before the Blight lands. See activeUpgradeTier for the other half
+ * of the same rule.
+ */
 
 // Fear per point of defeated invader power. An explorer is worth 1 power, a town 2,
 // a city 3 - the same numbers as their damage, so a unit's threat and its worth agree.
@@ -124,6 +182,33 @@ const UNIT_STATS = {
 };
 
 const INVADER_TYPES = ["explorers", "towns", "cities"];
+
+// A rung that repeats: 0 before `fromWave`, then +1 for every INVADER_STAT_RUNG_INTERVAL
+// waves on top of it. Kept as one function because damage and health differ only in where
+// they start.
+function repeatingRungBonus(wavesResolved, fromWave) {
+  const wave = Math.max(0, Math.floor(Number(wavesResolved) || 0));
+  if (wave < fromWave) return 0;
+  return 1 + Math.floor((wave - fromWave) / INVADER_STAT_RUNG_INTERVAL);
+}
+
+// The stats a unit actually fights with this wave, as opposed to the ones it shipped with.
+// Every reader goes through here - damage rates, wound caps, the Fear a defeat pays, and the
+// numbers the panel prints - so no two of them can disagree about how big an Invader is.
+//
+// Dahan never ride the ladder. It scales what the island throws at the player, and scaling
+// the answer alongside the question would leave the round exactly where it started.
+function unitStats(state, unitType) {
+  const base = UNIT_STATS[unitType];
+  if (!base) return { health: 0, damage: 0 };
+  if (!INVADER_TYPES.includes(unitType)) return base;
+
+  const wave = state && state.round ? state.round.wavesResolved : 0;
+  return {
+    health: base.health + repeatingRungBonus(wave, INVADER_HEALTH_RUNG_FROM_WAVE),
+    damage: base.damage + repeatingRungBonus(wave, INVADER_DAMAGE_RUNG_FROM_WAVE)
+  };
+}
 
 // Strongest first. Read wherever damage has to break a tie between two units it could hit
 // equally well, and by the defeat banner when it picks which loss to name.
@@ -315,6 +400,36 @@ const UPGRADES = {
     // which land - that this buys back rather than a fixed no-target effect. It stays a
     // one-time comfort purchase, just a pricier one.
     baseCost: 100
+  },
+  auto_wash_away: {
+    id: "auto_wash_away",
+    repeatable: false,
+    effect: "auto_cast_wash_away",
+    // The cheapest of the three targeted automations, because the push never kills. It moves
+    // invaders off a land rather than off the board, and its value is highest early and
+    // thinnest late - by the time every land holds something there is nowhere left to push
+    // to. A permanent purchase whose worth decays is priced under one whose worth compounds.
+    baseCost: 150
+  },
+  auto_bounty: {
+    id: "auto_bounty",
+    repeatable: false,
+    effect: "auto_cast_bounty",
+    // The one automation that is not comfort. A Dahan every 15 beats, all round, is the same
+    // thing the reinforcement ladder sells - and it is priced against that ladder's last rung
+    // (10 * 1.6^7, about 268) rather than against the other auto upgrades, because that is
+    // what it competes with. Automating the click is incidental; this buys the Dahan.
+    baseCost: 250
+  },
+  auto_start_round: {
+    id: "auto_start_round",
+    repeatable: false,
+    effect: "auto_start_round",
+    // The most expensive thing in the shop, and the only one that changes the shape of the
+    // game rather than a number in it: rounds stop needing a hand on them. It is priced as a
+    // milestone - several rounds of income even once the ladders are deep - because what it
+    // buys is every round after it.
+    baseCost: 500
   }
 };
 
@@ -392,6 +507,27 @@ function landsOfTerrain(terrain) {
   return LAND_IDS.filter((landId) => BOARD_LANDS[landId].terrain === terrain);
 }
 
+// The same, for a phase that covers several terrains. Still id order, and still one entry per
+// land however many terrains asked for it.
+function landsOfTerrains(terrains) {
+  const wanted = terrainList(terrains);
+  return LAND_IDS.filter((landId) => wanted.includes(BOARD_LANDS[landId].terrain));
+}
+
+// Both phase slots hold a *list* of terrains, now that the ladder can widen Discover past
+// one. Every read goes through here, so a slot holding a bare terrain string - a save written
+// before the ladder, or a test that set one by hand - still reads as the one-terrain list it
+// means. Duplicates are dropped and the result is put in INVADER_TERRAINS order, so a slot
+// prints the same way however it was drawn.
+function terrainList(value) {
+  const raw = Array.isArray(value) ? value : [value];
+  const out = [];
+  for (const terrain of raw) {
+    if (INVADER_TERRAINS.includes(terrain) && !out.includes(terrain)) out.push(terrain);
+  }
+  return out.sort((a, b) => INVADER_TERRAINS.indexOf(a) - INVADER_TERRAINS.indexOf(b));
+}
+
 // Builds a fresh land-keyed map. `factory` returns the value for one land.
 function createLandMap(factory) {
   const out = {};
@@ -413,10 +549,12 @@ const I18N = {
 
     hudTitle: "Runde",
     roundLabel: "Welle",
-    bestRoundLabel: "Beste Runde",
+    bestWaveLabel: "Hoechste Welle",
     blightLabel: "Verderbnis",
     waveLabel: "Naechste Welle",
     fearLabel: "Furcht",
+    // Die Furcht dieser Runde ist noch nicht ausgebbar - sie wird erst am Rundenende gebucht.
+    fearPendingHint: "+{fear} in dieser Runde",
     secondsShort: "{seconds}s",
     // The two readings the wave tile has that are not a countdown: a stopped clock, and a
     // wave standing due behind the gate waiting to be called.
@@ -426,6 +564,9 @@ const I18N = {
     autoWaveOnBtn: "Auto: An",
     autoWaveOffBtn: "Auto: Aus",
     autoWaveHint: "Naechste Welle laeuft von selbst an. Aus: am Ende der Leiste haelt die Zeit an, bis du die Welle startest.",
+    autoRoundOnBtn: "Auto-Runde: An",
+    autoRoundOffBtn: "Auto-Runde: Aus",
+    autoRoundHint: "Die naechste Runde startet von selbst. Aus: der Laden bleibt offen, bis du sie startest.",
     speedLabel: "Tempo",
     speedOptionTitle: "Spieltempo {speed}x",
     speedPausedTitle: "Pause - die Zeit steht still",
@@ -473,6 +614,9 @@ const I18N = {
 
     shopTitle: "Zwischen den Runden",
     shopLostRound: "Runde {round} verloren. {fear} Furcht in dieser Runde erbeutet.",
+    // Waehrend eine Runde laeuft, steht statt der Verlustmeldung, was sie bisher eingebracht
+    // hat - und dass es erst am Rundenende gebucht wird.
+    shopRoundRunning: "Runde {round} laeuft, Welle {wave}. {fear} Furcht bisher - buchbar am Rundenende.",
     shopFearLabel: "Verfuegbare Furcht",
     shopTierLabel: "Stufe {tier}",
     shopCostLabel: "{cost} Furcht",
@@ -481,18 +625,26 @@ const I18N = {
     // A one-off is owned, not maxed: there was never a ladder for it to reach the top of.
     shopOwnedBtn: "Gekauft",
     shopOneOffLabel: "Einmalig",
+    // Waehrend der Runde gekauft: gehoert dir, wirkt aber erst ab der naechsten Runde.
+    shopPendingHint: "Wirkt ab der naechsten Runde.",
     startNextRoundBtn: "Naechste Runde starten",
     upgradeNames: {
       dahan_reinforcement: "Verstaerkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
       auto_boon: "Segen von selbst",
-      auto_innate: "Angeborener Instinkt"
+      auto_innate: "Angeborener Instinkt",
+      auto_wash_away: "Stroemung von selbst",
+      auto_bounty: "Gabe des Flusses",
+      auto_start_round: "Die Flut kehrt wieder"
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 Dahan zu Rundenbeginn, pro Stufe.",
       blight_resilience: "+1 Verderbnisgrenze, pro Stufe.",
       auto_boon: "Boon of Vigor wirkt sich selbst, sobald es bereit ist.",
-      auto_innate: "Die Angeborene Kraft wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt."
+      auto_innate: "Die Angeborene Kraft wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt.",
+      auto_wash_away: "Wash Away wirkt sich selbst und sucht sich sein Ziel - sobald es freigeschaltet und bereit ist.",
+      auto_bounty: "River's Bounty wirkt sich selbst, sobald es freigeschaltet und bereit ist.",
+      auto_start_round: "Die naechste Runde startet von selbst. Abschaltbar, wenn du in Ruhe einkaufen willst."
     },
 
     logTitle: "Spielprotokoll",
@@ -548,7 +700,7 @@ const I18N = {
     },
 
     roundStarted: "Runde {round} beginnt. Verderbnisgrenze {threshold}.",
-    roundEnded: "Runde {round} verloren: Verderbnis {blight}/{threshold}. {fear} Furcht erbeutet.",
+    roundEnded: "Runde {round} verloren bei Welle {wave}: Verderbnis {blight}/{threshold}. {fear} Furcht gebucht.",
     waveResolved: "Welle {wave} aufgeloest.",
     waveIncoming: "Invasorenleiste - Bauen: {build}, Entdecken: {discover}.",
     dahanAttackResolved: "Dahan greifen in {land} an: {damage} Schaden, {defeated} Invasoren besiegt.",
@@ -559,9 +711,10 @@ const I18N = {
     buildNoInvaders: "Bauen in {land}: keine Invasoren, nichts wird gebaut.",
     buildResolved: "Bauen in {land}: +1 {unit}.",
     exploreNothing: "Entdecken: kein Gebiet gezogen.",
-    exploreResolved: "Entdecken in {land}: +1 Entdecker.",
+    exploreResolved: "Entdecken in {land}: +{count} Entdecker.",
     exploreBlocked: "Entdecken in {land}: kein Zugang, keine Kueste und kein Dorf/keine Stadt daneben.",
     exploreNoneReachable: "Entdecken in {terrain}: kein Gebiet erreichbar.",
+    bonusTownResolved: "Ein Dorf erhebt sich in {land}.",
     setupExplore: "Die Invasoren gehen an Land.",
     dahanRoundLog: "Dahan versammeln sich: {summary}.",
 
@@ -581,7 +734,6 @@ const I18N = {
     abilityUpgraded: "{ability} auf Stufe {tier} gebracht fuer {cost} Energie.",
     abilityUpgradeTooExpensive: "Stufe {tier} von {ability} kostet {cost} Energie. Du hast {energy}.",
 
-    roundStillRunning: "Die Runde laeuft noch.",
     upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) fuer {cost} Furcht.",
     upgradeTooExpensive: "{upgrade} kostet {cost} Furcht. Du hast {fear}.",
     upgradeMaxed: "{upgrade} ist bereits auf der hoechsten Stufe.",
@@ -597,10 +749,11 @@ const I18N = {
 
     hudTitle: "Round",
     roundLabel: "Wave",
-    bestRoundLabel: "Best round",
+    bestWaveLabel: "Highest wave",
     blightLabel: "Blight",
     waveLabel: "Next wave",
     fearLabel: "Fear",
+    fearPendingHint: "+{fear} this round",
     secondsShort: "{seconds}s",
     wavePausedValue: "Paused",
     waveHeldValue: "Waiting",
@@ -608,6 +761,9 @@ const I18N = {
     autoWaveOnBtn: "Auto: on",
     autoWaveOffBtn: "Auto: off",
     autoWaveHint: "Let the next wave start by itself. Off: time stops at the end of the bar until you start the wave.",
+    autoRoundOnBtn: "Auto round: on",
+    autoRoundOffBtn: "Auto round: off",
+    autoRoundHint: "Let the next round start by itself. Off: the shop stays open until you start it.",
     speedLabel: "Speed",
     speedOptionTitle: "Game speed {speed}x",
     speedPausedTitle: "Paused - time stands still",
@@ -654,6 +810,7 @@ const I18N = {
 
     shopTitle: "Between Rounds",
     shopLostRound: "Round {round} lost. {fear} Fear earned this round.",
+    shopRoundRunning: "Round {round} running, wave {wave}. {fear} Fear so far - banked when the round ends.",
     shopFearLabel: "Fear available",
     shopTierLabel: "Tier {tier}",
     shopCostLabel: "{cost} Fear",
@@ -661,18 +818,25 @@ const I18N = {
     shopMaxedBtn: "Maxed",
     shopOwnedBtn: "Owned",
     shopOneOffLabel: "One-off",
+    shopPendingHint: "Takes effect next round.",
     startNextRoundBtn: "Start next round",
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
       auto_boon: "Boon Unbidden",
-      auto_innate: "Innate Instinct"
+      auto_innate: "Innate Instinct",
+      auto_wash_away: "The Current Unbidden",
+      auto_bounty: "The River Provides",
+      auto_start_round: "The Tide Returns"
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 starting Dahan, per tier.",
       blight_resilience: "+1 Blight threshold, per tier.",
       auto_boon: "Boon of Vigor casts itself whenever it is ready.",
-      auto_innate: "The Innate casts itself whenever it is ready, at whichever tier you own."
+      auto_innate: "The Innate casts itself whenever it is ready, at whichever tier you own.",
+      auto_wash_away: "Wash Away casts itself and picks its own target, once unlocked and ready.",
+      auto_bounty: "River's Bounty casts itself, once unlocked and ready.",
+      auto_start_round: "The next round starts by itself. Switch it off when you want to shop in peace."
     },
 
     logTitle: "Event log",
@@ -727,7 +891,7 @@ const I18N = {
     },
 
     roundStarted: "Round {round} begins. Blight threshold {threshold}.",
-    roundEnded: "Round {round} lost: Blight {blight}/{threshold}. {fear} Fear earned.",
+    roundEnded: "Round {round} lost at wave {wave}: Blight {blight}/{threshold}. {fear} Fear banked.",
     waveResolved: "Wave {wave} resolved.",
     waveIncoming: "Invader track - Build: {build}, Discover: {discover}.",
     dahanAttackResolved: "The Dahan strike in {land}: {damage} damage, {defeated} invaders defeated.",
@@ -738,9 +902,10 @@ const I18N = {
     buildNoInvaders: "Build in {land}: no invaders, nothing is built.",
     buildResolved: "Build in {land}: +1 {unit}.",
     exploreNothing: "Discover: no terrain drawn.",
-    exploreResolved: "Discover in {land}: +1 explorer.",
+    exploreResolved: "Discover in {land}: +{count} explorers.",
     exploreBlocked: "Discover in {land}: no way in, not coastal and no town or city adjacent.",
     exploreNoneReachable: "Discover in {terrain}: no land reachable.",
+    bonusTownResolved: "A town rises in {land}.",
     setupExplore: "The invaders come ashore.",
     dahanRoundLog: "The Dahan gather: {summary}.",
 
@@ -760,7 +925,6 @@ const I18N = {
     abilityUpgraded: "{ability} raised to tier {tier} for {cost} Energy.",
     abilityUpgradeTooExpensive: "Tier {tier} of {ability} costs {cost} Energy. You have {energy}.",
 
-    roundStillRunning: "The round is still running.",
     upgradePurchased: "Purchased: {upgrade} (tier {tier}) for {cost} Fear.",
     upgradeTooExpensive: "{upgrade} costs {cost} Fear. You have {fear}.",
     upgradeMaxed: "{upgrade} is already at its highest tier.",
@@ -817,9 +981,17 @@ function landName(state, landId) {
 
 function terrainLandsSummary(state, terrain) {
   const t = locale(state);
-  const lands = landsOfTerrain(terrain);
+  const lands = landsOfTerrains(terrain);
   if (lands.length === 0) return t.invaderNone;
   return lands.map((landId) => template(t.landShort, { id: landId })).join(", ");
+}
+
+// A phase slot as one phrase - "Wetlands + Jungle". Everything that used to print a single
+// terrain name for a slot prints this instead, so widening Discover never needs the caller
+// to know it widened.
+function terrainNames(state, terrains) {
+  const names = terrainList(terrains).map((terrain) => terrainName(state, terrain));
+  return names.length > 0 ? names.join(" + ") : terrainName(state, null);
 }
 
 function unitLabelByType(state, unitType) {
@@ -892,7 +1064,7 @@ function abilityRequirementText(state, abilityId) {
 // everything.
 function landPressure(state, landId) {
   const slot = state.invaders[landId] || { explorers: 0, towns: 0, cities: 0 };
-  const gross = invaderDamageInLand(slot);
+  const gross = invaderDamageInLand(state, slot);
   const dahan = Math.max(0, state.dahan[landId] || 0);
   const defence = dahan * UNIT_STATS.dahan.damage;
   const held = gross > 0 && defence >= gross;
@@ -993,36 +1165,67 @@ function upgradeText(state, upgradeId) {
  * Board state factories and normalizers (03-state-contract.md)         *
  * ------------------------------------------------------------------ */
 
-function drawInvaderTerrain() {
-  return INVADER_TERRAINS[Math.floor(rng() * INVADER_TERRAINS.length)];
-}
-
 // The opening Discover draws only from terrains that can actually take an explorer on an
 // empty board, which means terrains with a coastal land. Mountains has none, so drawing it
 // at setup would seed nothing and hand the player a silent island for the whole first wave -
 // exactly what the opening Discover exists to prevent.
-function drawOpeningTerrain(state) {
+//
+// It always draws one terrain regardless of the ladder: wave 0 is the bottom rung, and the
+// counter is per round, so no round ever opens wider than any other.
+function drawOpeningTerrains(state) {
   const shut = INVADER_TERRAINS.filter(
     (terrain) => !landsOfTerrain(terrain).some((landId) => landAcceptsExplorer(state, landId))
   );
-  return drawInvaderTerrainExcluding(shut);
+  return drawInvaderTerrains(1, shut);
 }
 
-function drawInvaderTerrainExcluding(excludedTerrains) {
-  const excluded = new Set((excludedTerrains || []).filter((terrain) => INVADER_TERRAINS.includes(terrain)));
-  const choices = INVADER_TERRAINS.filter((terrain) => !excluded.has(terrain));
-  if (choices.length === 0) return drawInvaderTerrain();
-  return choices[Math.floor(rng() * choices.length)];
+// `count` distinct terrains, avoiding `excludedTerrains` where there is room to. The
+// exclusion is a preference and not a rule, because past three terrains a wave there is no
+// longer room to honour it - and a Discover that had to shrink to keep "not what we just
+// built" would be the ladder undoing itself.
+function drawInvaderTerrains(count, excludedTerrains) {
+  const wanted = clamp(Math.floor(Number(count) || 1), 1, INVADER_TERRAINS.length);
+  if (wanted >= INVADER_TERRAINS.length) return INVADER_TERRAINS.slice();
+
+  const excluded = new Set(terrainList(excludedTerrains));
+  const preferred = INVADER_TERRAINS.filter((terrain) => !excluded.has(terrain));
+  const bag = (preferred.length >= wanted ? preferred : INVADER_TERRAINS).slice();
+
+  const drawn = [];
+  while (drawn.length < wanted && bag.length > 0) {
+    drawn.push(bag.splice(Math.floor(rng() * bag.length), 1)[0]);
+  }
+  return terrainList(drawn);
+}
+
+// How many terrains Discover draws this wave, off EXPLORE_TERRAIN_RUNGS. The rungs are read
+// highest-first, so the first one the round has reached is the one that answers.
+function exploreTerrainCount(state) {
+  const wave = state && state.round ? state.round.wavesResolved : 0;
+  for (const rung of EXPLORE_TERRAIN_RUNGS) {
+    if (wave >= rung.fromWave) return Math.min(rung.terrains, INVADER_TERRAINS.length);
+  }
+  return 1;
 }
 
 // Two slots, not three. Ravaging is no longer a phase that picks a terrain - invaders damage
 // the land they stand in, continuously, everywhere at once (02-core-loop.md#the-fight).
-function normalizeInvaderPhases(invader) {
-  const build = INVADER_TERRAINS.includes(invader && invader.build) ? invader.build : null;
-  const exploreRaw = INVADER_TERRAINS.includes(invader && invader.explore) ? invader.explore : null;
+function normalizeInvaderPhases(invader, state) {
+  const build = terrainList(invader && invader.build);
+  let explore = terrainList(invader && invader.explore);
 
-  let explore = exploreRaw;
-  if (!explore || explore === build) explore = drawInvaderTerrainExcluding([build]);
+  // A save written before Discover could widen holds one terrain where the round now wants
+  // several, so the wanted count is taken from the ladder and the slot redrawn to match
+  // rather than patched - the count and the contents always agree afterwards.
+  const wanted = state ? exploreTerrainCount(state) : Math.max(1, explore.length);
+
+  // Build and Discover still never name the same thing while there is room for them not to.
+  // Once Discover takes every terrain there is no room, and the clash stops being one.
+  const clashes = wanted < INVADER_TERRAINS.length
+    && explore.length > 0
+    && explore.every((terrain) => build.includes(terrain));
+
+  if (explore.length !== wanted || clashes) explore = drawInvaderTerrains(wanted, build);
 
   return { build, explore };
 }
@@ -1055,16 +1258,21 @@ function createInvaderDamage() {
   return createLandMap(() => ({ explorers: [], towns: [], cities: [] }));
 }
 
-function normalizeInvaderDamage(invaders, invaderDamage) {
+// `wavesResolved` is how far up the ladder the round has climbed, because the cap this holds
+// wounds under is the unit's *current* health (see unitStats). Passing it is not optional in
+// practice: normalizing a wave-100 board against the shipped health would clamp every wound
+// the extra hit point allowed back down to the base cap, quietly healing the whole island.
+function normalizeInvaderDamage(invaders, invaderDamage, wavesResolved) {
   const counts = normalizeInvaderCounts(invaders);
   const merged = invaderDamage || {};
+  const wave = { round: { wavesResolved: wavesResolved || 0 } };
 
   return createLandMap((landId) => {
     const slot = merged[landId] || {};
     const out = {};
 
     for (const type of INVADER_TYPES) {
-      const health = UNIT_STATS[type].health;
+      const health = unitStats(wave, type).health;
       const count = counts[landId][type];
       const raw = Array.isArray(slot[type]) ? slot[type] : [];
       const list = [];
@@ -1192,10 +1400,44 @@ function markBlightFx(state, lands, amount) {
  * Upgrades (05-progression.md)                                         *
  * ------------------------------------------------------------------ */
 
+// What the player owns. The shop reads this: it is what the next tier costs from, and what
+// "maxed" is measured against.
 function upgradeTier(state, upgradeId) {
   const raw = state.upgrades && state.upgrades.purchased ? state.upgrades.purchased[upgradeId] : 0;
   if (raw === true) return 1;
   return Math.max(0, Math.floor(Number(raw) || 0));
+}
+
+/* ---------- Owning an upgrade and running on it ----------
+ *
+ * The shop is open during a round now (see purchaseUpgrade), which splits a question that
+ * used to have one answer: what the player owns, and what the round in progress is running
+ * on. They are the same number at every round boundary and can differ only in between.
+ *
+ * One rule decides it, and it is the same rule the two Fear pools follow: *a round cannot
+ * spend or benefit from itself*. Fear banks when the round ends; upgrades take effect when
+ * the next one starts. Without it, Blight Resilience bought at 9/10 Blight would be an
+ * emergency button that rescues a round the player had already lost - and a round's outcome
+ * would depend on what they bought while watching it, which is exactly the decision the
+ * between-rounds shop existed to keep separate.
+ *
+ * startRound takes the snapshot; everything a running round reads goes through
+ * activeUpgradeTier. Note that most upgrades need no help here - Dahan Reinforcement and
+ * Blight Resilience are only ever read at setup, so they were already deferred by where they
+ * are read. It is the auto-cast upgrades, read every tick, that this exists for.
+ */
+function snapshotUpgradeTiers(state) {
+  const out = {};
+  for (const id of UPGRADE_IDS) out[id] = upgradeTier(state, id);
+  return out;
+}
+
+function activeUpgradeTier(state, upgradeId) {
+  const snapshot = state.round && state.round.upgradeTiers;
+  // No snapshot means a save from before the shop opened mid-round. Falling back to what is
+  // owned matches how that save behaved when it was written.
+  if (!snapshot || !(upgradeId in snapshot)) return upgradeTier(state, upgradeId);
+  return Math.max(0, Math.floor(Number(snapshot[upgradeId]) || 0));
 }
 
 // The catalogue in shop order, except an upgrade already at its top tier sinks below every
@@ -1241,12 +1483,9 @@ function purchaseUpgrade(state, upgradeId) {
   const record = UPGRADES[upgradeId];
   if (!record) return false;
 
-  // Fear is a between-round currency; nothing in a round can spend it.
-  if (state.round.status !== "ended") {
-    addLog(state, t.roundStillRunning);
-    return false;
-  }
-
+  // No check on the round's status. The shop is always open now that Auto Start Round can
+  // remove the pause it used to live in - what keeps a round from buying its own way out is
+  // the pool the Fear sits in, not the clock (see the two-pool note above FEAR_PER_POWER).
   const tier = upgradeTier(state, upgradeId);
   if (tier >= upgradeMaxTier(upgradeId)) {
     addLog(state, template(t.upgradeMaxed, { upgrade: upgradeName(state, upgradeId) }));
@@ -1585,7 +1824,7 @@ function applyPushFrom(state, landId, maxCount) {
   if (moved <= 0) return null;
 
   // Restores the sorted-and-sized invariant at both ends in one pass.
-  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage, state.round.wavesResolved);
   return { destination, moved };
 }
 
@@ -1705,7 +1944,7 @@ function thinnestDahanLand(state, contestedOnly) {
 // Reinforcement out of nothing rather than a gather: the Dahan that arrives is one the
 // island did not have, so the ability adds pressure relief instead of moving it around.
 // There is always a thinnest land, so this one never fails.
-function applyRiversBounty(state, record) {
+function applyRiversBounty(state, record, quiet) {
   const landId = riversBountyLand(state);
   if (!landId) return false;
 
@@ -1714,11 +1953,15 @@ function applyRiversBounty(state, record) {
 
   state.dahan[landId] = (state.dahan[landId] || 0) + amount;
 
-  addLog(state, template(locale(state).riversBountyResolved, {
-    amount,
-    land: landName(state, landId),
-    total: state.dahan[landId]
-  }));
+  // Silent on the auto-cast path, like every other automated ability: this one never fails
+  // and fires all round, so logging it would be a line every cooldown and nothing else.
+  if (!quiet) {
+    addLog(state, template(locale(state).riversBountyResolved, {
+      amount,
+      land: landName(state, landId),
+      total: state.dahan[landId]
+    }));
+  }
   return true;
 }
 
@@ -1733,7 +1976,7 @@ function applyAbilityEffect(state, abilityId, landId, quiet) {
     case "gain_energy":
       return applyBoonOfVigor(state, record, quiet);
     case "add_dahan":
-      return applyRiversBounty(state, record);
+      return applyRiversBounty(state, record, quiet);
     case "push_invaders":
       return applyPushAbility(state, abilityId, record, landId, quiet);
     case "flood_damage":
@@ -1756,7 +1999,7 @@ function startCooldown(state, abilityId) {
 // here should ever surface as a message. The cooldown is the same one a click would spend,
 // so owning it changes who presses the button and not how often it can be pressed.
 function resolveAutoBoon(state) {
-  if (upgradeTier(state, "auto_boon") <= 0) return;
+  if (activeUpgradeTier(state, "auto_boon") <= 0) return;
   if (!abilityIsUnlocked(state, "boon_of_vigor")) return;
   if (!abilityIsReady(state, "boon_of_vigor")) return;
 
@@ -1804,7 +2047,10 @@ function cloneCombatState(state) {
     dahan: JSON.parse(JSON.stringify(state.dahan)),
     meta: { fear: 0 },
     resources: { energy: 0 },
-    round: { fearEarned: 0 },
+    // `wavesResolved` carries because unit stats are read off it (see unitStats). A scratch
+    // board without it would fight wave-1 invaders on a wave-100 island and tell the
+    // auto-caster a land clears when it does not.
+    round: { fearEarned: 0, wavesResolved: state.round ? state.round.wavesResolved : 0 },
     ui: {}
   };
 }
@@ -1838,8 +2084,7 @@ function landClearsWithDamageEach(state, landId, damage) {
 
 // The lands the next Build phase will thicken, or [] when nothing is on the track yet.
 function buildThreatLands(state) {
-  const terrain = state.invader.build;
-  return terrain ? landsOfTerrain(terrain) : [];
+  return landsOfTerrains(buildTerrains(state));
 }
 
 // The steepest live Blight source on the board, or null when nothing is bleeding. Shared by
@@ -2016,7 +2261,7 @@ function pickInnateAutoTarget(state) {
 // exercise (see pickInnateAutoTarget), so a tick that satisfies no priority leaves the
 // cooldown alone rather than spending it on a land that did not need it.
 function resolveAutoInnate(state) {
-  if (upgradeTier(state, "auto_innate") <= 0) return;
+  if (activeUpgradeTier(state, "auto_innate") <= 0) return;
   if (!abilityIsUnlocked(state, "innate_power")) return;
   if (!abilityIsReady(state, "innate_power")) return;
 
@@ -2025,6 +2270,92 @@ function resolveAutoInnate(state) {
 
   if (!applyAbilityEffect(state, "innate_power", landId, true)) return;
   startCooldown(state, "innate_power");
+}
+
+// River's Bounty fires itself once `auto_bounty` is bought. It is the Boon's kind of
+// automation rather than the Innate's: the ability already picks its own land (see the note
+// on rivers_bounty), so there is no judgement here to buy back and nothing to choose. What
+// makes it the pricier upgrade is what it hands over - a Dahan every cooldown for the whole
+// round, where the Boon hands over an Energy.
+//
+// The Energy unlock is deliberately still owed every round. This buys the clicking, not the
+// ability, and a round that never spent the 5 Energy has nothing to automate.
+function resolveAutoBounty(state) {
+  if (activeUpgradeTier(state, "auto_bounty") <= 0) return;
+  if (!abilityIsUnlocked(state, "rivers_bounty")) return;
+  if (!abilityIsReady(state, "rivers_bounty")) return;
+
+  if (!applyAbilityEffect(state, "rivers_bounty", null, true)) return;
+  startCooldown(state, "rivers_bounty");
+}
+
+/* ---------- Auto-cast: Wash Away's own judgement ----------
+ *
+ * Wash Away needs a target, so automating it means picking one - the same problem the Innate
+ * has, answered the same way: a ranked list of reasons to cast, and no cast at all when none
+ * of them applies.
+ *
+ * The push never kills. Everything below is therefore about *where* the invaders end up
+ * rather than how many are left, which is why none of these priorities look at damage.
+ */
+
+// Prio 1: a land the next Build phase will thicken, that the push would empty outright.
+// Emptying it is the only thing that stops the build - Build needs something already standing
+// there to build on.
+function washAwayBreakBuildLands(state, pushCount) {
+  return buildThreatLands(state).filter((land) => {
+    if (!abilityLegalLand(state, "wash_away", land)) return false;
+    const scratch = cloneCombatState(state);
+    applyPushFrom(scratch, land, pushCount);
+    return invaderCountInLand(scratch.invaders[land]) <= 0;
+  });
+}
+
+// Prio 2: an undefended land whose push lands on a neighbour that holds Dahan. Invaders that
+// nobody is fighting become invaders somebody is - the closest this ability gets to a kill.
+function washAwayRouteToCoverLands(state) {
+  return LAND_IDS.filter((land) => {
+    if ((state.dahan[land] || 0) > 0) return false;
+    if (!abilityLegalLand(state, "wash_away", land)) return false;
+    const destination = pushDestination(state, land);
+    return Boolean(destination) && (state.dahan[destination] || 0) > 0;
+  });
+}
+
+// Prio 3: take the weight off whichever defended land is closest to losing its last Dahan.
+function washAwayProtectThinDahanLands(state) {
+  return LAND_IDS.filter((land) => {
+    if ((state.dahan[land] || 0) <= 0) return false;
+    return abilityLegalLand(state, "wash_away", land);
+  });
+}
+
+function pickWashAwayAutoTarget(state) {
+  const record = abilityRecord(state, "wash_away");
+  if (!record) return null;
+
+  const breakBuild = washAwayBreakBuildLands(state, record.pushCount);
+  if (breakBuild.length > 0) return lowestLandId(breakBuild);
+
+  const routeToCover = washAwayRouteToCoverLands(state);
+  if (routeToCover.length > 0) return lowestLandId(routeToCover);
+
+  const protectThin = washAwayProtectThinDahanLands(state);
+  if (protectThin.length > 0) return thinnestDefendedLand(state, protectThin);
+
+  return null;
+}
+
+function resolveAutoWashAway(state) {
+  if (activeUpgradeTier(state, "auto_wash_away") <= 0) return;
+  if (!abilityIsUnlocked(state, "wash_away")) return;
+  if (!abilityIsReady(state, "wash_away")) return;
+
+  const landId = pickWashAwayAutoTarget(state);
+  if (!landId) return;
+
+  if (!applyAbilityEffect(state, "wash_away", landId, true)) return;
+  startCooldown(state, "wash_away");
 }
 
 // The single entry point for the ability bar. Everything it can answer with - cancel,
@@ -2108,7 +2439,7 @@ function resolveAbilityTarget(state, landId) {
 // the island is about to get *worse* rather than where it is about to be hit.
 function waveLands(state) {
   if (state.round.status !== "running") return [];
-  return landsOfTerrain(state.invader.build);
+  return landsOfTerrains(buildTerrains(state));
 }
 
 // The detail panel is never empty: it falls back to the land the next wave will hit, so
@@ -2148,15 +2479,16 @@ function landRenderStates(state) {
  * Combat (02-core-loop.md, 04-economy-formulas.md)                     *
  * ------------------------------------------------------------------ */
 
-// Fear from a defeat, by the unit's power value: explorer 1, town 2, city 3.
+// Fear from a defeat, by the unit's power value: explorer 1, town 2, city 3 - and one more
+// each at every damage rung of the ladder, so a tougher Invader is worth proportionally more
+// to kill rather than being strictly worse news.
 function gainFearFromDefeat(state, unitType, defeatedCount) {
   const defeated = Math.max(0, Math.floor(defeatedCount || 0));
   if (defeated <= 0) return;
-  const power = (UNIT_STATS[unitType] || {}).damage || 0;
+  const power = unitStats(state, unitType).damage || 0;
   const gain = defeated * power * FEAR_PER_POWER;
   if (gain <= 0) return;
 
-  state.meta.fear += gain;
   state.round.fearEarned += gain;
 }
 
@@ -2164,7 +2496,6 @@ function gainFearFromDefeat(state, unitType, defeatedCount) {
 // two waves is paid for the ones it finished and not for the one it was standing in.
 function gainFearFromWave(state) {
   if (FEAR_PER_WAVE <= 0) return;
-  state.meta.fear += FEAR_PER_WAVE;
   state.round.fearEarned += FEAR_PER_WAVE;
 }
 
@@ -2174,7 +2505,7 @@ function gainFearFromWave(state) {
 function gainEnergyFromDefeat(state, unitType, defeatedCount) {
   const defeated = Math.max(0, Math.floor(defeatedCount || 0));
   if (defeated <= 0) return;
-  const power = (UNIT_STATS[unitType] || {}).damage || 0;
+  const power = unitStats(state, unitType).damage || 0;
   const gain = defeated * power * ENERGY_PER_POWER;
   if (gain <= 0) return;
 
@@ -2200,7 +2531,7 @@ function livingUnits(state, landId) {
   if (!slot || !damage) return out;
 
   for (const type of INVADER_TYPES) {
-    const maxHp = UNIT_STATS[type].health;
+    const maxHp = unitStats(state, type).health;
     const wounds = damage[type] || [];
     for (let i = 0; i < Math.max(0, slot[type] || 0); i += 1) {
       out.push({ type, index: i, maxHp, hp: maxHp - (wounds[i] || 0) });
@@ -2245,7 +2576,7 @@ function removeInvaderUnit(state, landId, type, index) {
 
 function woundInvaderUnit(state, landId, type, index, amount) {
   const wounds = state.invaderDamage[landId][type];
-  wounds[index] = clamp((wounds[index] || 0) + amount, 0, UNIT_STATS[type].health - 1);
+  wounds[index] = clamp((wounds[index] || 0) + amount, 0, unitStats(state, type).health - 1);
 }
 
 function emptyDefeatTally() {
@@ -2266,7 +2597,7 @@ function applyDamage(state, landId, amount) {
   if (!isLandId(landId)) return result;
 
   state.invaders = normalizeInvaderCounts(state.invaders);
-  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage, state.round.wavesResolved);
 
   let remaining = Math.max(0, Math.floor(amount || 0));
   const budget = remaining;
@@ -2293,7 +2624,7 @@ function applyDamage(state, landId, amount) {
 
   // The tie-breaks above happen to leave the arrays sorted, but the invariant should not rest
   // on that: the ring the board draws reads index 0 and has to be the worst-off unit.
-  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage, state.round.wavesResolved);
 
   result.spent = budget - remaining;
   return result;
@@ -2309,7 +2640,7 @@ function applyDamageToEachInvader(state, landId, amount) {
   if (!isLandId(landId) || hit <= 0) return result;
 
   state.invaders = normalizeInvaderCounts(state.invaders);
-  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage, state.round.wavesResolved);
 
   const units = livingUnits(state, landId);
   const survivors = { explorers: [], towns: [], cities: [] };
@@ -2344,10 +2675,12 @@ function markDefeatFxFromResult(state, landId, result) {
   }
 }
 
-function invaderDamageInLand(slot) {
-  return (slot.explorers || 0) * UNIT_STATS.explorers.damage
-    + (slot.towns || 0) * UNIT_STATS.towns.damage
-    + (slot.cities || 0) * UNIT_STATS.cities.damage;
+// Takes the state as well as the land, because what an Invader hits for is a function of how
+// far the round has climbed (see unitStats) and no longer a constant.
+function invaderDamageInLand(state, slot) {
+  return (slot.explorers || 0) * unitStats(state, "explorers").damage
+    + (slot.towns || 0) * unitStats(state, "towns").damage
+    + (slot.cities || 0) * unitStats(state, "cities").damage;
 }
 
 // The Dahan strike, spent automatically: one pool of damage through the same kill-first rule
@@ -2513,76 +2846,153 @@ function landAcceptsExplorer(state, landId) {
   });
 }
 
+// The terrains each phase is currently pointed at. Read through these rather than off the
+// state, so a slot holding a bare terrain is understood the same way everywhere.
+function buildTerrains(state) {
+  return terrainList(state.invader && state.invader.build);
+}
+
+function exploreTerrains(state) {
+  return terrainList(state.invader && state.invader.explore);
+}
+
 function resolveBuildPhase(state) {
   const t = locale(state);
-  const terrain = state.invader.build;
+  const terrains = buildTerrains(state);
 
-  if (!terrain) {
+  if (terrains.length === 0) {
     addLog(state, t.buildNothing);
     return;
   }
 
   state.invaders = normalizeInvaderCounts(state.invaders);
-  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage, state.round.wavesResolved);
 
-  // Each land of the terrain builds on its own count, so the two can build different units.
-  for (const land of landsOfTerrain(terrain)) {
-    const slot = state.invaders[land];
-    if (invaderCountInLand(slot) <= 0) {
-      addLog(state, template(t.buildNoInvaders, { land: landName(state, land) }));
-      continue;
+  // From BUILD_TWICE_FROM_WAVE the whole phase runs a second time. It is a second pass rather
+  // than a doubled count on purpose: the second one reads the counts the first one left, so a
+  // land that has just taken its first Town follows it with a City instead of a second Town.
+  const passes = state.round.wavesResolved >= BUILD_TWICE_FROM_WAVE ? 2 : 1;
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    // Each land of the terrain builds on its own count, so the two can build different units.
+    for (const land of landsOfTerrains(terrains)) {
+      const slot = state.invaders[land];
+      if (invaderCountInLand(slot) <= 0) {
+        // Only the first pass says so. An empty land is empty for both, and logging it twice
+        // would read as two separate failures.
+        if (pass === 0) addLog(state, template(t.buildNoInvaders, { land: landName(state, land) }));
+        continue;
+      }
+
+      const built = slot.towns > slot.cities ? "cities" : "towns";
+      addInvaderUnit(state, land, built);
+      addLog(state, template(t.buildResolved, {
+        land: landName(state, land),
+        unit: unitLabelOne(state, built)
+      }));
     }
-
-    const built = slot.towns > slot.cities ? "cities" : "towns";
-    addInvaderUnit(state, land, built);
-    addLog(state, template(t.buildResolved, {
-      land: landName(state, land),
-      unit: unitLabelOne(state, built)
-    }));
   }
+}
+
+// How many Explorers each discovered land takes. One until the ladder says two - the cheapest
+// rung there is, and the one that first makes a single Discover worth answering.
+function explorersPerLand(state) {
+  return state.round.wavesResolved >= EXPLORE_DOUBLE_SEED_FROM_WAVE ? 2 : 1;
+}
+
+function seedExplorers(state, land, count) {
+  for (let i = 0; i < count; i += 1) addInvaderUnit(state, land, "explorers");
+  addLog(state, template(locale(state).exploreResolved, {
+    land: landName(state, land),
+    count
+  }));
+}
+
+// The one land Discover takes that its terrains never covered, from
+// EXPLORE_EXTRA_LAND_FROM_WAVE. Drawn at random, and drawn from the lands this Discover has
+// not already seeded - it is meant to open a second front, not to double up on the one the
+// track already warned about.
+function drawExtraExploreLand(state, alreadySeeded) {
+  const candidates = LAND_IDS.filter(
+    (landId) => !alreadySeeded.includes(landId) && landAcceptsExplorer(state, landId)
+  );
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(rng() * candidates.length)];
+}
+
+// From BONUS_TOWN_FROM_WAVE a Town simply appears in a land that had none. It is the only
+// rung that arrives through neither phase, which is the point of it: Build thickens what is
+// already there and Discover lands where the track said it would, so both reward a player
+// who is watching. This one goes where nobody is - a land with no Town is by definition one
+// that has been left alone - and it is what stops a quiet corner staying quiet.
+function resolveBonusTown(state) {
+  if (state.round.wavesResolved < BONUS_TOWN_FROM_WAVE) return;
+
+  const candidates = LAND_IDS.filter((landId) => (state.invaders[landId].towns || 0) <= 0);
+  if (candidates.length === 0) return;
+
+  const land = candidates[Math.floor(rng() * candidates.length)];
+  addInvaderUnit(state, land, "towns");
+  addLog(state, template(locale(state).bonusTownResolved, { land: landName(state, land) }));
 }
 
 function resolveExplorePhase(state) {
   const t = locale(state);
-  const terrain = state.invader.explore;
+  const terrains = exploreTerrains(state);
 
-  if (!terrain) {
+  if (terrains.length === 0) {
     addLog(state, t.exploreNothing);
     return;
   }
 
   state.invaders = normalizeInvaderCounts(state.invaders);
-  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage);
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage, state.round.wavesResolved);
 
-  let seeded = 0;
-  for (const land of landsOfTerrain(terrain)) {
+  const perLand = explorersPerLand(state);
+  const seededLands = [];
+
+  for (const land of landsOfTerrains(terrains)) {
     if (!landAcceptsExplorer(state, land)) {
       addLog(state, template(t.exploreBlocked, { land: landName(state, land) }));
       continue;
     }
-    addInvaderUnit(state, land, "explorers");
-    seeded += 1;
-    addLog(state, template(t.exploreResolved, { land: landName(state, land) }));
+    seedExplorers(state, land, perLand);
+    seededLands.push(land);
   }
 
-  if (seeded === 0) {
-    addLog(state, template(t.exploreNoneReachable, { terrain: terrainName(state, terrain) }));
+  // After the terrains have had theirs, so the extra land can never be one of them.
+  if (state.round.wavesResolved >= EXPLORE_EXTRA_LAND_FROM_WAVE) {
+    const extra = drawExtraExploreLand(state, seededLands);
+    if (extra) {
+      seedExplorers(state, extra, perLand);
+      seededLands.push(extra);
+    }
   }
+
+  if (seededLands.length === 0) {
+    addLog(state, template(t.exploreNoneReachable, { terrain: terrainNames(state, terrains) }));
+  }
+
+  // Rides along with Discover rather than sitting in resolveWave, so the opening Discover at
+  // setup runs it too and the rung has no seam at a round boundary.
+  resolveBonusTown(state);
 }
 
 // The track slides forward. What was discovered this wave is built on the next one, so the
-// player can see a terrain thicken one wave before it does.
+// player can see a terrain thicken one wave before it does. That promise is why the two slots
+// widen together: every rung that gives Discover another terrain gives Build the same terrain
+// one wave later, and the track never shows less than what is coming.
 function shiftInvaderTrack(state) {
-  state.invader = normalizeInvaderPhases(state.invader);
+  state.invader = normalizeInvaderPhases(state.invader, state);
 
-  const shiftedToBuild = state.invader.explore;
+  const shiftedToBuild = exploreTerrains(state);
   state.invader.build = shiftedToBuild;
-  state.invader.explore = drawInvaderTerrainExcluding([shiftedToBuild]);
+  state.invader.explore = drawInvaderTerrains(exploreTerrainCount(state), shiftedToBuild);
 
   const t = locale(state);
   addLog(state, template(t.waveIncoming, {
-    build: terrainName(state, state.invader.build),
-    discover: terrainName(state, state.invader.explore)
+    build: terrainNames(state, state.invader.build),
+    discover: terrainNames(state, state.invader.explore)
   }));
 }
 
@@ -2615,11 +3025,19 @@ function endRound(state) {
   state.round.awaitingWave = false;
   state.pendingAbilityTarget = null;
 
+  // Payday. Everything the round earned becomes spendable here and nowhere else, which is
+  // what makes surviving the round the thing that pays rather than the kills inside it.
+  state.meta.fear += state.round.fearEarned;
+
   state.meta.totalRoundsPlayed += 1;
-  state.meta.bestRoundReached = Math.max(state.meta.bestRoundReached, state.round.number);
+  // How far up the ladder this run has ever climbed. The wave is the honest measure of a
+  // run's depth now that the ladder is keyed to it - the round number only counts attempts,
+  // and every round starts at the bottom rung regardless of which number it wears.
+  state.meta.bestWaveReached = Math.max(state.meta.bestWaveReached, state.round.wavesResolved);
 
   addLog(state, template(t.roundEnded, {
     round: state.round.number,
+    wave: state.round.wavesResolved,
     blight: state.round.blight,
     threshold: state.round.blightThreshold,
     fear: formatFear(state.round.fearEarned)
@@ -2677,6 +3095,10 @@ function startRound(state) {
   state.round.wavesResolved = 0;
   state.round.fearEarned = 0;
   state.round.abilityCooldownMult = 1 - totals.cooldownReductionPct;
+  // The shop stays open all round, so what the round runs on is fixed here and read from
+  // here - see activeUpgradeTier. Anything bought after this line is owned but idle until
+  // the next round takes its own snapshot.
+  state.round.upgradeTiers = snapshotUpgradeTiers(state);
 
   // The kit is rebuilt from nothing every round: the purse empties, every Energy unlock is
   // given back, and the Innate drops to its first tier. What carries between rounds is Fear
@@ -2688,7 +3110,7 @@ function startRound(state) {
 
   state.invaders = createInvaderCounts();
   state.invaderDamage = createInvaderDamage();
-  state.invader = normalizeInvaderPhases({ build: null, explore: drawOpeningTerrain(state) });
+  state.invader = normalizeInvaderPhases({ build: [], explore: drawOpeningTerrains(state) }, state);
 
   state.pendingAbilityTarget = null;
   state.abilities = createAbilityState(state);
@@ -2775,6 +3197,38 @@ function waveGateHeld(state) {
   return state.round.awaitingWave === true && !autoProceedOn(state);
 }
 
+/* ---------- The round gate ----------
+ *
+ * The same idea as the wave gate, one level up: a round that has ended stands in the shop
+ * until something starts the next one. Owning auto_start_round is what lets that something
+ * be the engine.
+ *
+ * It is deliberately two conditions rather than one. The upgrade is permanent and the toggle
+ * is a preference, so a player who wants to stop and read the shop turns the toggle off
+ * rather than regretting a 500-Fear purchase. The toggle is read live rather than off the
+ * round snapshot for the same reason - it is a setting, not a power the round runs on.
+ */
+function autoStartRoundOwned(state) {
+  return upgradeTier(state, "auto_start_round") > 0;
+}
+
+function autoStartRoundOn(state) {
+  return autoStartRoundOwned(state) && state.ui.autoStartRound === true;
+}
+
+function setAutoStartRound(state, on) {
+  state.ui.autoStartRound = on === true;
+  return state.ui.autoStartRound;
+}
+
+// Called from the tick after the round has ended. Nothing else is needed: startNextRound
+// already refuses unless the round is over, so this is the click and not a second path.
+function resolveAutoStartRound(state) {
+  if (state.round.status !== "ended") return;
+  if (!autoStartRoundOn(state)) return;
+  startNextRound(state);
+}
+
 // The player's own clock, and the only way past a held gate. Two gates use it and the wave
 // timer is what tells them apart: at the start of a round it is still full and the click
 // merely lets time begin, and at the end of a wave it is empty and the click is what resolves
@@ -2803,6 +3257,11 @@ function tick(state, dt) {
   state.time.totalSeconds += step;
   pruneFx(state);
 
+  // Before the running-check below, because a round that has ended is precisely what that
+  // check turns the tick away for. Gated on `step` so a paused game stays paused: the speed
+  // dial stops time, and starting a round is something time does.
+  if (step > 0) resolveAutoStartRound(state);
+
   if (state.round.status !== "running" || waveGateHeld(state) || step <= 0) return;
 
   state.round.elapsedSeconds += step;
@@ -2811,6 +3270,8 @@ function tick(state, dt) {
   // sees it - the ability bar is read after the tick, not during it.
   resolveAutoBoon(state);
   resolveAutoInnate(state);
+  resolveAutoBounty(state);
+  resolveAutoWashAway(state);
 
   // The fight first: it is what actually ends the round, and resolving it before the wave
   // means a land cannot be reinforced out from under damage it had already taken this tick.
@@ -2872,7 +3333,7 @@ function createInitialState() {
     meta: {
       fear: 0,
       totalRoundsPlayed: 0,
-      bestRoundReached: 0
+      bestWaveReached: 0
     },
     spirit: {
       activeSpiritId: "core_spirit_01",
@@ -2887,6 +3348,11 @@ function createInitialState() {
       // toggle in every sense, and survive a reset the same way it does.
       gameSpeed: DEFAULT_GAME_SPEED,
       autoProceed: false,
+      // The idle switch. It only does anything once auto_start_round is owned, and it sits
+      // beside auto-proceed rather than inside the upgrade because buying the automation and
+      // wanting it on right now are two different things - a player who wants to stop and
+      // shop should not have to un-buy anything to get the pause back.
+      autoStartRound: true,
       defeatFx: null,
       blightFx: null,
       selectedLand: null
@@ -2908,6 +3374,9 @@ function createInitialState() {
       wavesResolved: 0,
       fearEarned: 0,
       abilityCooldownMult: 1,
+      // What this round is running on, as against what the player owns - see
+      // activeUpgradeTier. Filled by startRound; empty here because no round has started.
+      upgradeTiers: {},
       // Both live here rather than on the spirit because both die with the round, exactly
       // like the Energy that bought them. `purchasedAbilityIds` never lists the spirit's own
       // startingAbilityIds - those are not bought - so it is precisely the record of what
@@ -2915,7 +3384,7 @@ function createInitialState() {
       purchasedAbilityIds: [],
       abilityTiers: {}
     },
-    invader: { build: null, explore: null },
+    invader: { build: [], explore: [] },
     invaders: createInvaderCounts(),
     invaderDamage: createInvaderDamage(),
     dahan: createDahanCounts(),
@@ -2965,6 +3434,9 @@ function normalizeState(raw) {
     ? Number(merged.ui.gameSpeed)
     : DEFAULT_GAME_SPEED;
   merged.ui.autoProceed = merged.ui.autoProceed === true;
+  // Defaults on rather than off, unlike auto-proceed: a save that predates the toggle has no
+  // value to read, and the only player it can affect is one who has bought the automation.
+  merged.ui.autoStartRound = merged.ui.autoStartRound !== false;
   merged.ui.selectedLand = isLandId(merged.ui.selectedLand) ? merged.ui.selectedLand : null;
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
@@ -2973,7 +3445,11 @@ function normalizeState(raw) {
   // number the shop can actually spend, and never as 6.3.
   merged.meta.fear = Math.max(0, Math.floor(Number(merged.meta.fear) || 0));
   merged.meta.totalRoundsPlayed = Math.max(0, Math.floor(merged.meta.totalRoundsPlayed || 0));
-  merged.meta.bestRoundReached = Math.max(0, Math.floor(merged.meta.bestRoundReached || 0));
+  // A save from before the ladder tracked waves has no best wave to carry. The old best round
+  // is not a substitute - it counted attempts, not depth - so the record simply restarts at 0
+  // and the first finished round writes a true one.
+  merged.meta.bestWaveReached = Math.max(0, Math.floor(merged.meta.bestWaveReached || 0));
+  delete merged.meta.bestRoundReached;
 
   // Upgrade tiers survive anything: an unknown id is dropped, a bad value clamps to 0.
   const purchased = {};
@@ -3032,9 +3508,25 @@ function normalizeState(raw) {
   const mult = Number(merged.round.abilityCooldownMult);
   merged.round.abilityCooldownMult = Number.isFinite(mult) && mult > 0 ? Math.min(mult, 1) : 1;
 
-  merged.invader = normalizeInvaderPhases(merged.invader);
+  // The snapshot of what this round runs on. Unknown ids are dropped and every tier is capped
+  // the same way the owned tiers are, so a save cannot smuggle a round a tier the catalogue
+  // does not sell. A save with no snapshot at all gets an empty one, which activeUpgradeTier
+  // reads id by id as "fall back to what is owned" - how that save behaved when it was
+  // written, and what the next startRound will replace with a real snapshot anyway.
+  if (merged.round.upgradeTiers && typeof merged.round.upgradeTiers === "object") {
+    const active = {};
+    for (const [id, value] of Object.entries(merged.round.upgradeTiers)) {
+      if (!UPGRADES[id]) continue;
+      active[id] = clamp(Math.floor(Number(value) || 0), 0, upgradeMaxTier(id));
+    }
+    merged.round.upgradeTiers = active;
+  } else {
+    merged.round.upgradeTiers = {};
+  }
+
+  merged.invader = normalizeInvaderPhases(merged.invader, merged);
   merged.invaders = normalizeInvaderCounts(merged.invaders);
-  merged.invaderDamage = normalizeInvaderDamage(merged.invaders, merged.invaderDamage);
+  merged.invaderDamage = normalizeInvaderDamage(merged.invaders, merged.invaderDamage, merged.round.wavesResolved);
   merged.dahan = normalizeDahanCounts(merged.dahan);
   merged.essence = normalizeEssencePools(merged.essence);
   merged.resources.energy = Math.max(0, Math.floor(merged.resources.energy || 0));
@@ -3143,12 +3635,14 @@ const ENGINE_EXPORTS = {
   EXPLORE_UNRESTRICTED_FROM_WAVE,
   ENERGY_PER_POWER,
   UNIT_STATS,
+  unitStats,
   INVADER_TYPES,
   INVADER_TERRAINS,
   SPIRITS,
   ABILITIES,
   ABILITY_IDS,
   UPGRADES,
+  UPGRADE_COST_GROWTH,
   UPGRADE_IDS,
   BOARD_LANDS,
   TERRAIN_RGB,
@@ -3246,13 +3740,22 @@ const ENGINE_EXPORTS = {
   pickInnateTargetTier3,
   pickInnateAutoTarget,
   resolveAutoInnate,
+  resolveAutoBounty,
+  resolveAutoWashAway,
+  pickWashAwayAutoTarget,
   addBlight,
   blightReached,
   resolveLandCombat,
   resolveContinuousCombat,
   resolveDahanAttack,
   landAcceptsExplorer,
-  drawOpeningTerrain,
+  drawOpeningTerrains,
+  drawInvaderTerrains,
+  exploreTerrainCount,
+  terrainList,
+  landsOfTerrains,
+  buildTerrains,
+  exploreTerrains,
   resolveBuildPhase,
   resolveExplorePhase,
   shiftInvaderTrack,
@@ -3263,6 +3766,11 @@ const ENGINE_EXPORTS = {
   gameSpeed,
   setGameSpeed,
   autoProceedOn,
+  autoStartRoundOwned,
+  autoStartRoundOn,
+  setAutoStartRound,
+  resolveAutoStartRound,
+  activeUpgradeTier,
   setAutoProceed,
   waveGateHeld,
   startNextWave,

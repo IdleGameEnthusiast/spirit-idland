@@ -17,8 +17,8 @@ const dom = {
 
   roundLabel: document.getElementById("roundLabel"),
   roundValue: document.getElementById("roundValue"),
-  bestRoundLabel: document.getElementById("bestRoundLabel"),
-  bestRoundValue: document.getElementById("bestRoundValue"),
+  bestWaveLabel: document.getElementById("bestWaveLabel"),
+  bestWaveValue: document.getElementById("bestWaveValue"),
   blightLabel: document.getElementById("blightLabel"),
   blightValue: document.getElementById("blightValue"),
   blightFill: document.getElementById("blightFill"),
@@ -29,6 +29,7 @@ const dom = {
   dahanAttackValue: document.getElementById("dahanAttackValue"),
   fearLabel: document.getElementById("fearLabel"),
   fearValue: document.getElementById("fearValue"),
+  fearPending: document.getElementById("fearPending"),
 
   invaderTrackTitle: document.getElementById("invaderTrackTitle"),
   buildLabel: document.getElementById("buildLabel"),
@@ -60,6 +61,7 @@ const dom = {
   shopFearValue: document.getElementById("shopFearValue"),
   upgradeList: document.getElementById("upgradeList"),
   startNextRoundBtn: document.getElementById("startNextRoundBtn"),
+  autoRoundBtn: document.getElementById("autoRoundBtn"),
 
   logTitle: document.getElementById("logTitle"),
   eventLog: document.getElementById("eventLog"),
@@ -328,7 +330,7 @@ function unitGlyph(state, landId, unitType, count) {
 // How badly the worst-off unit of a type in this land is hurt, as a fraction of its health.
 // The damage array is sorted most-wounded first, so index 0 is the one the ring shows.
 function worstInvaderWound(state, landId, unitType) {
-  const stats = UNIT_STATS[unitType];
+  const stats = unitStats(state, unitType);
   const wounds = (state.invaderDamage[landId] || {})[unitType];
   if (!stats || !Array.isArray(wounds) || wounds.length === 0) return 0;
   return clamp((wounds[0] || 0) / stats.health, 0, 1);
@@ -523,7 +525,7 @@ function renderLandDetail(state) {
   const rows = [];
   for (const type of INVADER_TYPES) {
     if ((counts[type] || 0) <= 0) continue;
-    const health = UNIT_STATS[type].health;
+    const health = unitStats(state, type).health;
     const wounded = (damageSlot[type] || [])
       .filter((damage) => damage > 0)
       .map((damage) => template(t.invaderHpHint, { current: health - damage, max: health }));
@@ -732,22 +734,43 @@ function patchAbilityBar(state) {
  * Shop                                                                 *
  * ------------------------------------------------------------------ */
 
+// The wave is in here because the running-round summary prints it, and the round-scoped
+// tiers because a purchase made mid-round changes a row's "takes effect next round" note
+// without changing anything the owned tiers can see.
 function shopSignature(state) {
-  const tiers = UPGRADE_IDS.map((id) => `${id}:${upgradeTier(state, id)}`).join(",");
-  return [currentLang(state), state.round.status, state.round.number, formatFear(state.meta.fear), tiers].join("|");
+  const tiers = UPGRADE_IDS.map((id) => `${id}:${upgradeTier(state, id)}:${activeUpgradeTier(state, id)}`).join(",");
+  return [
+    currentLang(state),
+    state.round.status,
+    state.round.number,
+    state.round.wavesResolved,
+    formatFear(state.meta.fear),
+    formatFear(state.round.fearEarned),
+    autoStartRoundOwned(state),
+    autoStartRoundOn(state),
+    tiers
+  ].join("|");
 }
 
 function renderShop(state) {
   const t = locale(state);
   const ended = state.round.status === "ended";
 
-  dom.shopPanel.hidden = !ended;
-  if (!ended) return;
+  // Never hidden any more. Fear is banked at the round boundary rather than spendable the
+  // moment it is earned, so the shop no longer has to be shut to keep a round from buying
+  // its own way out - and once rounds start themselves there would be no moment to open it.
+  dom.shopPanel.hidden = false;
 
-  dom.shopSummary.textContent = template(t.shopLostRound, {
-    round: state.round.number,
-    fear: formatFear(state.round.fearEarned)
-  });
+  dom.shopSummary.textContent = ended
+    ? template(t.shopLostRound, {
+        round: state.round.number,
+        fear: formatFear(state.round.fearEarned)
+      })
+    : template(t.shopRoundRunning, {
+        round: state.round.number,
+        wave: state.round.wavesResolved,
+        fear: formatFear(state.round.fearEarned)
+      });
   dom.shopFearValue.textContent = formatFear(state.meta.fear);
 
   dom.upgradeList.innerHTML = "";
@@ -758,23 +781,29 @@ function renderShop(state) {
     const maxed = tier >= upgradeMaxTier(upgradeId);
     const cost = upgradeCost(state, upgradeId);
     const affordable = !maxed && state.meta.fear >= cost;
+    // Owned but not yet running: bought during a round, waiting on the next one to start.
+    // Only worth saying while a round is actually in progress - between rounds every
+    // purchase is pending, and saying so on every row would say nothing.
+    const pending = !ended && tier > activeUpgradeTier(state, upgradeId);
 
     // A one-off has no ladder, so it shows nothing where a tier would go and reads "Owned"
     // rather than "Maxed" once it is bought.
     const status = repeatable
       ? `<span class="upgrade-tier">${template(t.shopTierLabel, { tier })}</span>`
       : "";
+    const pendingNote = pending ? `<span class="upgrade-pending">${t.shopPendingHint}</span>` : "";
     const buyLabel = maxed
       ? (repeatable ? t.shopMaxedBtn : t.shopOwnedBtn)
       : template(t.shopCostLabel, { cost });
 
     const row = document.createElement("div");
-    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}`;
+    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}${pending ? " is-pending" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${upgradeName(state, upgradeId)}</span>
         <span class="upgrade-text">${upgradeText(state, upgradeId)}</span>
         ${status}
+        ${pendingNote}
       </div>
       <button type="button" class="upgrade-buy" data-upgrade="${upgradeId}" ${maxed || !affordable ? "disabled" : ""}>
         ${buyLabel}
@@ -820,8 +849,13 @@ function patchHud(state) {
   // is behind us, so the wave in front of us is one past that while the round still runs.
   const currentWave = state.round.wavesResolved + (state.round.status === "running" ? 1 : 0);
   dom.roundValue.textContent = String(currentWave);
-  dom.bestRoundValue.textContent = String(state.meta.bestRoundReached);
+  dom.bestWaveValue.textContent = String(state.meta.bestWaveReached);
+  // The banked pool, which is the only one the shop can spend. What this round has earned
+  // rides underneath it so the player can watch it grow without mistaking it for money.
   dom.fearValue.textContent = formatFear(state.meta.fear);
+  dom.fearPending.textContent = state.round.fearEarned > 0
+    ? template(t.fearPendingHint, { fear: formatFear(state.round.fearEarned) })
+    : "";
   // Energy is whole-numbered and rises mid-fight, so it is patched with the rest of the
   // per-tick readouts rather than waiting on an ability-bar rebuild.
   dom.energyValue.textContent = String(state.resources.energy);
@@ -858,8 +892,10 @@ function patchHud(state) {
     ? template(t.secondsShort, { seconds: displaySeconds(state, state.round.dahanAttackRemaining) })
     : "-";
 
-  dom.buildTerrain.textContent = terrainName(state, state.invader.build);
-  dom.discoverTerrain.textContent = terrainName(state, state.invader.explore);
+  // Both slots can hold several terrains once the ladder widens Discover, so both print the
+  // joined phrase rather than a single name.
+  dom.buildTerrain.textContent = terrainNames(state, state.invader.build);
+  dom.discoverTerrain.textContent = terrainNames(state, state.invader.explore);
 
   document.body.classList.toggle("round-ended", !running);
 }
@@ -893,6 +929,23 @@ function patchPacingControls(state) {
   dom.startNextWaveBtn.textContent = t.startNextWaveBtn;
   dom.startNextWaveBtn.disabled = !held;
   document.body.classList.toggle("wave-held", held);
+
+  // The round toggle only exists once it has been bought - unlike the wave toggle, which is
+  // free and always on the strip. Hidden rather than disabled: an unowned upgrade is not a
+  // control the player is failing to use, and a dead button beside a live one reads as one.
+  const owned = autoStartRoundOwned(state);
+  dom.autoRoundBtn.hidden = !owned;
+  if (owned) {
+    const autoRound = autoStartRoundOn(state);
+    dom.autoRoundBtn.textContent = autoRound ? t.autoRoundOnBtn : t.autoRoundOffBtn;
+    dom.autoRoundBtn.setAttribute("aria-pressed", String(autoRound));
+    dom.autoRoundBtn.classList.toggle("is-on", autoRound);
+    dom.autoRoundBtn.title = t.autoRoundHint;
+  }
+
+  // Only pressable between rounds, the same way the wave button is only pressable at a held
+  // gate - the shop is on screen all the time now, but the round still ends where it ends.
+  dom.startNextRoundBtn.disabled = state.round.status !== "ended";
 }
 
 function patchMapHint(state) {
@@ -910,7 +963,7 @@ function patchMapHint(state) {
   const pending = waveLands(state);
   if (state.round.status === "running" && pending.length > 0) {
     dom.mapPlanHint.textContent = template(t.mapHintWave, {
-      terrain: terrainName(state, state.invader.build),
+      terrain: terrainNames(state, state.invader.build),
       lands: pending.map((id) => template(t.landShort, { id })).join(", ")
     });
     return;
@@ -931,7 +984,7 @@ function applyStaticLanguage(state) {
   dom.speedLabel.textContent = t.speedLabel;
   dom.speedGroup.setAttribute("aria-label", t.speedLabel);
   dom.roundLabel.textContent = t.roundLabel;
-  dom.bestRoundLabel.textContent = t.bestRoundLabel;
+  dom.bestWaveLabel.textContent = t.bestWaveLabel;
   dom.blightLabel.textContent = t.blightLabel;
   dom.waveLabel.textContent = t.waveLabel;
   dom.fearLabel.textContent = t.fearLabel;
@@ -1099,6 +1152,14 @@ dom.autoWaveBtn.addEventListener("click", () => {
 
 dom.startNextWaveBtn.addEventListener("click", () => {
   if (!startNextWave(state)) return;
+  updateUI(state);
+  persist();
+});
+
+// Turning it on does not start the round standing in the shop right now - the next tick sees
+// an ended round with the toggle on and starts it, on the same path the button takes.
+dom.autoRoundBtn.addEventListener("click", () => {
+  setAutoStartRound(state, !autoStartRoundOn(state));
   updateUI(state);
   persist();
 });

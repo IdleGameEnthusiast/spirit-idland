@@ -119,11 +119,14 @@
           <div class="board-hud-tile hud-fear">
             <h3 id="fearLabel">Furcht</h3>
             <p id="fearValue" class="value">0</p>
+            <!-- The banked total is the number that can be spent; what this round has earned
+                 so far sits under it, unspendable until the round ends. -->
+            <small id="fearPending"></small>
           </div>
           <div class="board-hud-tile hud-round">
             <h3 id="roundLabel">Welle</h3>
             <p id="roundValue" class="value">1</p>
-            <small><span id="bestRoundLabel">Beste Runde</span>: <span id="bestRoundValue">0</span></small>
+            <small><span id="bestWaveLabel">Hoechste Welle</span>: <span id="bestWaveValue">0</span></small>
           </div>
         </div>
       </div>
@@ -169,7 +172,12 @@
           <strong id="shopFearValue">0</strong>
         </div>
         <div id="upgradeList" class="upgrade-list"></div>
-        <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
+        <!-- Both controls answer "when does the next round begin". The toggle only appears
+             once the automation is owned - before that there is nothing for it to switch. -->
+        <div class="shop-controls">
+          <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
+          <button type="button" id="autoRoundBtn" class="hud-btn" aria-pressed="false" hidden>Auto-Runde: Aus</button>
+        </div>
       </section>
 
       <section class="panel log">

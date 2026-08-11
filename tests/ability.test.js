@@ -144,13 +144,13 @@
   test("ability: a defeat by an ability awards Fear the same as a Dahan strike", () => {
     const { state } = fullKit();
     clearBoard(state);
-    state.meta.fear = 0;
+    state.round.fearEarned = 0;
     setLand(state, "3", { towns: 1 }, 0);
 
     engine.triggerAbility(state, "flash_floods");
     engine.resolveAbilityTarget(state, "3");
 
-    assertEqual(state.meta.fear, 2 * engine.FEAR_PER_POWER, "a town is worth 2 either way");
+    assertEqual(state.round.fearEarned, 2 * engine.FEAR_PER_POWER, "a town is worth 2 either way");
   });
 
   /* ---------------------------------------------------------------- *
@@ -183,7 +183,7 @@
     const ctx = newGame();
     const { state } = ctx;
     clearBoard(state);
-    state.upgrades.purchased.auto_boon = 1;
+    grantUpgrade(state, "auto_boon");
     state.resources.energy = 0;
 
     // The ability starts ready, so the first tick casts; each one after waits the full 12
@@ -208,7 +208,7 @@
     const ctx = newGame();
     const { state } = ctx;
     clearBoard(state);
-    state.upgrades.purchased.auto_boon = 1;
+    grantUpgrade(state, "auto_boon");
 
     advance(ctx, 1);
     assertClose(
@@ -223,7 +223,7 @@
     const ctx = newGame();
     const { state } = ctx;
     clearBoard(state);
-    state.upgrades.purchased.auto_boon = 1;
+    grantUpgrade(state, "auto_boon");
 
     advance(ctx, 40 * engine.TIME_SCALE);
     const boonLines = (state._log || []).filter((line) => line.includes("Boon of Vigor"));
@@ -765,7 +765,7 @@
     clearBoard(state);
     state.invader.build = "wetlands";           // lands 1 and 7
     setLand(state, "7", { explorers: 1 }, 0);    // undefended, alone - Build would thicken it
-    state.upgrades.purchased.auto_innate = 1;
+    grantUpgrade(state, "auto_innate");
 
     advance(ctx, 1);
 
@@ -783,7 +783,7 @@
     clearBoard(state);
     state.invader.build = "wetlands";
     setLand(state, "7", { cities: 1 }, 0);       // nothing pushable, no Dahan anywhere either
-    state.upgrades.purchased.auto_innate = 1;
+    grantUpgrade(state, "auto_innate");
 
     const cooldown = engine.abilityCooldownSeconds(state, "innate_power");
     // Held past the window below, so no wave resolves and Discover cannot seed a fresh,
@@ -803,7 +803,7 @@
     // Land 5 (hub) is undefended; its neighbour 8 holds no invaders but does hold a Dahan.
     setLand(state, "5", { explorers: 1 }, 0);
     setLand(state, "8", null, 1);
-    state.upgrades.purchased.auto_innate = 1;
+    grantUpgrade(state, "auto_innate");
 
     advance(ctx, 1);
 
@@ -818,7 +818,7 @@
     clearBoard(state);
     setLand(state, "5", { explorers: 1 }, 2);    // defended, two Dahan
     setLand(state, "6", { explorers: 1 }, 1);    // defended, one Dahan - closer to losing it
-    state.upgrades.purchased.auto_innate = 1;
+    grantUpgrade(state, "auto_innate");
 
     advance(ctx, 1);
 
@@ -833,7 +833,7 @@
     clearBoard(state);
     state.invader.build = "wetlands";
     setLand(state, "7", { towns: 1 }, 0);        // 2 damage kills a town outright
-    state.upgrades.purchased.auto_innate = 1;
+    grantUpgrade(state, "auto_innate");
 
     advance(ctx, 1);
 
@@ -847,7 +847,7 @@
     clearBoard(state);
     state.invader.build = "wetlands";
     setLand(state, "7", { explorers: 2 }, 0);    // 2 damage each kills both outright
-    state.upgrades.purchased.auto_innate = 1;
+    grantUpgrade(state, "auto_innate");
 
     advance(ctx, 1);
 

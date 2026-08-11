@@ -271,6 +271,17 @@ h3 {
 .hud-fear .value { color: var(--accent-fear); }
 .hud-round .value { color: var(--ink-0); }
 
+/* What this round has earned but not yet banked. Deliberately quieter than the total above
+   it: it is not money until the round ends, and it should not read like it is. */
+#fearPending {
+  display: block;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-fear);
+  opacity: 0.7;
+  min-height: 0.9rem;
+}
+
 /* Two meters, same shape: one fills as the round runs out, one drains as the next wave
    arrives. Both are patched in place rather than rebuilt, ten times a second. */
 .meter {
@@ -745,6 +756,19 @@ button.reset {
 
 .upgrade.is-one-off .upgrade-info { gap: 0.15rem; }
 
+/* Bought during a round, and idle until the next one starts. The row is dimmed rather than
+   marked with anything louder - the purchase went through, and the only thing worth saying
+   is that it is waiting. */
+.upgrade.is-pending { border-color: rgba(120, 201, 179, 0.4); }
+
+.upgrade-pending {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent-calm);
+  opacity: 0.85;
+}
+
 .upgrade-buy {
   margin: 0;
   width: auto;
@@ -754,6 +778,18 @@ button.reset {
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
+
+/* The two answers to "when does the next round begin", side by side the way the wave strip
+   pairs its own two. The toggle only shows up once it has been bought, so the row is a
+   single centred button until then. */
+.shop-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.shop-controls .primary-btn { flex: 1; }
+.shop-controls .hud-btn { margin-top: 0.7rem; }
 
 /* Always available, whatever is left in the purse: the shop must never hold a round
    hostage to spending. */

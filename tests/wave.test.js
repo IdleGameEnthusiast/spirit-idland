@@ -42,8 +42,9 @@
     const before = { ...state.invader };
     advance(ctx, engine.WAVE_INTERVAL_SECONDS);
 
-    assertEqual(state.invader.build, before.explore, "old explore becomes build");
-    assert(engine.INVADER_TERRAINS.includes(state.invader.explore), "a new explore terrain is drawn");
+    assertEqual(state.invader.build.join(","), before.explore.join(","), "old explore becomes build");
+    assertEqual(state.invader.explore.length, 1, "one explore terrain is drawn this low on the ladder");
+    assert(engine.INVADER_TERRAINS.includes(state.invader.explore[0]), "a new explore terrain is drawn");
   });
 
   test("wave: a drawn explore terrain never duplicates build", () => {
@@ -51,7 +52,9 @@
     for (let i = 0; i < 8; i += 1) {
       advance(ctx, engine.WAVE_INTERVAL_SECONDS);
       if (ctx.state.round.status !== "running") break;
-      assert(ctx.state.invader.explore !== ctx.state.invader.build, "explore must differ from build");
+      for (const terrain of ctx.state.invader.explore) {
+        assert(!ctx.state.invader.build.includes(terrain), "explore must differ from build");
+      }
     }
   });
 
@@ -80,7 +83,7 @@
     assertEqual(state.invaders["2"].explorers, 1, "Discover seeded the coastal desert");
   });
 
-  test("wave: surviving a wave pays Fear, once, into both the purse and the round tally", () => {
+  test("wave: surviving a wave pays Fear into the round tally, and not into the purse", () => {
     const { state } = newGame();
     clearBoard(state);
     state.meta.fear = 0;
@@ -88,11 +91,16 @@
     state.invader = { build: "jungle", explore: "desert" };
 
     engine.resolveWave(state);
-    assertEqual(state.meta.fear, engine.FEAR_PER_WAVE, "one wave, one payment");
-    assertEqual(state.round.fearEarned, engine.FEAR_PER_WAVE, "the round tallies the same");
+    assertEqual(state.round.fearEarned, engine.FEAR_PER_WAVE, "one wave, one payment");
+    assertEqual(state.meta.fear, 0, "nothing is spendable until the round ends");
 
     engine.resolveWave(state);
-    assertEqual(state.meta.fear, 2 * engine.FEAR_PER_WAVE, "two waves, two payments");
+    assertEqual(state.round.fearEarned, 2 * engine.FEAR_PER_WAVE, "two waves, two payments");
+    assertEqual(state.meta.fear, 0, "still nothing spendable");
+
+    // The round boundary is the only place the two pools meet.
+    engine.endRound(state);
+    assertEqual(state.meta.fear, 2 * engine.FEAR_PER_WAVE, "banked in one payment at the end");
   });
 
   test("wave: Fear stays whole through a full round", () => {
@@ -102,6 +110,8 @@
     }
     assertEqual(ctx.state.meta.fear, Math.floor(ctx.state.meta.fear), "no fraction in the purse");
     assertEqual(ctx.state.round.fearEarned, Math.floor(ctx.state.round.fearEarned), "none in the tally");
+    engine.endRound(ctx.state);
+    assertEqual(ctx.state.meta.fear, Math.floor(ctx.state.meta.fear), "none after banking either");
   });
 
   /* ---------------------------------------------------------------- *

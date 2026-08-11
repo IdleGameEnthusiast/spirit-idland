@@ -315,35 +315,37 @@
     assertDeepEqual(healthOf(state, "3", "cities"), [1], "the first strike left the city at 1 health");
   });
 
+  // Fear from a kill lands in the round's own tally, not the spendable purse - see the
+  // two-pool note in the engine. The purse only moves at endRound.
   test("combat: a defeated invader awards Fear by its power", () => {
     const { state } = newGame();
     clearBoard(state);
-    state.meta.fear = 0;
+    state.round.fearEarned = 0;
     setLand(state, "3", { towns: 1 }, 2);
 
     engine.resolveDahanAttack(state);
     assertEqual(state.invaders["3"].towns, 0, "the town fell");
-    assertEqual(state.meta.fear, 2 * engine.FEAR_PER_POWER, "fear for one town");
+    assertEqual(state.round.fearEarned, 2 * engine.FEAR_PER_POWER, "fear for one town");
   });
 
   test("combat: fear per unit is its power, in whole numbers", () => {
     const { state } = newGame();
     clearBoard(state);
 
-    state.meta.fear = 0;
+    state.round.fearEarned = 0;
     setLand(state, "3", { explorers: 1 }, 0);
     engine.applyDamage(state, "3", 1);
-    assertEqual(state.meta.fear, 1, "explorer");
+    assertEqual(state.round.fearEarned, 1, "explorer");
 
-    state.meta.fear = 0;
+    state.round.fearEarned = 0;
     setLand(state, "3", { towns: 1 }, 0);
     engine.applyDamage(state, "3", 2);
-    assertEqual(state.meta.fear, 2, "town");
+    assertEqual(state.round.fearEarned, 2, "town");
 
-    state.meta.fear = 0;
+    state.round.fearEarned = 0;
     setLand(state, "3", { cities: 1 }, 0);
     engine.applyDamage(state, "3", 3);
-    assertEqual(state.meta.fear, 3, "city");
+    assertEqual(state.round.fearEarned, 3, "city");
   });
 
   test("combat: a wound on an invader persists across waves within a round", () => {

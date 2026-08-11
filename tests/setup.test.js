@@ -124,9 +124,13 @@
       }
     }
     assertEqual(state.round.wavesResolved, 0, "wave counter");
-    assert(engine.INVADER_TERRAINS.includes(state.invader.build), "build slot holds what was just discovered");
-    assert(engine.INVADER_TERRAINS.includes(state.invader.explore), "explore slot is drawn");
-    assert(state.invader.explore !== state.invader.build, "the two slots differ");
+    // Both slots are terrain lists now that the ladder can widen Discover. At wave 0 each
+    // holds exactly one - the bottom rung, which every round opens on.
+    assertEqual(state.invader.build.length, 1, "build slot holds what was just discovered");
+    assertEqual(state.invader.explore.length, 1, "explore slot is drawn");
+    assert(engine.INVADER_TERRAINS.includes(state.invader.build[0]), "build slot holds a real terrain");
+    assert(engine.INVADER_TERRAINS.includes(state.invader.explore[0]), "explore slot holds a real terrain");
+    assert(state.invader.explore[0] !== state.invader.build[0], "the two slots differ");
   });
 
   test("setup: an opening Discover puts the invaders ashore before wave 1", () => {
@@ -138,14 +142,14 @@
     assert(landed.length > 0, "the island must not start empty");
 
     for (const landId of landed) {
-      assertEqual(engine.landTerrain(landId), state.invader.build, `land ${landId} matches the discovered terrain`);
+      assert(state.invader.build.includes(engine.landTerrain(landId)), `land ${landId} matches the discovered terrain`);
       assertEqual(state.invaders[landId].explorers, 1, `land ${landId} took exactly one explorer`);
     }
 
     // Every coastal land of that terrain took one: on an empty board, coastal is the whole
     // of "reachable".
     for (const landId of engine.LAND_IDS) {
-      if (engine.landTerrain(landId) !== state.invader.build) continue;
+      if (!state.invader.build.includes(engine.landTerrain(landId))) continue;
       const expected = engine.landIsCoastal(landId) ? 1 : 0;
       assertEqual(state.invaders[landId].explorers, expected, `land ${landId} explorers`);
     }
@@ -167,7 +171,7 @@
     // rounds that a uniform draw would almost certainly have hit it.
     for (let i = 0; i < 40; i += 1) {
       engine.startRound(state);
-      assert(state.invader.build !== "mountains", "mountains cannot be the opening Discover");
+      assert(!state.invader.build.includes("mountains"), "mountains cannot be the opening Discover");
       const landed = engine.LAND_IDS.filter((id) => state.invaders[id].explorers > 0);
       assert(landed.length > 0, `round ${i}: the opening Discover seeded nothing`);
     }

@@ -14,8 +14,9 @@
     setLand(state, "3", { towns: 1 }, 0);
     engine.triggerAbility(state, "flash_floods");
     engine.resolveAbilityTarget(state, "3");
-    const earned = state.meta.fear;
+    const earned = state.round.fearEarned;
     assert(earned > 0, "the ability should have earned Fear");
+    assertEqual(state.meta.fear, 0, "and none of it is spendable yet");
 
     runUntilRoundEnds(ctx);
 
@@ -37,14 +38,35 @@
     assertEqual(state.round.fearEarned, 0, "the per-round counter does reset");
   });
 
-  test("shop: Fear cannot be spent while a round is running", () => {
+  // The shop stays open now that rounds can start themselves. What keeps a round from buying
+  // its own way out is the pool the Fear sits in and the snapshot the round runs on - not a
+  // closed shop.
+  test("shop: banked Fear can be spent during a round, but takes effect only next round", () => {
     const { state } = newGame();
     state.meta.fear = 100;
 
+    const cost = engine.upgradeCost(state, "dahan_reinforcement");
     const ok = engine.purchaseUpgrade(state, "dahan_reinforcement");
-    assert(!ok, "purchase must be refused mid-round");
-    assertEqual(state.meta.fear, 100, "no Fear deducted");
+
+    assert(ok, "a purchase mid-round is allowed");
+    assertClose(state.meta.fear, 100 - cost, 0.0001, "cost deducted");
+    assertEqual(engine.upgradeTier(state, "dahan_reinforcement"), 1, "owned immediately");
+    assertEqual(engine.activeUpgradeTier(state, "dahan_reinforcement"), 0, "but idle this round");
+
+    engine.endRound(state);
+    engine.startNextRound(state);
+    assertEqual(engine.activeUpgradeTier(state, "dahan_reinforcement"), 1, "live from the next round");
+  });
+
+  test("shop: Fear earned this round cannot be spent on this round", () => {
+    const { state } = newGame();
+    state.meta.fear = 0;
+    state.round.fearEarned = 1000;
+
+    const ok = engine.purchaseUpgrade(state, "dahan_reinforcement");
+    assert(!ok, "an unbanked round tally buys nothing");
     assertEqual(engine.upgradeTier(state, "dahan_reinforcement"), 0, "no tier gained");
+    assertEqual(state.round.fearEarned, 1000, "and the tally is untouched");
   });
 
   test("shop: a purchase deducts its cost and increments the tier", () => {
@@ -142,20 +164,24 @@
     assertEqual(state.meta.totalRoundsPlayed, 2, "after two rounds");
   });
 
-  test("shop: bestRoundReached tracks the high-water mark and never decreases", () => {
+  // The record is the deepest wave any round reached, not how many rounds were played. The
+  // ladder is keyed to the wave, so the wave is what says how far the run actually got.
+  test("shop: bestWaveReached tracks the high-water mark and never decreases", () => {
     const { state } = newGame();
+    state.round.wavesResolved = 7;
     engine.endRound(state);
-    assertEqual(state.meta.bestRoundReached, 1, "round 1");
+    assertEqual(state.meta.bestWaveReached, 7, "first record");
 
     engine.startNextRound(state);
+    state.round.wavesResolved = 12;
     engine.endRound(state);
-    assertEqual(state.meta.bestRoundReached, 2, "round 2");
+    assertEqual(state.meta.bestWaveReached, 12, "a deeper round raises it");
 
-    // Rewinding the round counter by hand must not rewind the record.
-    state.round.number = 1;
-    engine.startRound(state);
+    // A shorter round afterwards must not rewind the record.
+    engine.startNextRound(state);
+    state.round.wavesResolved = 3;
     engine.endRound(state);
-    assertEqual(state.meta.bestRoundReached, 2, "record holds");
+    assertEqual(state.meta.bestWaveReached, 12, "record holds");
   });
 
   test("shop: blight_resilience stops at its max tier", () => {
@@ -214,16 +240,25 @@
 
     assertDeepEqual(
       engine.orderedUpgradeIds(state),
-      ["blight_resilience", "auto_innate", "dahan_reinforcement", "auto_boon"],
+      [
+        "blight_resilience",
+        "auto_innate",
+        "auto_wash_away",
+        "auto_bounty",
+        "auto_start_round",
+        "dahan_reinforcement",
+        "auto_boon"
+      ],
       "the two sold-out upgrades sink to the bottom, catalogue order preserved on both sides"
     );
   });
 
-  test("shop: an ability defeat during a round feeds the same purse the shop spends", () => {
+  test("shop: an ability defeat during a round feeds the purse the shop spends, once banked", () => {
     const { state } = newGame();
     unlockAllAbilities(state);
     clearBoard(state);
     state.meta.fear = 0;
+    state.round.fearEarned = 0;
     setLand(state, "3", { cities: 1 }, 0);
 
     engine.triggerAbility(state, "flash_floods");
@@ -234,11 +269,10 @@
     engine.resolveAbilityTarget(state, "3");
 
     assertEqual(state.invaders["3"].cities, 0, "the city fell to two hits");
-    assertEqual(state.meta.fear, 3 * engine.FEAR_PER_POWER, "a city is worth 3");
+    assertEqual(state.round.fearEarned, 3 * engine.FEAR_PER_POWER, "a city is worth 3");
+    assertEqual(state.meta.fear, 0, "not spendable while the round runs");
 
     engine.endRound(state);
-    const cost = engine.upgradeCost(state, "dahan_reinforcement");
-    state.meta.fear = cost;
-    assert(engine.purchaseUpgrade(state, "dahan_reinforcement"), "that Fear is spendable");
+    assertEqual(state.meta.fear, 3 * engine.FEAR_PER_POWER, "banked when the round ends");
   });
 })();

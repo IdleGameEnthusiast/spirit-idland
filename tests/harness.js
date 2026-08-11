@@ -173,6 +173,20 @@ function setAbilityTier(state, abilityId, tier) {
   return state;
 }
 
+/* Grants a shop upgrade *and* puts it into effect for the round already running.
+ *
+ * A purchase alone no longer does the second half: an upgrade bought during a round is owned
+ * but idle until the next round takes its snapshot (see activeUpgradeTier). Almost every test
+ * that grants an upgrade means "the player has this and is playing with it", which in the real
+ * game is the state one round boundary later - so this writes both, and a test that actually
+ * cares about the gap writes state.upgrades.purchased by hand. */
+function grantUpgrade(state, upgradeId, tier) {
+  const owned = tier === undefined ? 1 : tier;
+  state.upgrades.purchased[upgradeId] = owned;
+  state.round.upgradeTiers[upgradeId] = owned;
+  return state;
+}
+
 function clearBoard(state) {
   state.invaders = engine.createInvaderCounts();
   state.invaderDamage = engine.createInvaderDamage();
@@ -199,7 +213,8 @@ const HARNESS = {
   healthOf,
   clearBoard,
   unlockAllAbilities,
-  setAbilityTier
+  setAbilityTier,
+  grantUpgrade
 };
 
 if (typeof module !== "undefined" && module.exports) {
