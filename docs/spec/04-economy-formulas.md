@@ -296,8 +296,10 @@ flash_floods   10 Energy
 wash_away      20 Energy
 ```
 
-The three prices total 35, which is roughly one early round's whole income — so which two a
-round can afford is its first real decision, and buying all three means a round that lasted.
+The three prices total 35, which is more than one early round's whole income — so which of
+them a round can afford is its first real decision, and buying all three means a round that
+lasted. `wash_away` is twice the Floods because what it buys outlives them: 2 damage
+buys fewer bodies at every rung of the invader health ladder, and a drowning always buys one.
 The active spirit opens with `startingAbilityIds` unlocked and the rest at these prices; see
 [07-content-registry.md](./07-content-registry.md#spirits).
 
@@ -330,7 +332,9 @@ boon_of_vigor   cooldown 12 beats   +1 Energy
 rivers_bounty   cooldown 15 beats   +1 Dahan to the land with the fewest Dahan and invaders if
                                     possible - the thinnest land outright when nothing is contested
 flash_floods    cooldown 25 beats   1 damage in a clicked land, +1 more if that land is coastal
-wash_away       cooldown 35 beats   push up to 3 explorers/towns out of a clicked land
+wash_away       cooldown 35 beats   push up to 3 explorers/towns out of a clicked land - or,
+                                    from a coastal land, carry up to 2 of them out to sea,
+                                    removing them from the island outright
 ```
 
 `boon_of_vigor` and `rivers_bounty` resolve on the trigger itself. The other three take a land
@@ -377,10 +381,13 @@ which land?         the player's click
 which units?        towns before explorers, up to the ability's push count. A town is worth
                     two of an explorer everywhere else in the engine, so a push with a budget
                     smaller than the land spends it on the heavier thing
-pushed where?       one adjacent land holding no invaders at all. A land already holding Dahan
-                    wins outright when there is one - the push throws the unit at a defender
-                    instead of leaving it free to seep Blight; failing that, a coastal one wins;
-                    among equals the lowest land id
+pushed where?       open ground first: one adjacent land holding no invaders at all. A land
+                    already holding Dahan wins outright when there is one - the push throws the
+                    unit at a defender instead of leaving it free to seep Blight; failing that,
+                    a coastal one wins; among equals the lowest land id
+no open ground?     an adjacent land that already holds invaders, ranked the same way. Every
+                    land on this board has at least two neighbours, so a push never fails for
+                    want of a destination
 ```
 
 The destination is deterministic, like every other tie on this board: the water always runs the
@@ -389,6 +396,49 @@ among the equals to stop a player farming one land into a permanent sink; predic
 out to be worth more than that. The Dahan preference is why "lowest land id" is no longer the
 whole story: the three coastal lands are `1`, `2` and `3`, the lowest ids on the board, but a
 Dahan-held land with a higher id now outranks them - defence matters more than geography.
+
+The occupied fallback is what the board game has always allowed and what an earlier draft of
+this engine refused. Refusing it made the push the one effect that stopped working as the round
+went on: a full island is exactly when the pressure most needs moving and exactly when every
+neighbour was disqualified. It is not free — shoving a Town onto a land that already holds one
+is what turns the next Build there into a City — which is why it is the last resort, and why
+the auto-casts that push for *position* (`innate_power` tier 1's routing and seaward rungs and
+tier 2's routing, `wash_away` routing and protect-thin) require open ground instead. Emptying a
+land is different: anywhere off it will do, so the break-build rungs take the fallback happily.
+
+The Dahan-before-coastal order in that table is also why the Innate's tier-1 list ranks routing
+*above* the seaward rung rather than below it. A land with both an open defended neighbour and
+an open coastal one pushes into the defended one whatever the priority list says, so a seaward
+rung placed above routing would be a claim the destination rule immediately overrides. The list
+follows this table instead of arguing with it — one rule for where the water runs, and the
+rungs describe what that rule would achieve.
+
+### The sea
+
+`wash_away` is the one ability that can take a unit off the island without hurting it. From a
+**coastal** land the water does not stop at the next land over:
+
+```txt
+which units?        towns before explorers, up to `seaCount` (2) — the same order the push
+                    uses, on a smaller budget, because a shove is cheap and a one-way trip
+                    is not
+which unit of its   the healthiest one. Removal ignores health, so spending it on the unit
+type?               that would have been hardest to kill is what makes it worth more than
+                    the damage it replaces — and it leaves the wounded standing for the rest
+                    of the kit to finish
+cities?             never. A city is built into the land, the same rule that keeps one from
+                    being pushed
+pays?               Fear and Energy exactly as a defeat does, on the same power scale — it
+                    goes through the same `creditDefeat` the damage path calls
+```
+
+Three of the eight lands are coastal, so which half of the ability a cast gets is a question
+about position rather than luck — and the rest of the kit already answers it, since the
+Innate's push and the push destination ranking both walk stacks toward the water.
+
+This is the only removal in the kit that is not damage, which is what keeps the ability worth
+casting late: 2 damage buys fewer bodies at every rung of the invader health ladder, and a
+drowning buys the same thing on the fortieth wave as it did on the first.
 
 A unit carries its own damage with it, exactly — which is what per-unit health bought. Under
 the old per-type model the destination kept the worse of the two wounds and the rest was lost.
@@ -399,14 +449,14 @@ the old per-type model the destination kept the worse of the two wounds and the 
 boon_of_vigor    never fails: it needs nothing on the board
 rivers_bounty    never fails: there is always a thinnest land to reinforce
 flash_floods     fails when no land holds invaders
-wash_away        fails when no land holds a pushable unit *and* an empty neighbour - the one
-                 target rule that reads two lands
+wash_away        fails when no land holds a pushable unit. Where it goes is never in doubt -
+                 open ground, an occupied neighbour, or the sea - so this reads one land
 innate_power     tier 1 as wash_away; tiers 2 and 3 need only invaders present
 ```
 
-Tier 2 is deliberately looser than tier 1: its damage stands on its own, so a boxed-in land is
-still a legal target and the cast still counts. Refusing at that point would rewind damage
-already dealt and already paid Fear for.
+Tier 2 is deliberately looser than tier 1: its damage stands on its own, so a land holding
+nothing but Cities is still a legal target and the cast still counts. Refusing at that point
+would rewind damage already dealt and already paid Fear for.
 
 A failure logs "no valid target" and leaves the cooldown unspent, per
 [09-island-board.md](./09-island-board.md#failure-to-find-a-target).

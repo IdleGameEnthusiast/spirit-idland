@@ -22,7 +22,6 @@ Define the canonical save shape for the round-based redesign.
   },
   "meta": {
     "fear": 0,
-    "totalRoundsPlayed": 0,
     "bestRoundReached": 0
   },
   "spirit": {
@@ -36,6 +35,7 @@ Define the canonical save shape for the round-based redesign.
     "language": "de",
     "gameSpeed": 1,
     "autoProceed": false,
+    "playtest": false,
     "defeatFx": null,
     "blightFx": null,
     "selectedLand": null
@@ -201,11 +201,16 @@ Seven fields the first draft of this contract did not have. Each earns its place
 - **`ui.blightFx`** — the transient counterpart to `ui.defeatFx`, marking the lands that
   just took Blight. Same lifetime (`DEFEAT_FX_MS`), same normalize-to-null rule.
 - **`ui.gameSpeed`** — the speed dial: how many game seconds one real second buys, one of
-  `GAME_SPEEDS` (`0`, `1`, `2`). It lives in `ui` rather than `round` because it is a
-  preference like the language toggle, not a property of the round being played, and it
-  survives a reset for the same reason.
+  `GAME_SPEEDS` (`0`, `1`, `2`), plus `PLAYTEST_GAME_SPEEDS` (`8`) while `ui.playtest` is set.
+  It lives in `ui` rather than `round` because it is a preference like the language toggle,
+  not a property of the round being played, and it survives a reset for the same reason.
 - **`ui.autoProceed`** — whether a wave is allowed to arrive without being asked for. Also a
   preference, also outside `round`: it outlives every round it is read in.
+- **`ui.playtest`** — whether the playtest code has been redeemed, and with it the only thing
+  in the state no rule reads: it widens the speed dial and reveals two buttons that hand out
+  currency, and nothing else in the engine branches on it. It is in `ui` with the other
+  settings rather than in `meta` because it is not something the player has *earned* — see
+  [06-ui-contract.md](./06-ui-contract.md#playtest-tools).
 - **`round.awaitingWave`** — the gate itself, described above. It is in `round` and not `ui`
   precisely because it *is* round state: it dies with the round that raised it.
 
@@ -235,9 +240,14 @@ to resume mid-effect beyond "which ability is waiting for a click."
 ## Normalization Requirements
 
 - Unknown language values must normalize to `de` unless explicitly `en`.
-- `ui.gameSpeed` must be one of `GAME_SPEEDS` (`0`, `1`, `2`); anything else normalizes to
-  `DEFAULT_GAME_SPEED` (`1`), the speed the game ships at.
+- `ui.gameSpeed` must be one of the speeds the dial currently offers; anything else normalizes
+  to `DEFAULT_GAME_SPEED` (`1`), the speed the game ships at. Which speeds those are depends on
+  `ui.playtest`, so `ui.playtest` is normalized **first**: a save written at `8x` loads at `8x`
+  only if it also carries the redeemed code, and never leaves a player at a speed the dial
+  draws no button for.
 - `ui.autoProceed` normalizes to `false` unless it is exactly `true`.
+- `ui.playtest` normalizes to `false` unless it is exactly `true`. Like the language and the
+  speed, it survives a migration reset — it is a setting rather than run state.
 - `round.awaitingWave` normalizes to `false` unless it is exactly `true` **and**
   `round.status` is `running`. An ended round holds no gate: the shop is what the player is
   looking at, and a flag left set by a save written mid-gate would freeze the round it starts

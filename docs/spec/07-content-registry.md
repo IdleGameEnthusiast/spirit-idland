@@ -145,11 +145,17 @@ shared damage rule, and the shared push rule.
 
 - Unlock: 20 Energy
 - Cooldown: 35 beats
-- Needs target: yes — and it is the one target rule that reads two lands: the clicked land must
-  hold a pushable unit *and* have a neighbour holding no invaders.
-- Effect: push up to 3 explorers/towns into that neighbour. Towns first. Cities do not move,
-  and each unit carries its own damage with it. With more than one free neighbour the units go
-  to the lowest-numbered one — deterministic, not random.
+- Needs target: yes — one land holding at least one Explorer or Town. Where they go is never in
+  doubt, so unlike an earlier draft this reads only the clicked land.
+- Effect, **inland**: push up to 3 explorers/towns into an adjacent land. Towns first, each unit
+  carrying its own damage with it, into open ground where there is any and onto an occupied
+  neighbour where there is not. Deterministic, not random — see
+  [04-economy-formulas.md](./04-economy-formulas.md#pushing).
+- Effect, **coastal**: the water keeps going. Up to `seaCount` (2) explorers/towns are carried
+  out to sea and removed from the island, healthiest first, paying Fear and Energy exactly as a
+  defeat does. This is the kit's only removal that is not damage, and the reason the ability
+  still earns its cooldown once the invader health ladder has outgrown 2 damage.
+- Cities never move and never drown: a City is built into the land.
 
 ## Permanent Upgrades
 
@@ -187,6 +193,69 @@ table and cost-curve note.
   it is a real decision: which land. The auto-cast runs a per-tier priority list (see
   [08-acceptance-tests.md](./08-acceptance-tests.md#the-innate-power)) and skips the tick
   entirely, cooldown untouched, whenever no priority applies.
+  Tier 1's list is written for what one push can actually buy — position, never a kill — and
+  is deliberately the *last* automation to resolve each tick: it has the shortest cooldown and
+  the weakest effect in the kit, so going first meant the automations that kill and remove
+  chose their target on a board it had already stirred. Its rungs are break a Build, route an
+  undefended unit into Dahan cover, then carry an inland unit onto an open coast where
+  `wash_away` can reach it. There is no protect-the-thin-stack rung at tier 1 — it exists at
+  tier 2 and on `wash_away`, where the push moves three units and shifts real pressure. At one
+  unit it saved no stack and was the exact mirror of the routing rung above it, so on an
+  8-beat clock against the 10-beat Dahan strike it only shuttled the same unit back and forth
+  across the same border.
+The three ability automations below are ranked by what their ability puts on the board or takes
+off it, not by how much clicking they save: the Bounty reinforces, the Floods kill, and the sea
+removes. Each rung up is a stronger claim on the round than the one under it.
+
+- `auto_bounty` — one-time, `rivers_bounty` casts itself; the ability already picks its own
+  land, so there is no judgement here to buy back. `baseCost` 200 — the cheapest of the three,
+  and deliberately under the last rung of the `dahan_reinforcement` ladder (about 268), which
+  is what it used to be priced against: the ladder sells one Dahan for a whole round and this
+  sells one every 15 beats, so the ladder is the early lever and this is what replaces it.
+- `auto_flash_floods` — one-time, `flash_floods` casts itself and picks its own land.
+  `baseCost` 300 — dearer than the Bounty because it kills, and a defeat pays Fear and Energy
+  at once where a Dahan only holds ground. Its priority list is read off kills rather than off
+  position: a Build threat the flood would empty, then anywhere the cast defeats a unit, then
+  the steepest live Blight source; ties go to the land the flood hits hardest, which is a coast
+  before an inland. No priority means no cast and no cooldown.
+- `auto_wash_away` — one-time, `wash_away` casts itself and picks its own land. `baseCost`
+  400 — the dearest of the three, and the only automation whose worth *grows* with the round:
+  the sea takes a unit off the island whole, so it pays a defeat's Fear and Energy without
+  spending damage to do it, and it costs the same on the fortieth wave as on the first while
+  every damage number in the kit is losing ground to invader health. Its priority list is split
+  the way the ability is: a Build threat the cast would empty, then the coast the sea empties
+  hardest, then an undefended land whose push lands on open ground holding Dahan, then the
+  thinnest defended land. The last two require **open ground** — the occupied-neighbour
+  fallback is a trade a player can see the cost of and an automation cannot.
+The last two rows are behind a **gate** rather than behind a price (`GATED_UPGRADE_IDS`, read
+through `upgradeIsLocked`). Neither is for sale until every other upgrade in the catalogue is
+finished — every repeatable at its max tier, every one-off bought. Between them they hand over
+the last two things still done by hand each round, so they are what finishing the shop pays for
+rather than an alternative to finishing it. The pair does not gate *itself*: "everything else"
+is defined by excluding the pair, because read the other way each would wait on the other and
+neither would ever open. `purchaseUpgrade` refuses a locked row before it looks at the price,
+so a player holding the Fear is told the real reason.
+
+- `auto_buy_abilities` — one-time, gated. Each tick, this round's Energy spends itself on the
+  ability bar: the locked kit abilities first, cheapest before dearest (5 / 10 / 20), then one
+  rung of the Innate's tier ladder if the Energy is still there. `baseCost` 200 — cheap for
+  where it sits, deliberately: the gate is what holds it back, and what it sells is less than
+  the automations under it. It spends Energy the round was already going to spend, in the order
+  a settled player already spends it, and buys back the clicks rather than any new power.
+  Unlocks come before tiers for two reasons that point the same way: an unlock is the cheaper
+  claim on the same Energy, and it is what the three cast automations are waiting on — each of
+  them idles all round on an ability that was never bought. It resolves before every auto-cast
+  in the tick, so an ability it buys (which arrives ready, exactly as a clicked unlock does)
+  can fire on the same tick. Purchases go through `unlockAbility` / `upgradeAbility`, so an
+  automated buy and a clicked one are the same buy: same refusals, same log line.
+- `auto_start_round` — one-time, gated, an ended round starts the next one by itself, subject
+  to a toggle the player can switch off. `baseCost` 500 — the most expensive thing in the shop
+  and the only one that changes the shape of the game rather than a number in it.
+
+Every automation except `auto_buy_abilities` buys the *click*, never the ability: the Energy
+unlock is still owed every round, and an automation with nothing unlocked to fire does nothing.
+`auto_buy_abilities` buys the unlock instead of the cast — and still owes it every round, out
+of that round's own Energy.
 
 ## Terrain Registry
 

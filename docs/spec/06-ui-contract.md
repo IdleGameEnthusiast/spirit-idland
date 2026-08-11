@@ -122,6 +122,12 @@ island board, and the between-round shop.
 4. Between-round shop (visible only while `round.status` is `ended`)
 - The round just lost: its number and the Fear it earned
 - The upgrade catalogue: each entry's effect, its current tier if repeatable, and its cost
+- A gated row (see [07-content-registry.md](./07-content-registry.md#permanent-upgrades)) stays
+  on the list, fully readable, with its price shown and its button dead, and says that it opens
+  once everything else is bought. It is not hidden: what is behind the gate is the reason to
+  finish the catalogue, so hiding it would hide the goal. The row wears the lock instead of the
+  "takes effect next round" note — a locked row cannot have been bought, so the two never
+  collide
 - A clear "Start Next Round" control, always available regardless of remaining Fear
 
 5. Log and utility controls
@@ -155,7 +161,8 @@ island board, and the between-round shop.
 
 - Default hint names the board: eight lands, three of them coastal.
 - While an ability is armed, the hint names which ability is waiting and what land property
-  it needs: invaders present, or — for a push — something pushable and a free neighbour.
+  it needs: invaders present, or — for a push — something pushable. A push never asks about
+  the neighbours any more; it always has somewhere to go.
 - Otherwise, while a round runs, the hint names the terrain the next wave will Build in and
   the lands that means.
 
@@ -233,6 +240,42 @@ Two clarifications the implementation forced:
 - Terrain hues: mountains slate `171, 184, 196`, desert sand `242, 196, 90`, jungle leaf
   green `124, 198, 116`, wetlands blue `118, 179, 222`.
 
+## Playtest Tools
+
+A row at the foot of the page — below the save controls, below everything that is played
+through — takes a redeem code. Typing `playtester` into it switches on a small set of tools
+for looking at the game rather than playing it. They ship with the page and cost nothing to
+carry: `ui.playtest` is the one flag in the state no rule reads.
+
+- **The redeem bar** is a form, so Enter submits it: the code is typed, and a typist reaches
+  for Enter rather than for the button beside the field. One line under it says what the last
+  attempt did, and says it in three different ways — redeemed, already redeemed, unknown.
+  "Already redeemed" is worth its own message: silence would look like a rejection
+- A code that was accepted clears the field. A rejected one is left where it is, to be
+  corrected — which is the only reason the message beside it is worth reading
+- **`8x` on the speed dial**, appended after `2x` rather than mixed into the shipped speeds. A
+  whole wave arrives in two and a half real seconds, which is far past what the round is
+  balanced to be read at, and is exactly the point: it is for reaching wave twenty to look at
+  something, not for playing there
+- **A grant button inside each currency readout**: `+100` in the Energy purse and `+100` in the
+  between-round shop's Fear purse. Each sits inside the number it moves rather than in a tray of
+  its own — a playtest panel elsewhere on the page would be one more place to look, and these
+  exist to be one click from the thing they change. The Fear grant lands in the **banked** pool,
+  not in what the round has earned: its purpose is to buy something in the shop right now, which
+  is also why it sits in the shop's purse rather than in the HUD's Fear tile. That tile shows
+  what the running round has earned, a number the grant never touches, so pressing it there read
+  as doing nothing
+- **A "hide playtest tools" button** beside the redeem input, and only while the tools are on.
+  It puts the page back the way it plays; typing the code again brings them back. It lives in
+  the redeem bar rather than travelling to whichever panel it hides, because that bar is where
+  they were switched on
+- Hiding them takes the extra speed with it. A player sitting at `8x` when the tools go away
+  would otherwise be left at a speed with no button to leave it by — so the dial snaps back to
+  `1x`, while a normal speed they chose themselves is left alone
+- Every one of these controls is in the markup at all times and revealed by `hidden`, never
+  inserted. Which speeds the dial shows comes from the engine's `availableGameSpeeds`, so the
+  rule about what `8x` needs is not written down twice
+
 ## Visual Feedback Rules
 
 - Dahan must be visually separated from invader counts.
@@ -254,6 +297,8 @@ Implemented as a twelve-column grid over three regions:
 - **Rail**, four columns: ability bar, then the shop when a round has ended, then the log.
   A single flex column, so the shop appearing pushes the log down rather than displacing
   the board.
+- **Footer**, full width: the save controls, and under them the redeem bar. Nothing in the
+  round is played through either, which is what puts them below everything that is.
 
 Below 1180px the board and rail each take the full width; below 720px the HUD drops from
 four tiles to two, because a Blight meter narrower than its own label stops being a meter.

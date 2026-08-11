@@ -10,6 +10,11 @@ The clock is the player's: a speed dial in the top bar runs the round at `1x`, d
 whether the next wave arrives on its own or waits to be called. Neither changes what a round costs — see
 [docs/spec/02-core-loop.md](docs/spec/02-core-loop.md#pacing).
 
+Typing `playtester` into the redeem bar at the foot of the page switches on the playtest
+tools: an `8x` button on the dial, and a `+100` button inside each of the two currency
+readouts. A button beside the same input takes them away again. Nothing in the rules reads
+the flag — see [docs/spec/06-ui-contract.md](docs/spec/06-ui-contract.md#playtest-tools).
+
 ## Running it
 
 Open `index.html`. That is the whole procedure — no server, no build step, no dependencies.
@@ -35,9 +40,9 @@ powershell -File tests\headless.ps1          headless Edge or Chrome; exits 1 on
 node tests/run.js [filter]                   if node is installed
 ```
 
-200 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
-the shop, save/migration, and the land-state rules. The engine takes its clock and RNG by
-injection, so the whole suite is deterministic and finishes instantly.
+301 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
+the shop, save/migration, the land-state rules, and the playtest tools. The engine takes its
+clock and RNG by injection, so the whole suite is deterministic and finishes instantly.
 
 ## The spec
 

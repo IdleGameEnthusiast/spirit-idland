@@ -204,9 +204,10 @@ h3 {
   right: 0;
   z-index: 2;
   display: grid;
-  /* Four equal tiles and one wider one: the wave tile carries two buttons under its bar, and
-     on an even fifth they wrap onto a second line and hang over the lands below. */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr) repeat(3, minmax(0, 1fr));
+  /* Six equal tiles. The wave controls are a tile of their own beside the countdown rather
+     than a wider cell around it, so every part of the strip keeps the same width and the
+     numbers stay on a regular grid however long their labels run. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.5rem;
   padding: 0.4rem 0.6rem 0.75rem;
   pointer-events: none;
@@ -319,12 +320,21 @@ h3 {
 .hud-wave .meter-fill { transition: width 0.12s linear; }
 
 /* The one live corner of an otherwise inert strip. Only the buttons take the pointer back,
-   not the row around them, so the island keeps every pixel it is not actually covering. */
+   not the tile around them, so the island keeps every pixel it is not actually covering.
+   Stacked rather than side by side: in a tile the same width as every other one, a row of
+   two buttons either wraps unevenly or clips its labels, where a column keeps both the same
+   width at any viewport. */
+.hud-wave-controls {
+  display: flex;
+  align-items: center;
+}
+
 .wave-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.2rem;
-  margin-top: 0.22rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .hud-btn {
@@ -494,6 +504,41 @@ button.reset {
   font-size: 1.35rem;
   color: var(--accent-energy);
   font-variant-numeric: tabular-nums;
+  /* Pushed right by its own margin rather than by space-between, so the purse looks the same
+     with the playtest button in it as without: label left, button and number together right. */
+  margin-left: auto;
+}
+
+/* The grant button in the purse: the purse's own gold, at the weight of a footnote. It must
+   not compete with the number beside it - it is a tool, not a thing the game offers. */
+.purse-btn {
+  width: auto;
+  margin: 0;
+  padding: 0.12rem 0.4rem;
+  border: 1px solid rgba(242, 196, 90, 0.45);
+  border-radius: 999px;
+  background: rgba(242, 196, 90, 0.1);
+  color: var(--accent-energy);
+  font: inherit;
+  font-size: 0.68rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.purse-btn:hover {
+  border-color: rgba(242, 196, 90, 0.8);
+  background: rgba(242, 196, 90, 0.2);
+}
+
+/* The button sits left of the total, so when it is showing it is the one that takes the gap
+   and the number stays glued to its right. Hidden, it lays out nothing and the total keeps
+   its own auto margin - the purse looks identical either way. */
+.purse-btn:not([hidden]) {
+  margin-left: auto;
+}
+
+.purse-btn:not([hidden]) + strong {
+  margin-left: 0;
 }
 
 .ability-bar {
@@ -690,6 +735,23 @@ button.reset {
   font-size: 1.35rem;
   color: var(--accent-fear);
   font-variant-numeric: tabular-nums;
+  /* Pushed right by its own margin rather than by space-between, so the purse looks the same
+     with the playtest button in it as without: label left, button and number together right. */
+  margin-left: auto;
+}
+
+/* The grant button here is the same footnote-weight tool as the one in the ability purse, in
+   the shop's rose instead of the ability panel's gold - the purse it sits in is what says
+   which currency it hands out. */
+.shop-purse .purse-btn {
+  border-color: rgba(194, 107, 138, 0.45);
+  background: rgba(194, 107, 138, 0.1);
+  color: var(--accent-fear);
+}
+
+.shop-purse .purse-btn:hover {
+  border-color: rgba(194, 107, 138, 0.8);
+  background: rgba(194, 107, 138, 0.2);
 }
 
 .upgrade-list {
@@ -754,6 +816,26 @@ button.reset {
   background: var(--panel-border);
 }
 
+/* The line under which nothing is for sale any more. It carries the gap the one-off divider
+   does not need: that one splits two kinds of purchase, this one splits shopping from
+   inventory, and the eye should be able to stop scanning prices here. */
+.upgrade-divider.is-sold-out {
+  margin-top: 1.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--panel-border);
+  color: var(--ink-1);
+}
+
+.upgrade-divider.is-sold-out::after { opacity: 0.45; }
+
+/* Owned rows are kept legible - they are the record of what you bought - but drained of the
+   contrast the buyable ones use to ask for attention. */
+.upgrade.is-sold-out {
+  background: rgba(13, 34, 43, 0.35);
+  border-color: rgba(255, 255, 255, 0.06);
+  opacity: 0.72;
+}
+
 .upgrade.is-one-off .upgrade-info { gap: 0.15rem; }
 
 /* Bought during a round, and idle until the next one starts. The row is dimmed rather than
@@ -767,6 +849,24 @@ button.reset {
   letter-spacing: 0.06em;
   color: var(--accent-calm);
   opacity: 0.85;
+}
+
+/* Not for sale yet, and not because of the price. The row stays fully readable - what is
+   behind the gate is the reason to finish the catalogue, so hiding it would hide the goal -
+   but it is drained of the warm border the affordable rows wear, and its price reads as a
+   label rather than as an offer. */
+.upgrade.is-locked {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(13, 34, 43, 0.35);
+}
+
+.upgrade-locked {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-1);
+  opacity: 0.9;
 }
 
 .upgrade-buy {
@@ -828,15 +928,33 @@ button.reset {
 .land-shape {
   cursor: pointer;
   transition: opacity 0.18s ease;
+  /* Touch draws its own grey box over the tapped element's box, not its shape. */
+  -webkit-tap-highlight-color: transparent;
 }
 
-.land-shape:focus-visible [data-role="ring"] {
+/* The land group is focusable, and the outline a browser draws for it follows the group's
+   bounding box - an axis-aligned rectangle sitting well outside the warped quad that is the
+   actual land. Clicking a land lit that rectangle up. The land's own highlight is the
+   .land-ring path in the layer above, and .land-ring.is-focus below is the keyboard one, so
+   there is nothing left for the UA outline to say. */
+.land-shape:focus,
+.land-shape:focus-visible { outline: none; }
+
+/* Every land's ring, in one layer above every fill so a highlight is a closed outline
+   rather than one broken wherever a later-drawn neighbour painted over it. The layer takes
+   no clicks: the land paths underneath still own hit-testing. */
+.land-ring-layer { pointer-events: none; }
+
+/* Keyboard focus only. The class is toggled in ui.js rather than matched with
+   :focus-visible, because the focused element is the land group down in the fill layer and
+   the ring it belongs to is no longer inside it. */
+.land-ring.is-focus {
   stroke: var(--ink-0);
   stroke-width: 3;
 }
 
 /* A land the next wave will ravage pulses, so the eye finds it without hunting. */
-.land-shape.land-wave-target [data-role="ring"] {
+.land-ring.is-wave-target {
   animation: phase-pulse 1.8s ease-in-out infinite;
 }
 
@@ -1297,7 +1415,7 @@ button.reset {
   .meter-fill,
   .ability-sweep { transition: none; animation: none; }
 
-  .land-shape.land-wave-target [data-role="ring"] { animation: none; }
+  .land-ring.is-wave-target { animation: none; }
   .hud-blight .meter-fill.is-critical { animation: none; }
 }
 
@@ -1344,6 +1462,63 @@ footer {
   background: linear-gradient(145deg, rgba(128, 48, 48, 0.9), rgba(78, 28, 28, 0.95));
 }
 
+/* ------------------------------------------------------------------ *
+ * Redeem bar and the playtest tools                                    *
+ *                                                                      *
+ * Everything here is deliberately quiet. None of it is played through,  *
+ * and a bar at the foot of the page that shouted would be read as part  *
+ * of the round.                                                         *
+ * ------------------------------------------------------------------ */
+
+.redeem-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--panel-border);
+}
+
+.redeem-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+}
+
+.redeem-input {
+  width: 11rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(9, 26, 34, 0.7);
+  color: var(--ink-0);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.redeem-input::placeholder {
+  color: var(--ink-1);
+  opacity: 0.6;
+}
+
+.redeem-input:focus-visible {
+  outline: 2px solid rgba(142, 211, 230, 0.6);
+  outline-offset: 1px;
+}
+
+/* One line that says what the last attempt did. It holds its height whether or not it has
+   anything to say, so redeeming a code does not shift the bar it was typed into. */
+.redeem-status {
+  font-size: 0.78rem;
+  color: var(--ink-1);
+  min-height: 1.1rem;
+}
+
+.redeem-status.is-ok { color: var(--accent-calm); }
+.redeem-status.is-bad { color: var(--accent-pressure); }
+
 @media (max-width: 1180px) {
   .board, .rail {
     grid-column: span 12;
@@ -1366,8 +1541,9 @@ footer {
   .board-hud-tile .value { font-size: 0.9rem; }
 
   /* The wave controls stay - they are the only way to play the manual mode - so they shrink
-     instead, and keep to one line. A wrapped second line here hangs over lands 7 and 8. */
-  .wave-controls { flex-wrap: nowrap; }
+     instead. Their column is two short lines either way, which the tile already has room
+     for beside a full-height vitals tile. */
+  .wave-controls { gap: 0.15rem; }
 
   .hud-btn {
     padding: 0.1rem 0.26rem;

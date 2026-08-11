@@ -24,7 +24,8 @@ shop it funds, and what carries across rounds versus what resets.
 
 ### Round Tracking
 
-- `meta.totalRoundsPlayed` increments every time a round ends.
+- Rounds are not tallied. Nothing in the rules or the UI reads a count of attempts, so a save
+  that carries a `meta.totalRoundsPlayed` from an older build drops it on load.
 - `meta.bestRoundReached` updates whenever `round.number` at round-end exceeds it. This is
   the run's headline score.
 

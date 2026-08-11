@@ -68,7 +68,16 @@ const dom = {
 
   manualSaveBtn: document.getElementById("manualSaveBtn"),
   wipeSaveBtn: document.getElementById("wipeSaveBtn"),
-  autosaveHint: document.getElementById("autosaveHint")
+  autosaveHint: document.getElementById("autosaveHint"),
+
+  redeemForm: document.getElementById("redeemForm"),
+  redeemLabel: document.getElementById("redeemLabel"),
+  redeemInput: document.getElementById("redeemInput"),
+  redeemBtn: document.getElementById("redeemBtn"),
+  redeemStatus: document.getElementById("redeemStatus"),
+  playtestHideBtn: document.getElementById("playtestHideBtn"),
+  playtestEnergyBtn: document.getElementById("playtestEnergyBtn"),
+  playtestFearBtn: document.getElementById("playtestFearBtn")
 };
 
 // What each renderer last drew. A render only reruns when its own signature changes, so
@@ -259,14 +268,6 @@ function drawIslandOnce() {
       "stroke-opacity": "0.5",
       "stroke-width": "1.2"
     }));
-    group.appendChild(svgEl("path", {
-      d: islandPathFor(landId),
-      fill: "none",
-      "data-role": "ring",
-      stroke: "transparent",
-      "stroke-width": "3",
-      "stroke-linejoin": "round"
-    }));
     landLayer.appendChild(group);
   }
 
@@ -281,6 +282,29 @@ function drawIslandOnce() {
       "stroke-opacity": "0.7", "stroke-width": "1.6", "stroke-linecap": "round"
     }));
   }
+
+  // Every ring in one layer of its own, above every fill and above the cliffs.
+  //
+  // A ring is a stroke on the land's own outline, so half its width lies outside the land -
+  // on the neighbour. Drawn inside the land's group it was painted over by every land drawn
+  // after it and by the cliff edges, which left a selected land outlined on the borders it
+  // shares with lands 1..n-1 and bare everywhere else. Lifting the rings out is the fix: a
+  // highlight has to be a closed outline or it does not read as one.
+  //
+  // Inert to the pointer, so the fills underneath keep owning every click.
+  const ringLayer = svgEl("g", { class: "land-ring-layer" });
+  for (const landId of LAND_IDS) {
+    ringLayer.appendChild(svgEl("path", {
+      class: "land-ring",
+      "data-ring-land": landId,
+      d: islandPathFor(landId),
+      fill: "none",
+      stroke: "transparent",
+      "stroke-width": "3",
+      "stroke-linejoin": "round"
+    }));
+  }
+  svg.appendChild(ringLayer);
 }
 
 /* ------------------------------------------------------------------ *
@@ -404,24 +428,28 @@ function renderBoard(state) {
   for (const landId of LAND_IDS) {
     const style = LAND_STATE_STYLE[states[landId]] || LAND_STATE_STYLE.idle;
     const group = dom.islandSvg.querySelector(`[data-land="${landId}"]`);
+    const ring = dom.islandSvg.querySelector(`[data-ring-land="${landId}"]`);
 
     if (group) {
       group.setAttribute("opacity", String(style.opacity));
       group.querySelector('[data-role="fill"]').setAttribute("fill-opacity", String(style.fill));
+      group.classList.toggle("land-legal-target", states[landId] === "legal");
+      group.classList.toggle("land-selected", landId === selected);
+    }
 
+    if (ring) {
       // A wave target keeps its own colour even while selected, so the selection ring can
       // never quietly hide which lands the invaders are about to hit.
       const isWaveTarget = states[landId] === "wave-active";
-      const ring = group.querySelector('[data-role="ring"]');
       const strokeColour = isWaveTarget
         ? LAND_STATE_STYLE["wave-active"].ring
         : (landId === selected ? "#f7f1de" : style.ring);
 
+      // The ring lives in its own layer now, so it no longer inherits the land group's dim.
+      ring.setAttribute("opacity", String(style.opacity));
       ring.setAttribute("stroke", strokeColour);
       ring.setAttribute("stroke-width", isWaveTarget ? "4" : (landId === selected ? "2.6" : "3"));
-      group.classList.toggle("land-wave-target", isWaveTarget);
-      group.classList.toggle("land-legal-target", states[landId] === "legal");
-      group.classList.toggle("land-selected", landId === selected);
+      ring.classList.toggle("is-wave-target", isWaveTarget);
     }
 
     const counts = state.invaders[landId];
@@ -688,6 +716,11 @@ function renderAbilityBar(state) {
 // ability is affordable right now. No node is replaced.
 function patchAbilityBar(state) {
   const t = locale(state);
+  // Everything in this bar is bought and spent inside a round: the Energy, the unlocks it
+  // pays for, the tiers, and the casts. A round that has ended still shows the bar - it is
+  // the spirit's kit, not a control panel - so every pressable thing on it goes dead instead,
+  // rather than taking a click the engine will only refuse (see unlockAbility).
+  const running = state.round.status === "running";
 
   // Both prices in the bar answer the same question - can I afford this yet - so they are
   // patched the same way, and the card wears the answer as a warm border either way.
@@ -696,7 +729,7 @@ function patchAbilityBar(state) {
     const cost = unlockId
       ? abilityUnlockCost(state, unlockId)
       : abilityUpgradeCost(state, button.getAttribute("data-upgrade-ability"));
-    const affordable = state.resources.energy >= cost;
+    const affordable = running && state.resources.energy >= cost;
     button.disabled = !affordable;
     button.closest(".ability").classList.toggle("is-affordable", affordable);
   }
@@ -717,7 +750,7 @@ function patchAbilityBar(state) {
     card.classList.toggle("is-armed", armed);
     card.classList.toggle("is-ready", ready && !armed);
     card.classList.toggle("is-cooling", !ready);
-    button.disabled = state.round.status !== "running" || (!ready && !armed);
+    button.disabled = !running || (!ready && !armed);
 
     button.querySelector('[data-role="state"]').textContent = armed
       ? t.abilityArmed
@@ -775,12 +808,15 @@ function renderShop(state) {
 
   dom.upgradeList.innerHTML = "";
 
-  function renderRow(upgradeId) {
+  function renderRow(upgradeId, soldOutRow) {
     const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
     const tier = upgradeTier(state, upgradeId);
     const maxed = tier >= upgradeMaxTier(upgradeId);
     const cost = upgradeCost(state, upgradeId);
-    const affordable = !maxed && state.meta.fear >= cost;
+    // Behind the gate rather than behind the price: the row shows what it will cost, but
+    // nothing about the purse opens it (see upgradeIsLocked).
+    const locked = upgradeIsLocked(state, upgradeId);
+    const affordable = !maxed && !locked && state.meta.fear >= cost;
     // Owned but not yet running: bought during a round, waiting on the next one to start.
     // Only worth saying while a round is actually in progress - between rounds every
     // purchase is pending, and saying so on every row would say nothing.
@@ -792,18 +828,21 @@ function renderShop(state) {
       ? `<span class="upgrade-tier">${template(t.shopTierLabel, { tier })}</span>`
       : "";
     const pendingNote = pending ? `<span class="upgrade-pending">${t.shopPendingHint}</span>` : "";
+    // Only one note per row, and the lock outranks the pending hint: a locked row cannot have
+    // been bought, so the two can never both apply anyway.
+    const lockedNote = locked ? `<span class="upgrade-locked">${t.shopLockedHint}</span>` : "";
     const buyLabel = maxed
       ? (repeatable ? t.shopMaxedBtn : t.shopOwnedBtn)
       : template(t.shopCostLabel, { cost });
 
     const row = document.createElement("div");
-    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}${pending ? " is-pending" : ""}`;
+    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}${pending ? " is-pending" : ""}${locked ? " is-locked" : ""}${soldOutRow ? " is-sold-out" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${upgradeName(state, upgradeId)}</span>
         <span class="upgrade-text">${upgradeText(state, upgradeId)}</span>
         ${status}
-        ${pendingNote}
+        ${lockedNote || pendingNote}
       </div>
       <button type="button" class="upgrade-buy" data-upgrade="${upgradeId}" ${maxed || !affordable ? "disabled" : ""}>
         ${buyLabel}
@@ -820,19 +859,26 @@ function renderShop(state) {
   const buyable = UPGRADE_IDS.filter((id) => !maxedId(id));
   const soldOut = UPGRADE_IDS.filter(maxedId);
 
+  function renderDivider(label, extraClass) {
+    const rule = document.createElement("div");
+    rule.className = `upgrade-divider${extraClass ? ` ${extraClass}` : ""}`;
+    rule.textContent = label;
+    dom.upgradeList.appendChild(rule);
+  }
+
   let seenOneOff = false;
   for (const upgradeId of buyable) {
     const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
     if (!repeatable && !seenOneOff) {
       seenOneOff = true;
-      const rule = document.createElement("div");
-      rule.className = "upgrade-divider";
-      rule.textContent = t.shopOneOffLabel;
-      dom.upgradeList.appendChild(rule);
+      renderDivider(t.shopOneOffLabel);
     }
-    renderRow(upgradeId);
+    renderRow(upgradeId, false);
   }
-  for (const upgradeId of soldOut) renderRow(upgradeId);
+  // The sold-out half gets its own heading and a wider gap above it: without one the first
+  // bought row reads as just another entry in the list you are still shopping from.
+  if (soldOut.length) renderDivider(t.shopSoldOutLabel, "is-sold-out");
+  for (const upgradeId of soldOut) renderRow(upgradeId, true);
 }
 
 /* ------------------------------------------------------------------ *
@@ -908,9 +954,13 @@ function patchPacingControls(state) {
   const t = locale(state);
   const speed = gameSpeed(state);
 
+  // Which speeds the dial offers is the engine's answer, not a flag read twice: the playtest
+  // button is in the markup all along and simply hidden while the code has not been redeemed.
+  const offered = availableGameSpeeds(state);
   for (const button of dom.speedGroup.querySelectorAll("[data-game-speed]")) {
     const value = Number(button.getAttribute("data-game-speed"));
     const active = value === speed;
+    button.hidden = !offered.includes(value);
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
     button.title = value === 0 ? t.speedPausedTitle : template(t.speedOptionTitle, { speed: value });
@@ -946,6 +996,39 @@ function patchPacingControls(state) {
   // Only pressable between rounds, the same way the wave button is only pressable at a held
   // gate - the shop is on screen all the time now, but the round still ends where it ends.
   dom.startNextRoundBtn.disabled = state.round.status !== "ended";
+}
+
+/* ---------- The playtest tools ----------
+ *
+ * Three controls that only exist once the code is redeemed - the 8x button on the dial, and a
+ * grant button inside each of the two currency readouts - plus the button that takes all three
+ * away again. Each one lives inside the thing it changes rather than in a panel of its own: a
+ * playtest tray somewhere else on the page would be one more place to look, and the point of
+ * these is to be one click from the number they move.
+ *
+ * They are hidden rather than inserted, so nothing here can lag the state that reveals it.
+ */
+
+// What the last redeem attempt did, kept as a locale key rather than a sentence: the language
+// toggle re-renders it, and a stored German sentence would survive the switch to English.
+let redeemStatusKey = null;
+
+function patchRedeemStatus(state) {
+  const t = locale(state);
+  dom.redeemStatus.textContent = redeemStatusKey ? t[redeemStatusKey] : "";
+  dom.redeemStatus.classList.toggle("is-ok", redeemStatusKey === "redeemOk");
+  dom.redeemStatus.classList.toggle("is-bad", redeemStatusKey === "redeemUnknown");
+}
+
+function patchPlaytestTools(state) {
+  const on = playtestOn(state);
+  // The dial's own button is handled in patchPacingControls, with the rest of the dial.
+  dom.playtestEnergyBtn.hidden = !on;
+  dom.playtestFearBtn.hidden = !on;
+  dom.playtestHideBtn.hidden = !on;
+  // Patched rather than rendered with the rest of the static text: the message answers a click
+  // that does not change the language, so it cannot wait on the language cache.
+  patchRedeemStatus(state);
 }
 
 function patchMapHint(state) {
@@ -1014,6 +1097,17 @@ function applyStaticLanguage(state) {
   dom.manualSaveBtn.textContent = t.manualSaveBtn;
   dom.wipeSaveBtn.textContent = t.wipeSaveBtn;
   dom.autosaveHint.textContent = t.autosaveHint;
+
+  dom.redeemLabel.textContent = t.redeemLabel;
+  dom.redeemInput.placeholder = t.redeemPlaceholder;
+  dom.redeemBtn.textContent = t.redeemBtn;
+  dom.playtestHideBtn.textContent = t.playtestHideBtn;
+  // The grants name their amount, and the amount is the engine's - the label must not be able
+  // to promise a hundred while the button hands out fifty.
+  dom.playtestEnergyBtn.textContent = template(t.playtestEnergyBtn, { amount: PLAYTEST_GRANT });
+  dom.playtestEnergyBtn.title = template(t.playtestEnergyTitle, { amount: PLAYTEST_GRANT });
+  dom.playtestFearBtn.textContent = template(t.playtestFearBtn, { amount: PLAYTEST_GRANT });
+  dom.playtestFearBtn.title = template(t.playtestFearTitle, { amount: PLAYTEST_GRANT });
 }
 
 /* ------------------------------------------------------------------ *
@@ -1061,6 +1155,7 @@ function updateUI(state) {
 
   patchHud(state);
   patchPacingControls(state);
+  patchPlaytestTools(state);
   patchMapHint(state);
 
   const nextAbilitySig = abilityBarSignature(state);
@@ -1221,6 +1316,24 @@ dom.islandSvg.addEventListener("keydown", (event) => {
   selectLand(state, group.getAttribute("data-land") || "");
 });
 
+// The focus ring, carried across the two layers by hand. The land group is what takes focus
+// and its ring now lives above every fill, so the CSS rule that used to reach from one to the
+// other cannot; `:focus-visible` is still what decides, so a mouse click lights nothing.
+function markLandFocus(landId) {
+  for (const ring of dom.islandSvg.querySelectorAll(".land-ring")) {
+    ring.classList.toggle("is-focus", ring.getAttribute("data-ring-land") === landId);
+  }
+}
+
+dom.islandSvg.addEventListener("focusin", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const group = target.closest("[data-land]");
+  markLandFocus(group && group.matches(":focus-visible") ? group.getAttribute("data-land") : null);
+});
+
+dom.islandSvg.addEventListener("focusout", () => markLandFocus(null));
+
 dom.landDetail.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -1245,6 +1358,42 @@ dom.startNextRoundBtn.addEventListener("click", () => {
   persist();
 });
 
+// A submit rather than a click, so Enter in the field is the button - the code is typed, and a
+// typist reaches for Enter. The default navigation is what would reload the page and lose the
+// state the redeem just changed.
+dom.redeemForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const result = redeemCode(state, dom.redeemInput.value);
+  redeemStatusKey = result === "ok" ? "redeemOk" : result === "already" ? "redeemAlready" : "redeemUnknown";
+  // Only a code that did something clears the field. A rejected one stays put to be corrected,
+  // which is the whole reason it is worth reading the message beside it.
+  if (result === "ok") dom.redeemInput.value = "";
+  updateUI(state);
+  persist();
+});
+
+// Switching the tools off is not un-redeeming a code that was wrong - it is putting the page
+// back the way it plays. Typing the code again brings them back.
+dom.playtestHideBtn.addEventListener("click", () => {
+  setPlaytest(state, false);
+  redeemStatusKey = null;
+  addLog(state, locale(state).playtestHiddenLog);
+  updateUI(state);
+  persist();
+});
+
+dom.playtestEnergyBtn.addEventListener("click", () => {
+  if (!grantPlaytestEnergy(state)) return;
+  updateUI(state);
+  persist();
+});
+
+dom.playtestFearBtn.addEventListener("click", () => {
+  if (!grantPlaytestFear(state)) return;
+  updateUI(state);
+  persist();
+});
+
 dom.manualSaveBtn.addEventListener("click", () => {
   persist();
   addLog(state, locale(state).manualSaved);
@@ -1265,6 +1414,9 @@ dom.wipeSaveBtn.addEventListener("click", () => {
   if (!FIXTURE_MODE) localStorage.removeItem(SAVE_KEY);
   state = createFreshGameState();
   state.ui.language = langBeforeWipe;
+  // A wipe takes the redeemed code with it, so the message about it must go too - it would
+  // otherwise stand over a bar whose tools are gone.
+  redeemStatusKey = null;
   addLog(state, locale(state).saveWiped);
   updateUI(state);
 });

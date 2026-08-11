@@ -479,13 +479,44 @@
     assertDeepEqual(engine.pushDestinations(state, "2"), ["1"], "defended and coastal beats defended alone");
   });
 
-  test("push: an occupied neighbour is never a destination", () => {
+  test("push: an occupied neighbour loses to open ground", () => {
     const { state } = fullKit();
     clearBoard(state);
     setLand(state, "3", { explorers: 2 }, 0);
     setLand(state, "2", { explorers: 1 }, 0);   // 3's only other neighbour is 6
 
-    assertDeepEqual(engine.pushDestinations(state, "3"), ["6"], "only the empty neighbour");
+    assertDeepEqual(engine.pushDestinations(state, "3"), ["6"], "the empty neighbour, while there is one");
+  });
+
+  test("push: with no open ground left the push stacks onto a neighbour rather than failing", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 3 borders only 2 and 6. Fill both, and open ground has run out.
+    setLand(state, "3", { explorers: 2 }, 0);
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "6", { explorers: 1 }, 0);
+
+    assert(!engine.pushHasOpenGround(state, "3"), "nowhere open");
+    assertDeepEqual(engine.pushDestinations(state, "3"), ["2"], "the coastal one of the two, occupied or not");
+
+    const pushed = engine.applyPushFrom(state, "3", 2);
+    assertEqual(pushed.destination, "2", "the push still goes somewhere");
+    assertEqual(state.invaders["2"].explorers, 3, "stacked onto what was already standing there");
+  });
+
+  test("push: among occupied neighbours the ranking still holds - Dahan first, then the coast", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 5 borders 1, 2, 4, 6, 7 and 8. Occupy every one of them, and defend one inland.
+    setLand(state, "5", { explorers: 1 }, 0);
+    for (const id of ["1", "2", "4", "6", "7", "8"]) setLand(state, id, { explorers: 1 }, 0);
+    setLand(state, "7", { explorers: 1 }, 1);   // inland, defended
+
+    assertDeepEqual(
+      engine.pushDestinations(state, "5"),
+      ["7"],
+      "a defended stack beats an undefended coast, the same order open ground uses"
+    );
   });
 
   test("push: among free neighbours the water takes the lowest land id, never a roll", () => {
@@ -568,46 +599,112 @@
     );
   });
 
-  test("wash away: it pushes up to 3 from the land the player picked", () => {
+  test("wash away: inland it pushes up to 3 from the land the player picked", () => {
     const { state } = fullKit();
     clearBoard(state);
-    setLand(state, "3", { explorers: 3, towns: 2, cities: 1 }, 0);
+    // Land 6 is inland, so this is the push half of the ability.
+    setLand(state, "6", { explorers: 3, towns: 2, cities: 1 }, 0);
+
+    engine.triggerAbility(state, "wash_away");
+    const ok = engine.resolveAbilityTarget(state, "6");
+
+    assert(ok, "wash away should resolve");
+    assertEqual(state.invaders["6"].towns, 0, "both towns pushed");
+    assertEqual(state.invaders["6"].explorers, 2, "one explorer went with them, two stayed");
+    assertEqual(state.invaders["6"].cities, 1, "the city stays put");
+  });
+
+  test("wash away: the push destination is adjacent and was empty", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "6", { explorers: 2 }, 0);   // borders 2, 3, 5 and 8
+
+    engine.triggerAbility(state, "wash_away");
+    engine.resolveAbilityTarget(state, "6");
+
+    const receivers = engine.LAND_IDS.filter((id) => id !== "6" && state.invaders[id].explorers > 0);
+    assertEqual(receivers.length, 1, "exactly one destination");
+    assert(engine.areAdjacent("6", receivers[0]), `${receivers[0]} must border land 6`);
+    assertEqual(receivers[0], "2", "the lowest of its free coastal neighbours");
+  });
+
+  test("wash away: from a coastal land the water takes them off the island instead", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "3", { explorers: 1, towns: 2, cities: 1 }, 0);
 
     engine.triggerAbility(state, "wash_away");
     const ok = engine.resolveAbilityTarget(state, "3");
 
-    assert(ok, "wash away should resolve");
-    assertEqual(state.invaders["3"].towns, 0, "both towns pushed");
-    assertEqual(state.invaders["3"].explorers, 2, "one explorer went with them, two stayed");
-    assertEqual(state.invaders["3"].cities, 1, "the city stays put");
+    assert(ok, "a coast always has the sea to push into");
+    assertEqual(state.invaders["3"].towns, 0, "both towns went, towns first as always");
+    assertEqual(state.invaders["3"].explorers, 1, "the sea budget is 2, so the explorer stayed");
+    assertEqual(state.invaders["3"].cities, 1, "a city is built in - the water cannot carry it");
+
+    const elsewhere = engine.LAND_IDS.filter((id) => id !== "3" && engine.invaderCountInLand(state.invaders[id]) > 0);
+    assertDeepEqual(elsewhere, [], "and they did not land anywhere - they are off the board");
   });
 
-  test("wash away: the destination is adjacent and was empty", () => {
+  test("wash away: a drowning pays the same Fear and Energy a kill does", () => {
     const { state } = fullKit();
     clearBoard(state);
-    setLand(state, "3", { explorers: 2 }, 0);
+    state.resources.energy = 0;
+    state.round.fearEarned = 0;
+    setLand(state, "1", { towns: 2 }, 0);
+
+    engine.triggerAbility(state, "wash_away");
+    engine.resolveAbilityTarget(state, "1");
+
+    // A town's power is 2, and Fear and Energy are both paid on that scale.
+    assertEqual(state.round.fearEarned, 4, "two towns at power 2");
+    assertEqual(state.resources.energy, 4, "and the same again in Energy");
+  });
+
+  test("wash away: the sea takes the healthiest and leaves the wounded standing", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "1", { towns: 3 }, 0);
+    woundUnit(state, "1", "towns", 0, 1);   // one town at 1 health, two at 2
+
+    engine.triggerAbility(state, "wash_away");
+    engine.resolveAbilityTarget(state, "1");
+
+    assertDeepEqual(
+      healthOf(state, "1", "towns"),
+      [1],
+      "the two whole towns drowned; the hurt one is left for something that spends damage"
+    );
+  });
+
+  test("wash away: a coastal land ignores its neighbours entirely", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    // Land 3 borders only 2 and 6. Fill both: boxed in used to mean uncastable.
+    setLand(state, "3", { towns: 1 }, 0);
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "6", { explorers: 1 }, 0);
+
+    assert(engine.abilityLegalLand(state, "wash_away", "3"), "the sea is always open");
 
     engine.triggerAbility(state, "wash_away");
     engine.resolveAbilityTarget(state, "3");
 
-    const receivers = engine.LAND_IDS.filter((id) => id !== "3" && state.invaders[id].explorers > 0);
-    assertEqual(receivers.length, 1, "exactly one destination");
-    assert(engine.areAdjacent("3", receivers[0]), `${receivers[0]} must border land 3`);
-    assertEqual(receivers[0], "2", "land 3's neighbours are 2 and 6, and 2 is the lower");
+    assertEqual(engine.invaderCountInLand(state.invaders["3"]), 0, "washed off the island");
+    assertEqual(state.invaders["2"].explorers, 1, "and nothing was shoved next door");
   });
 
-  test("wash away: a land with nowhere to push to is not a legal target", () => {
+  test("wash away: an inland land with no open ground is still a legal target", () => {
     const { state } = fullKit();
     clearBoard(state);
-    // Land 3 borders only 2 and 6. Fill both, and there is no room left.
-    setLand(state, "3", { explorers: 2 }, 0);
-    setLand(state, "2", { explorers: 1 }, 0);
-    setLand(state, "6", { explorers: 1 }, 0);
+    // Land 8 borders 5, 6 and 7 and has no coast of its own.
+    setLand(state, "8", { towns: 1 }, 0);
+    for (const id of ["5", "6", "7"]) setLand(state, id, { explorers: 1 }, 0);
 
-    assert(!engine.abilityLegalLand(state, "wash_away", "3"), "boxed in, so not a legal click");
+    assert(engine.abilityLegalLand(state, "wash_away", "8"), "a shove onto a stack still beats nothing");
 
     engine.triggerAbility(state, "wash_away");
-    assert(!engine.abilityLegalLands(state, "wash_away").includes("3"), "and the board says so too");
+    assert(engine.resolveAbilityTarget(state, "8"), "and it resolves");
+    assertEqual(state.invaders["8"].towns, 0, "the town left");
   });
 
   test("wash away: a land holding only cities is not a legal target", () => {
@@ -615,7 +712,7 @@
     clearBoard(state);
     setLand(state, "3", { cities: 2 }, 0);
 
-    assert(!engine.abilityLegalLand(state, "wash_away", "3"), "nothing there can be pushed");
+    assert(!engine.abilityLegalLand(state, "wash_away", "3"), "nothing there the water can carry");
   });
 
   test("wash away: nothing pushable anywhere leaves the cooldown unspent", () => {
@@ -671,13 +768,11 @@
     assertEqual(state.invaders["3"].cities, 1, "the city neither died nor moved");
   });
 
-  test("innate tier 2: the damage still lands when there is nowhere to push", () => {
+  test("innate tier 2: the damage still lands when there is nothing to push", () => {
     const { state } = fullKit();
     setAbilityTier(state, "innate_power", 1);
     clearBoard(state);
-    setLand(state, "3", { towns: 2 }, 0);
-    setLand(state, "2", { explorers: 1 }, 0);
-    setLand(state, "6", { explorers: 1 }, 0);   // land 3 is now boxed in
+    setLand(state, "3", { cities: 1 }, 0);   // a city is the one thing a push cannot move
 
     assert(engine.abilityLegalLand(state, "innate_power", "3"), "damage alone makes it a legal target");
 
@@ -685,7 +780,22 @@
     const ok = engine.resolveAbilityTarget(state, "3");
 
     assert(ok, "the cast counts on its damage alone");
-    assertEqual(state.invaders["3"].towns, 1, "a town fell to the 2 damage");
+    assertDeepEqual(healthOf(state, "3", "cities"), [1], "the city took the 2 damage and stayed");
+  });
+
+  test("innate tier 2: with no open ground the survivor is still shoved somewhere", () => {
+    const { state } = fullKit();
+    setAbilityTier(state, "innate_power", 1);
+    clearBoard(state);
+    setLand(state, "3", { towns: 2 }, 0);
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "6", { explorers: 1 }, 0);   // land 3 has no open ground left
+
+    engine.triggerAbility(state, "innate_power");
+    engine.resolveAbilityTarget(state, "3");
+
+    assertEqual(state.invaders["3"].towns, 0, "one town fell to the 2 damage and the other left");
+    assertEqual(state.invaders["2"].towns, 1, "onto the stack next door, which is the price of it");
   });
 
   test("innate tier 3: every invader takes 2, individually", () => {
@@ -812,18 +922,73 @@
     assertEqual(state.dahan["8"], 1, "the defender itself did not move");
   });
 
-  test("auto-innate tier 1: protects whichever defended stack is thinnest", () => {
+  test("auto-innate tier 1: carries an inland unit onto an open coast when there is no cover", () => {
     const ctx = newGame();
     const { state } = ctx;
     clearBoard(state);
-    setLand(state, "5", { explorers: 1 }, 2);    // defended, two Dahan
-    setLand(state, "6", { explorers: 1 }, 1);    // defended, one Dahan - closer to losing it
+    state.invader = { build: [], explore: [] };
+    // Land 4 is inland with no Dahan anywhere to route into. Its neighbours are 1, 5 and 7,
+    // and only land 1 is coastal - so the one thing a spare push buys is a unit the sea can
+    // reach, which is what Wash Away is for.
+    setLand(state, "4", { towns: 1 }, 0);
     grantUpgrade(state, "auto_innate");
 
     advance(ctx, 1);
 
-    assertEqual(state.invaders["6"].explorers, 0, "the thinner stack's attacker was pulled");
-    assertEqual(state.invaders["5"].explorers, 1, "the thicker stack was left as it was");
+    assertEqual(state.invaders["4"].towns, 0, "carried off the inland land");
+    assertEqual(state.invaders["1"].towns, 1, "and onto the coast, in reach of the water");
+  });
+
+  test("auto-innate tier 1: cover outranks the sea, because pushDestination says so", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    // Land 5 has an open coast (1) and an open defended neighbour (4) beside it. The push
+    // rule puts defended above coastal on its own, so the cast routes into cover whatever
+    // order the rungs are written in - and the rung order matches it rather than arguing.
+    setLand(state, "5", { explorers: 1 }, 0);
+    setLand(state, "4", null, 1);
+
+    assertEqual(engine.pushDestination(state, "5"), "4", "the defended neighbour wins the push");
+    assert(engine.innateT1RouteToCoverLands(state).includes("5"), "so the routing rung claims it");
+    assertEqual(engine.innateT1FeedTheSeaLands(state).length, 0, "and the sea rung never sees it");
+  });
+
+  test("auto-innate tier 1: a coast-to-coast shove is not a reason to cast", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    // Land 3 is already coastal, so the water can already reach what stands there. Moving it
+    // to land 2 buys the board nothing it did not already have.
+    setLand(state, "3", { explorers: 1 }, 0);
+    grantUpgrade(state, "auto_innate");
+
+    assertEqual(engine.pickInnateAutoTarget(state), null, "already in reach of the sea");
+    advance(ctx, 1);
+    assertEqual(state.invaders["3"].explorers, 1, "so nothing moved");
+  });
+
+  test("auto-innate tier 1: it will not pull a unit out from under the Dahan", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    // The retired protect-the-thin-stack rung fired here, shoving the explorer off land 4 and
+    // out of the strike's reach. One unit never lifted enough pressure to save a stack, and
+    // the rung was the exact mirror of the routing rung above it - onto Dahan, then off Dahan
+    // - so on an 8-beat clock against a 10-beat strike the same unit crossed the same border
+    // all round without ever standing still long enough to be struck.
+    setLand(state, "4", { explorers: 1 }, 1);
+    grantUpgrade(state, "auto_innate");
+
+    assert(engine.abilityLegalLand(state, "innate_power", "4"), "a player could still click it");
+    assertEqual(engine.pickInnateAutoTarget(state), null, "the automation leaves the fight alone");
+
+    advance(ctx, 1);
+    assertEqual(state.invaders["4"].explorers, 1, "the explorer stays where the Dahan can reach it");
+    assertEqual(state.abilities.innate_power.cooldownRemaining, 0, "and the cast was never spent");
   });
 
   test("auto-innate keeps working at tier 2 without a second purchase", () => {
@@ -891,6 +1056,8 @@
 
     assertEqual(engine.abilityUnlockCost(state, "rivers_bounty"), 5, "River's Bounty");
     assertEqual(engine.abilityUnlockCost(state, "flash_floods"), 10, "Flash Floods");
+    // Twice the Floods, because what it buys outlives them: 2 damage buys fewer bodies
+    // at every rung of the health ladder and a drowning always buys one.
     assertEqual(engine.abilityUnlockCost(state, "wash_away"), 20, "Wash Away");
   });
 
@@ -934,6 +1101,21 @@
     assert(!again, "the second purchase must refuse");
     assertEqual(state.resources.energy, 30, "charged exactly once");
     assert(!engine.unlockAbility(state, "boon_of_vigor"), "the opening hand is not for sale either");
+  });
+
+  test("unlock: an ended round cannot spend the Energy it has left", () => {
+    // Energy and every unlock made with it die at startRound, so a purchase in the shop would
+    // be a button that spends a currency for nothing. The bar stays on screen between rounds -
+    // it is the spirit's kit, not a control panel - so the refusal has to live in the engine.
+    const { state } = newGame();
+    state.resources.energy = 40;
+    engine.endRound(state);
+
+    assert(!engine.unlockAbility(state, "flash_floods"), "the unlock refuses once the round is over");
+    assert(!engine.abilityIsUnlocked(state, "flash_floods"), "still locked");
+    assert(!engine.upgradeAbility(state, "innate_power"), "and so does the tier");
+    assertEqual(engine.abilityTier(state, "innate_power"), 0, "the Innate stands where it stood");
+    assertEqual(state.resources.energy, 40, "nothing was spent");
   });
 
   test("reset: a new round takes back the Energy and everything bought with it", () => {

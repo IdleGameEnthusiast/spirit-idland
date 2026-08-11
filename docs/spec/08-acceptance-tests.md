@@ -86,6 +86,28 @@ neither control may change what the round costs.
 13. Both settings survive a save with the gate they were standing at; a nonsense speed loads
     at `DEFAULT_GAME_SPEED`, and an ended round never loads behind a gate.
 
+## Playtest Checks
+
+The redeem code and the tools it switches on, in `tests/playtest.test.js`. The tools are
+outside the game's economy entirely, so what these assert is the boundary: that nothing is
+handed out without the code, and that everything the code added can be taken back.
+
+1. A fresh game has no playtest tools, and the code switches them on however it is typed —
+   the comparison trims and lowercases.
+2. Redeeming a code already redeemed says so rather than silently doing nothing again; an
+   unknown code, and an empty one, change nothing at all.
+3. `8x` is off the dial until the code is redeemed: `setGameSpeed` refuses it and the current
+   speed stands. With the code, it is offered, and the round really does resolve a wave in an
+   eighth of the interval.
+4. Hiding the tools takes `8x` with it — the speed snaps back to `DEFAULT_GAME_SPEED` and is
+   refused again — while a normal speed the player chose is left where it is.
+5. Both grants refuse while the tools are off, leaving purse and bank untouched. With the
+   tools on they hand out `PLAYTEST_GRANT` each and stack; the Fear grant lands in `meta.fear`
+   and never in `round.fearEarned`.
+6. Through a save: the code and the speed it enabled load together. A save at `8x` **without**
+   the code loads at `DEFAULT_GAME_SPEED`, and a migration reset carries the code — and only
+   then the speed.
+
 ## Blight Checks
 
 1. `round.blightByLand` sums to `round.blight` at all times.
@@ -160,43 +182,69 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 17. The destination is an adjacent land holding no invaders, preferring one already holding
     Dahan, then a coastal one, and among equals the **lowest land id** — the same destination
     every time, never random.
-18. Each pushed unit carries its own wound with it, exactly.
-19. A land with nothing pushable, or with no empty neighbour, is not a legal push target.
+18. With no open ground left, the push stacks onto an adjacent land that already holds
+    invaders, ranked the same way. A push never fails for want of a destination.
+19. Each pushed unit carries its own wound with it, exactly.
+20. A land with nothing pushable is not a legal push target; nothing else disqualifies one.
+
+### Wash Away
+
+21. Inland it pushes up to 3 by the rules above.
+22. From a coastal land it instead carries up to 2 explorers/towns out to sea, removing them
+    from the island: they arrive nowhere, and no neighbour is touched.
+23. A drowning pays Fear and Energy exactly as a defeat of the same unit does.
+24. It takes the **healthiest** unit of its type, leaving the wounded standing.
+25. Cities neither move nor drown, so a land holding only cities is not a legal target.
+26. A boxed-in coastal land is a legal target — the sea is always open.
 
 ### The Innate Power
 
-20. It opens unlocked at tier 1, free, on an 8-beat cooldown.
-21. Tier 2 (16 beats) deals 2 damage and pushes up to 3; the damage still lands when there is
-    nowhere to push, and the cast still counts.
-22. Tier 3 (24 beats) deals 2 to **each** invader individually: against 4 explorers, 2 towns and 2
+27. It opens unlocked at tier 1, free, on an 8-beat cooldown.
+28. Tier 2 (16 beats) deals 2 damage and pushes up to 3; the damage still lands when there is
+    nothing to push — a land holding only cities — and the cast still counts.
+29. Tier 3 (24 beats) deals 2 to **each** invader individually: against 4 explorers, 2 towns and 2
     cities it clears everything but the cities and leaves both of those at 1 health.
-23. Buying a tier spends its Energy, swaps the ability wholesale, and hands it back **ready**.
-24. The ladder is 50 then 250, and refuses past the top.
-25. Once `auto_innate` is bought, the Innate casts itself on cooldown at whichever tier is
+30. Buying a tier spends its Energy, swaps the ability wholesale, and hands it back **ready**.
+31. The ladder is 50 then 250, and refuses past the top.
+32. Once `auto_innate` is bought, the Innate casts itself on cooldown at whichever tier is
     currently owned - tiering up never needs a second purchase - picking its own land from
     that tier's priority list. A tick where no priority is satisfied spends nothing and leaves
     the cooldown untouched, so automation is never worse than a player who simply waits for a
     good target. Like the Boon's auto-cast, it writes no log line.
+33. Tier 1's list is three rungs, all of them about position because one push kills nothing:
+    break a Build by pushing the lone unit that would trigger it; route an undefended unit
+    into a neighbour holding Dahan; carry an inland unit onto an **open** coast, where the sea
+    can reach it. The seaward rung fires only from an inland, **undefended** land — a
+    coast-to-coast shove buys nothing, and pulling a unit out from under Dahan trades a kill
+    already happening for one that might. Those two conditions are also what stop it undoing
+    the routing rung's own work.
+34. Tier 1 has no protect-the-thin-stack rung; tier 2 and `wash_away` still do. One unit does
+    not lift enough pressure to save a stack, and the rung was the routing rung's mirror, so
+    on an 8-beat clock against the 10-beat Dahan strike it shuttled the same unit back and
+    forth across one border all round.
+35. The Innate resolves **last** among the automations each tick — after the Boon, the Bounty,
+    Wash Away and Flash Floods. It has the shortest cooldown and the weakest effect, so the
+    casts that kill and remove choose their target on a board it has not already stirred.
 
 ### Energy and the Ability Lock
 
-26. A fresh round has exactly its `startingAbilityIds` unlocked; the rest of the kit is locked
+36. A fresh round has exactly its `startingAbilityIds` unlocked; the rest of the kit is locked
     and listed in kit order.
-27. A locked ability cannot be triggered and holds no cooldown slot.
-28. Buying one spends that ability's own `unlockCost` — 5, 10, 20 — and hands it over **ready**.
-29. Too little Energy buys nothing, and an ability already owned cannot be bought twice.
-30. **A new round takes back the Energy, every unlock bought with it, and every Innate tier.**
+37. A locked ability cannot be triggered and holds no cooldown slot.
+38. Buying one spends that ability's own `unlockCost` — 5, 10, 20 — and hands it over **ready**.
+39. Too little Energy buys nothing, and an ability already owned cannot be bought twice.
+40. **A new round takes back the Energy, every unlock bought with it, and every Innate tier.**
     Fear is untouched by the same reset.
-31. A defeated invader pays Energy equal to its attack: explorer 1, town 2, city 3.
-32. Damage that defeats nothing pays nothing, and a Dahan casualty pays nothing.
+41. A defeated invader pays Energy equal to its attack: explorer 1, town 2, city 3.
+42. Damage that defeats nothing pays nothing, and a Dahan casualty pays nothing.
 
 ### River's Bounty
 
-33. It resolves on the trigger itself, with no `pendingAbilityTarget`, and **creates** a Dahan
+43. It resolves on the trigger itself, with no `pendingAbilityTarget`, and **creates** a Dahan
     rather than moving one — no other land loses anything.
-34. It picks the land with the fewest Dahan among those holding invaders; a contested land
+44. It picks the land with the fewest Dahan among those holding invaders; a contested land
     beats an emptier quiet one, and ties go to the lowest land id.
-35. With no invaders anywhere it still resolves, into the land with the fewest Dahan on the
+45. With no invaders anywhere it still resolves, into the land with the fewest Dahan on the
     board. It is, with `boon_of_vigor`, one of the two abilities that never fail.
 
 ## Fear and Shop Checks
@@ -210,7 +258,8 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    from `meta.fear`; an insufficient-Fear purchase is refused.
 5. Starting the next round is available immediately once in the shop, regardless of
    remaining Fear.
-6. `meta.totalRoundsPlayed` increments once per round ended.
+6. Rounds ended are not counted: no `meta.totalRoundsPlayed` on a fresh game, and a save
+   carrying one from an older build loses it on load.
 7. `meta.bestRoundReached` updates only when the ended round's number exceeds it, and never
    decreases.
 8. `auto_innate` is a one-time 100 Fear purchase, priced above `auto_boon`'s 25 because it
@@ -219,6 +268,21 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 9. The shop list sinks anything sold out - a maxed repeatable or a bought one-off - below
    everything still purchasable, in both directions preserving the catalogue's own order
    within each half.
+10. The three ability automations are priced by what their ability does to the board rather
+    than by how much clicking they save: `auto_bounty` 200 (reinforces), `auto_flash_floods`
+    300 (kills with damage, which the invader health ladder erodes), `auto_wash_away` 400
+    (removes outright, which it does not). All three sit under `auto_start_round`'s 500, and
+    the Bounty sits under the last rung of the `dahan_reinforcement` ladder.
+11. `auto_buy_abilities` (200) and `auto_start_round` (500) are refused while any other upgrade
+    in the catalogue is short of its max tier, however much Fear is banked, and the refusal
+    names the gate rather than the price. Handing a single ladder rung back shuts the gate
+    again. Once the rest of the catalogue is finished both are for sale, and buying one does
+    not lock the other.
+12. `auto_buy_abilities` spends the round's Energy on the bar each tick: the locked kit first,
+    cheapest before dearest, so a purse of 15 takes the 5 and the 10 and leaves the 20; then
+    one Innate rung per tick, never two, and never before the kit is bought. Bought mid-round
+    it spends nothing until the next round starts, like every other automation. What it buys
+    arrives ready and can be cast by an automation on the same tick.
 
 ## Save and Migration Checks
 
@@ -256,7 +320,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 
 ## Current Validation Status
 
-**200 automated checks, all passing.** Coverage by file:
+**288 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -264,6 +328,9 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/setup.test.js` | Round setup, upgrade baseline, round reset |
 | `tests/wave.test.js` | Wave timing, Build, Discover, track shift, the tick cap |
 | `tests/pacing.test.js` | The speed dial and the wave gate (02 Pacing) |
+| `tests/playtest.test.js` | The redeem code and the playtest tools (06 Playtest Tools) |
+| `tests/ladder.test.js` | The difficulty ladder as the waves climb |
+| `tests/automation.test.js` | The bought automations and their target picks |
 | `tests/combat.test.js` | Blight and casualty rates, concentration, the Dahan strike |
 | `tests/blight.test.js` | Blight accrual, the per-land tally, round end |
 | `tests/ability.test.js` | Cooldowns, arming, cancelling, each ability's effect |

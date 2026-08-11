@@ -30,7 +30,6 @@
   state.round.fearEarned = 4.2;
   state.meta.fear = 12.6;
   state.meta.bestRoundReached = 3;
-  state.meta.totalRoundsPlayed = 3;
 
   state.invaders = createInvaderCounts();
   state.invaders["1"] = { explorers: 2, towns: 1, cities: 0 };

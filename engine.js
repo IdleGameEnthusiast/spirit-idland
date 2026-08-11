@@ -43,6 +43,23 @@ const TIME_SCALE = 2;
 const GAME_SPEEDS = [0, 1, 2];
 const DEFAULT_GAME_SPEED = 1;
 
+// The speeds the dial only offers once the playtest code is redeemed. 8x is far past what the
+// game is balanced to be read at - a whole wave arrives in two and a half real seconds - which
+// is exactly what it is for: reaching wave twenty to look at something without playing there.
+// It is kept out of GAME_SPEEDS rather than added to it so a save cannot come back stuck at a
+// speed with no button to leave it by.
+const PLAYTEST_GAME_SPEEDS = [8];
+
+// What the two playtest buttons hand out. One number rather than two because they are the same
+// idea - enough of a currency to stop a test being about earning it.
+const PLAYTEST_GRANT = 100;
+
+// Redeem codes, as typed to their effect. Compared lowercased and trimmed, so the bar forgives
+// a stray space or a capital P.
+const REDEEM_CODES = {
+  playtester: "playtest"
+};
+
 const WAVE_INTERVAL_SECONDS = 10 * TIME_SCALE;
 const BLIGHT_THRESHOLD_BASE = 10;
 const DAHAN_PER_ROUND_START_BASE = 6;
@@ -341,13 +358,20 @@ const ABILITIES = {
     damage: 1,
     coastalBonus: 1
   },
+  // The one ability that can take a unit off the island without hurting it. Inland it is a
+  // shove; from a coastal land the water keeps going and what it carries does not come back.
+  // `seaCount` is under `pushCount` on purpose - a shove is cheap and a one-way trip is not.
   wash_away: {
     id: "wash_away",
+    // Dearer than Flash Floods (10), because removal outlives damage: 2 points buy less at
+    // every rung of the invader health ladder, and a drowning buys the same thing on wave 40
+    // as it did on wave 1.
     unlockCost: 20,
     cooldownSeconds: 35 * TIME_SCALE,
     needsTarget: true,
-    effect: "push_invaders",
-    pushCount: 3
+    effect: "wash_invaders",
+    pushCount: 3,
+    seaCount: 2
   }
 };
 
@@ -401,25 +425,58 @@ const UPGRADES = {
     // one-time comfort purchase, just a pricier one.
     baseCost: 100
   },
-  auto_wash_away: {
-    id: "auto_wash_away",
-    repeatable: false,
-    effect: "auto_cast_wash_away",
-    // The cheapest of the three targeted automations, because the push never kills. It moves
-    // invaders off a land rather than off the board, and its value is highest early and
-    // thinnest late - by the time every land holds something there is nowhere left to push
-    // to. A permanent purchase whose worth decays is priced under one whose worth compounds.
-    baseCost: 150
-  },
+  // The three ability automations below are ranked by what their ability puts on the board or
+  // takes off it, not by how much clicking they save: the Bounty reinforces, the Floods kill,
+  // and the sea removes. Each rung up is a stronger claim on the round than the one under it.
   auto_bounty: {
     id: "auto_bounty",
     repeatable: false,
     effect: "auto_cast_bounty",
-    // The one automation that is not comfort. A Dahan every 15 beats, all round, is the same
-    // thing the reinforcement ladder sells - and it is priced against that ladder's last rung
-    // (10 * 1.6^7, about 268) rather than against the other auto upgrades, because that is
-    // what it competes with. Automating the click is incidental; this buys the Dahan.
-    baseCost: 250
+    // The cheapest of the three, because it is the only one whose ability picks its own land -
+    // there is no judgement here to buy back, only the click. What it sells is a Dahan every
+    // 15 beats, all round, which is the same thing the reinforcement ladder sells and is worth
+    // more than the ladder's last rung (10 * 1.6^7, about 268) charges for a single one. It is
+    // priced under that rung deliberately: the ladder is the early game's lever and this is
+    // the thing that eventually replaces it.
+    baseCost: 200
+  },
+  auto_flash_floods: {
+    id: "auto_flash_floods",
+    repeatable: false,
+    effect: "auto_cast_flash_floods",
+    // Dearer than the Bounty because it kills, and a defeat pays Fear and Energy at once
+    // where a Dahan only holds ground. Cheaper than the sea because what it kills with is
+    // damage, and 2 points buy fewer bodies at every rung of the invader health ladder: this
+    // is the one automation on this list whose worth thins out as the round climbs.
+    baseCost: 300
+  },
+  auto_wash_away: {
+    id: "auto_wash_away",
+    repeatable: false,
+    effect: "auto_cast_wash_away",
+    // The dearest of the three, and the only automation whose worth *grows* with the round.
+    // The sea takes a unit off the island whole, so it pays a defeat's Fear and Energy without
+    // spending damage to do it - and it costs the same on the fortieth wave as on the first,
+    // while every damage number in the kit is losing ground to invader health. It stays under
+    // auto_start_round (500), which is still the only purchase that changes the shape of the
+    // game rather than a number in it.
+    baseCost: 400
+  },
+
+  // The last two rows in the catalogue, and the only ones behind a gate rather than behind a
+  // price (see upgradeIsLocked). Between them they take the last two things still done by
+  // hand - the bar and the round - so they are what the shop ends with rather than something
+  // it can be skipped ahead to.
+  auto_buy_abilities: {
+    id: "auto_buy_abilities",
+    repeatable: false,
+    effect: "auto_buy_abilities",
+    // Cheap for where it sits, and deliberately so: the gate is what holds it back, not the
+    // price, and by the time the gate opens 200 Fear is a formality. What it sells is also
+    // less than the automations under it - it spends Energy the round was already going to
+    // spend, in the order a settled player already spends it, and buys back the clicks rather
+    // than any new power.
+    baseCost: 200
   },
   auto_start_round: {
     id: "auto_start_round",
@@ -594,14 +651,14 @@ const I18N = {
     // The Innate carries one text per tier, in tier order. Every other ability carries one.
     abilityTexts: {
       innate_power: [
-        "Schiebt {push} Entdecker/Dorf in ein angrenzendes Gebiet ohne Invasoren.",
-        "{damage} Schaden. Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet ohne Invasoren.",
+        "Schiebt {push} Entdecker/Dorf in ein angrenzendes Gebiet.",
+        "{damage} Schaden. Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet.",
         "{damage} Schaden auf jeden Invasor im gewaehlten Gebiet."
       ],
       boon_of_vigor: "+{amount} Energie.",
       rivers_bounty: "+{amount} Dahan im Gebiet mit den wenigsten Dahan und Invasoren, wenn moeglich.",
       flash_floods: "{damage} Schaden. Liegt das Ziel an der Kueste: +{coastal} Schaden.",
-      wash_away: "Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet ohne Invasoren."
+      wash_away: "Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet. An der Kueste spuelt das Wasser stattdessen bis zu {sea} von der Insel ins Meer."
     },
 
     mapTitle: "Die Insel",
@@ -609,7 +666,7 @@ const I18N = {
     mapHintArmed: "{ability}: {requirement}",
     mapHintWave: "Naechste Welle baut in {terrain} ({lands}).",
     abilityNeedInvaders: "waehle ein Gebiet mit Invasoren.",
-    abilityNeedPushable: "waehle ein Gebiet mit Entdeckern/Doerfern und einem freien Nachbarn.",
+    abilityNeedPushable: "waehle ein Gebiet mit Entdeckern/Doerfern.",
     abilityNeedAnyLand: "waehle ein beliebiges Gebiet.",
 
     shopTitle: "Zwischen den Runden",
@@ -625,8 +682,12 @@ const I18N = {
     // A one-off is owned, not maxed: there was never a ladder for it to reach the top of.
     shopOwnedBtn: "Gekauft",
     shopOneOffLabel: "Einmalig",
+    // Ueberschrift ueber allem, was ausverkauft ist - nichts darunter ist noch zu haben.
+    shopSoldOutLabel: "Bereits gekauft",
     // Waehrend der Runde gekauft: gehoert dir, wirkt aber erst ab der naechsten Runde.
     shopPendingHint: "Wirkt ab der naechsten Runde.",
+    // Verschlossen, nicht zu teuer: der Preis steht daneben und ist nicht der Grund.
+    shopLockedHint: "Erst zu haben, wenn alles andere gekauft ist.",
     startNextRoundBtn: "Naechste Runde starten",
     upgradeNames: {
       dahan_reinforcement: "Verstaerkung der Dahan",
@@ -635,6 +696,8 @@ const I18N = {
       auto_innate: "Angeborener Instinkt",
       auto_wash_away: "Stroemung von selbst",
       auto_bounty: "Gabe des Flusses",
+      auto_flash_floods: "Sturzflut von selbst",
+      auto_buy_abilities: "Der Fluss weiss, was er braucht",
       auto_start_round: "Die Flut kehrt wieder"
     },
     upgradeTexts: {
@@ -644,6 +707,8 @@ const I18N = {
       auto_innate: "Die Angeborene Kraft wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt.",
       auto_wash_away: "Wash Away wirkt sich selbst und sucht sich sein Ziel - sobald es freigeschaltet und bereit ist.",
       auto_bounty: "River's Bounty wirkt sich selbst, sobald es freigeschaltet und bereit ist.",
+      auto_flash_floods: "Flash Floods wirkt sich selbst und schlaegt dorthin, wo es toetet - sobald es freigeschaltet und bereit ist.",
+      auto_buy_abilities: "Energie kauft von selbst: erst die verschlossenen Faehigkeiten, guenstigste zuerst, dann die naechste Stufe der Angeborenen Kraft.",
       auto_start_round: "Die naechste Runde startet von selbst. Abschaltbar, wenn du in Ruhe einkaufen willst."
     },
 
@@ -651,6 +716,22 @@ const I18N = {
     manualSaveBtn: "Jetzt speichern",
     wipeSaveBtn: "Spielstand loeschen",
     autosaveHint: "Autosave alle 10s.",
+
+    redeemLabel: "Code einloesen",
+    redeemPlaceholder: "Code eingeben",
+    redeemBtn: "Einloesen",
+    redeemOk: "Code eingeloest. Die Playtest-Werkzeuge sind aktiv.",
+    redeemAlready: "Dieser Code ist bereits eingeloest.",
+    redeemUnknown: "Unbekannter Code.",
+    redeemPlaytestLog: "Playtest-Werkzeuge aktiviert.",
+    playtestHideBtn: "Playtest-Werkzeuge ausblenden",
+    playtestHiddenLog: "Playtest-Werkzeuge ausgeblendet.",
+    playtestEnergyBtn: "+{amount} Energie",
+    playtestEnergyTitle: "Playtest: {amount} Energie hinzufuegen",
+    playtestEnergyLog: "Playtest: +{amount} Energie.",
+    playtestFearBtn: "+{amount} Furcht",
+    playtestFearTitle: "Playtest: {amount} Furcht hinzufuegen",
+    playtestFearLog: "Playtest: +{amount} Furcht.",
 
     explorersLabel: "Entdecker",
     townsLabel: "Doerfer",
@@ -725,6 +806,7 @@ const I18N = {
     abilityIllegalTarget: "{land} ist kein gueltiges Ziel fuer {ability}.",
     boonResolved: "Boon of Vigor: +{amount} Energie.",
     pushResolved: "{ability}: {total} Einheiten von {from} nach {to} geschoben.",
+    seaResolved: "{ability}: {total} Einheiten aus {land} ins Meer gespuelt.",
     damageResolved: "{ability} in {land}: {damage} Schaden, {defeated} Invasoren besiegt.",
     damageEachResolved: "{ability} in {land}: {damage} Schaden auf jeden Invasor, {defeated} besiegt.",
     riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}. Jetzt {total} dort.",
@@ -737,6 +819,7 @@ const I18N = {
     upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) fuer {cost} Furcht.",
     upgradeTooExpensive: "{upgrade} kostet {cost} Furcht. Du hast {fear}.",
     upgradeMaxed: "{upgrade} ist bereits auf der hoechsten Stufe.",
+    upgradeLocked: "{upgrade} bleibt verschlossen, bis alles andere im Laden gekauft ist.",
 
     migrationReset: "Alter Spielstand (Version {version}) ist nicht mit dem Rundenmodus kompatibel und wurde zurueckgesetzt.",
     saveWiped: "Spielstand geloescht.",
@@ -790,14 +873,14 @@ const I18N = {
     },
     abilityTexts: {
       innate_power: [
-        "Push {push} Explorer/Town into an adjacent land without invaders.",
-        "Deal {damage} damage. Push up to {push} Explorers/Towns into an adjacent land without invaders.",
+        "Push {push} Explorer/Town into an adjacent land.",
+        "Deal {damage} damage. Push up to {push} Explorers/Towns into an adjacent land.",
         "Deal {damage} damage to each invader in the chosen land."
       ],
       boon_of_vigor: "Gain {amount} Energy.",
       rivers_bounty: "+{amount} Dahan to the land with the fewest Dahan and Invaders if possible.",
       flash_floods: "{damage} damage. If the target land is coastal, +{coastal} damage.",
-      wash_away: "Push up to {push} Explorers/Towns into an adjacent land without invaders."
+      wash_away: "Push up to {push} Explorers/Towns to an adjacent land. From a coastal land, up to {sea} are washed out to sea and off the island instead."
     },
 
     mapTitle: "The Island",
@@ -805,7 +888,7 @@ const I18N = {
     mapHintArmed: "{ability}: {requirement}",
     mapHintWave: "Next wave builds in {terrain} ({lands}).",
     abilityNeedInvaders: "pick a land holding invaders.",
-    abilityNeedPushable: "pick a land with Explorers/Towns and a free neighbour.",
+    abilityNeedPushable: "pick a land with Explorers/Towns.",
     abilityNeedAnyLand: "pick any land.",
 
     shopTitle: "Between Rounds",
@@ -818,7 +901,9 @@ const I18N = {
     shopMaxedBtn: "Maxed",
     shopOwnedBtn: "Owned",
     shopOneOffLabel: "One-off",
+    shopSoldOutLabel: "Already bought",
     shopPendingHint: "Takes effect next round.",
+    shopLockedHint: "Sealed until everything else is bought.",
     startNextRoundBtn: "Start next round",
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
@@ -827,6 +912,8 @@ const I18N = {
       auto_innate: "Innate Instinct",
       auto_wash_away: "The Current Unbidden",
       auto_bounty: "The River Provides",
+      auto_flash_floods: "The Flood Unbidden",
+      auto_buy_abilities: "The River Knows Its Own Need",
       auto_start_round: "The Tide Returns"
     },
     upgradeTexts: {
@@ -836,6 +923,8 @@ const I18N = {
       auto_innate: "The Innate casts itself whenever it is ready, at whichever tier you own.",
       auto_wash_away: "Wash Away casts itself and picks its own target, once unlocked and ready.",
       auto_bounty: "River's Bounty casts itself, once unlocked and ready.",
+      auto_flash_floods: "Flash Floods casts itself and strikes where it kills, once unlocked and ready.",
+      auto_buy_abilities: "Energy spends itself: the locked abilities first, cheapest before dearest, then the Innate's next tier.",
       auto_start_round: "The next round starts by itself. Switch it off when you want to shop in peace."
     },
 
@@ -843,6 +932,22 @@ const I18N = {
     manualSaveBtn: "Save now",
     wipeSaveBtn: "Wipe save",
     autosaveHint: "Autosave every 10s.",
+
+    redeemLabel: "Redeem code",
+    redeemPlaceholder: "Enter code",
+    redeemBtn: "Redeem",
+    redeemOk: "Code redeemed. The playtest tools are active.",
+    redeemAlready: "That code is already redeemed.",
+    redeemUnknown: "Unknown code.",
+    redeemPlaytestLog: "Playtest tools activated.",
+    playtestHideBtn: "Hide playtest tools",
+    playtestHiddenLog: "Playtest tools hidden.",
+    playtestEnergyBtn: "+{amount} Energy",
+    playtestEnergyTitle: "Playtest: add {amount} energy",
+    playtestEnergyLog: "Playtest: +{amount} Energy.",
+    playtestFearBtn: "+{amount} Fear",
+    playtestFearTitle: "Playtest: add {amount} fear",
+    playtestFearLog: "Playtest: +{amount} Fear.",
 
     explorersLabel: "Explorers",
     townsLabel: "Towns",
@@ -916,6 +1021,7 @@ const I18N = {
     abilityIllegalTarget: "{land} is not a valid target for {ability}.",
     boonResolved: "Boon of Vigor: +{amount} Energy.",
     pushResolved: "{ability}: {total} units pushed from {from} to {to}.",
+    seaResolved: "{ability}: {total} units carried out to sea from {land}.",
     damageResolved: "{ability} in {land}: {damage} damage, {defeated} invaders defeated.",
     damageEachResolved: "{ability} in {land}: {damage} damage to each invader, {defeated} defeated.",
     riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}. {total} standing there now.",
@@ -928,6 +1034,7 @@ const I18N = {
     upgradePurchased: "Purchased: {upgrade} (tier {tier}) for {cost} Fear.",
     upgradeTooExpensive: "{upgrade} costs {cost} Fear. You have {fear}.",
     upgradeMaxed: "{upgrade} is already at its highest tier.",
+    upgradeLocked: "{upgrade} stays sealed until everything else in the shop is bought.",
 
     migrationReset: "The old save (version {version}) is not compatible with the round-based build and was reset.",
     saveWiped: "Save wiped.",
@@ -1033,7 +1140,8 @@ function abilityText(state, abilityId) {
     amount: record.amount || 0,
     damage: record.damage || 0,
     coastal: record.coastalBonus || 0,
-    push: record.pushCount || 0
+    push: record.pushCount || 0,
+    sea: record.seaCount || 0
   });
 }
 
@@ -1043,7 +1151,9 @@ function abilityRequirementText(state, abilityId) {
   const t = locale(state);
   const record = abilityRecord(state, abilityId);
   if (!record || !record.needsTarget) return "";
-  return record.effect === "push_invaders" ? t.abilityNeedPushable : t.abilityNeedInvaders;
+  return record.effect === "push_invaders" || record.effect === "wash_invaders"
+    ? t.abilityNeedPushable
+    : t.abilityNeedInvaders;
 }
 
 // Everything a land's fight is doing right now, in one object. The chip, the detail panel,
@@ -1459,6 +1569,34 @@ function upgradeMaxTier(upgradeId) {
   return Number.isFinite(record.maxTier) ? record.maxTier : Infinity;
 }
 
+/* ---------- The end of the shop ----------
+ *
+ * Two purchases stand behind everything else rather than beside it: the one that stops the
+ * ability bar needing a hand on it, and the one that stops the round needing one. Both remove
+ * a thing the player still does every round, and a game that hands those over while there is
+ * still a catalogue to shop from has sold the ending before the middle. So neither is for
+ * sale until the shop has nothing else left to sell - they are what finishing the catalogue
+ * pays for, not an alternative to finishing it.
+ *
+ * The pair does not gate itself, which is the whole of why "everything else" is defined by
+ * exclusion: read the other way, each would be waiting on the other and neither would ever
+ * open.
+ */
+const GATED_UPGRADE_IDS = ["auto_buy_abilities", "auto_start_round"];
+
+// Whether the rest of the catalogue is finished: every ladder at its top tier, every one-off
+// bought. Maxed is the same test the shop's sold-out half uses, so "nothing left to sell" and
+// "the gate is open" can never disagree.
+function gatedUpgradesUnlocked(state) {
+  return UPGRADE_IDS.every((id) => (
+    GATED_UPGRADE_IDS.includes(id) || upgradeTier(state, id) >= upgradeMaxTier(id)
+  ));
+}
+
+function upgradeIsLocked(state, upgradeId) {
+  return GATED_UPGRADE_IDS.includes(upgradeId) && !gatedUpgradesUnlocked(state);
+}
+
 // Cost of the *next* tier. Rounded to whole Fear so the shop never shows 6.4 Fear.
 function upgradeCost(state, upgradeId) {
   const record = UPGRADES[upgradeId];
@@ -1489,6 +1627,13 @@ function purchaseUpgrade(state, upgradeId) {
   const tier = upgradeTier(state, upgradeId);
   if (tier >= upgradeMaxTier(upgradeId)) {
     addLog(state, template(t.upgradeMaxed, { upgrade: upgradeName(state, upgradeId) }));
+    return false;
+  }
+
+  // Before the price check, because a locked row's price is not the reason it is refused and
+  // a player with the Fear in hand deserves the real reason.
+  if (upgradeIsLocked(state, upgradeId)) {
+    addLog(state, template(t.upgradeLocked, { upgrade: upgradeName(state, upgradeId) }));
     return false;
   }
 
@@ -1610,6 +1755,9 @@ function abilityUpgradeCost(state, abilityId) {
 function upgradeAbility(state, abilityId) {
   const t = locale(state);
   if (!abilityIsTiered(abilityId) || !abilityIsUnlocked(state, abilityId)) return false;
+  // Energy is round-local, and so is every tier it buys: startRound clears both. Spending it
+  // in the shop would buy a tier that is wiped before it is ever cast - see unlockAbility.
+  if (state.round.status !== "running") return false;
 
   const cost = abilityUpgradeCost(state, abilityId);
   if (!Number.isFinite(cost)) return false;
@@ -1655,12 +1803,16 @@ function abilityUnlockCost(state, abilityId) {
 
 // Buying an ability with Energy. Mid-round by nature now: Energy is earned by killing
 // invaders and dies with the round, so the fight it came from is the only fight it can pay
-// for.
+// for - and a round that has ended is no longer that fight. The bar stays on screen between
+// rounds because it is the spirit's kit and not a control panel, so the refusal has to live
+// here: startRound wipes the Energy and every unlock made with it, and a purchase in the shop
+// would be a button that spends a currency for nothing.
 function unlockAbility(state, abilityId) {
   const t = locale(state);
   if (!ABILITIES[abilityId]) return false;
   if (!spiritAbilityIds(state).includes(abilityId)) return false;
   if (abilityIsUnlocked(state, abilityId)) return false;
+  if (state.round.status !== "running") return false;
 
   const cost = abilityUnlockCost(state, abilityId);
   if (state.resources.energy < cost) {
@@ -1740,12 +1892,13 @@ function abilityLegalLand(state, abilityId, landId) {
   const record = abilityRecord(state, abilityId);
   if (!record || !record.needsTarget) return false;
 
-  // A pure push needs somewhere to push to as well as something to push, which is why it is
-  // the one target rule that reads two lands. Everything else only needs invaders present -
-  // including the Innate's second tier, whose damage stands on its own if the push finds no
-  // room (see applyDamageAndPush).
-  if (record.effect === "push_invaders") {
-    return pushableCount(state, landId) > 0 && pushDestinations(state, landId).length > 0;
+  // A push needs something the water can carry: an Explorer or a Town, never a City. Where it
+  // goes is never in doubt any more - open ground, an occupied neighbour, or the sea - so this
+  // no longer reads a second land the way it used to. Everything else only needs invaders
+  // present, including the Innate's second tier, whose damage stands on its own if the push
+  // finds nothing to move (see applyDamageAndPush).
+  if (record.effect === "push_invaders" || record.effect === "wash_invaders") {
+    return pushableCount(state, landId) > 0;
   }
 
   return invaderCountInLand(state.invaders[landId]) > 0;
@@ -1771,22 +1924,39 @@ function pushableCount(state, landId) {
   return Math.max(0, slot.towns || 0) + Math.max(0, slot.explorers || 0);
 }
 
-// Where a push can land: an adjacent land holding no invaders at all. A land with Dahan
-// already standing on it wins outright when there is one - the pushed unit lands straight in
-// front of a defender instead of sitting somewhere undefended racking up Blight for free.
-// Failing that, a coastal one wins - pushing toward the water is what this spirit does, and
-// it is also the harder land for the invaders to build back into.
+// The ranking among a set of candidate destinations. A land with Dahan already standing on it
+// wins outright when there is one - the pushed unit lands straight in front of a defender
+// instead of sitting somewhere undefended racking up Blight for free. Failing that, a coastal
+// one wins - pushing toward the water is what this spirit does, and it is also the harder land
+// for the invaders to build back into.
+function preferredPushLands(state, candidates) {
+  const defended = candidates.filter((other) => (state.dahan[other] || 0) > 0);
+  const pool = defended.length > 0 ? defended : candidates;
+  const coastal = pool.filter(landIsCoastal);
+  return coastal.length > 0 ? coastal : pool;
+}
+
+// Where a push can land: open ground first - an adjacent land holding no invaders at all - and
+// a neighbour that already holds invaders only when there is no open ground left.
+//
+// The occupied fallback is what the board game has always allowed and what this engine used to
+// refuse. Refusing it made the push the one effect that stopped working as the round went on:
+// a full island is exactly when the pressure most needs moving, and exactly when every
+// neighbour was disqualified. It is not free - shoving a Town onto a land that already holds
+// one is what turns the next Build into a City - which is why it is last, and why the
+// auto-casts that push for position ask for open ground instead (see pushHasOpenGround).
+//
+// Every land on this board has at least two neighbours, so this never comes back empty.
 function pushDestinations(state, landId) {
-  const open = adjacentLands(landId).filter(
-    (other) => invaderCountInLand(state.invaders[other]) <= 0
-  );
-  const defended = open.filter((other) => (state.dahan[other] || 0) > 0);
-  if (defended.length > 0) {
-    const coastalDefended = defended.filter(landIsCoastal);
-    return coastalDefended.length > 0 ? coastalDefended : defended;
-  }
-  const coastal = open.filter(landIsCoastal);
-  return coastal.length > 0 ? coastal : open;
+  const neighbours = adjacentLands(landId);
+  const open = neighbours.filter((other) => invaderCountInLand(state.invaders[other]) <= 0);
+  return preferredPushLands(state, open.length > 0 ? open : neighbours);
+}
+
+// Is there open ground next to this land - somewhere a push can go without stacking onto
+// invaders that are already standing there?
+function pushHasOpenGround(state, landId) {
+  return adjacentLands(landId).some((other) => invaderCountInLand(state.invaders[other]) <= 0);
 }
 
 // The lowest land id among those, like every other tie on this board. The water always runs
@@ -1850,6 +2020,70 @@ function applyPushAbility(state, abilityId, record, landId, quiet) {
       total: pushed.moved,
       from: landName(state, landId),
       to: landName(state, pushed.destination)
+    }));
+  }
+  return true;
+}
+
+/* ---------- The sea ----------
+ *
+ * Wash Away's own destination, and the only removal in the kit that is not damage. A coastal
+ * land borders the ocean, the ocean is not a land, and what the water carries off one is gone
+ * from the island rather than standing somewhere else.
+ *
+ * Removal ignores health entirely, which is the whole point of it: 2 damage buys less at every
+ * rung of the invader health ladder, and a drowning buys the same thing on the fortieth wave
+ * as it did on the first. It still cannot touch a City - a City is built into the land, the
+ * same rule that keeps one from being pushed - so the abilities that answer Cities keep their
+ * job.
+ *
+ * A drowning pays Fear and Energy exactly as a defeat does, because it is one: creditDefeat is
+ * the same function the damage path calls.
+ */
+function applyWashToSea(state, landId, maxCount) {
+  const result = { defeated: emptyDefeatTally(), totalDefeated: 0, spent: 0 };
+  let budget = Math.max(0, Math.floor(maxCount || 0));
+
+  for (const type of PUSH_ORDER) {
+    while (budget > 0 && (state.invaders[landId][type] || 0) > 0) {
+      // The healthiest unit of its type goes first. The wound arrays are sorted worst-off
+      // first, so that is the last index. A drowning does not care how hurt a unit was, so
+      // spending it on the one that would have been hardest to kill is what makes it worth
+      // more than the damage it replaces - and it leaves the wounded standing for the rest of
+      // the kit to finish.
+      const wounds = state.invaderDamage[landId][type];
+      removeInvaderUnit(state, landId, type, Math.max(0, wounds.length - 1));
+      creditDefeat(state, result, type);
+      budget -= 1;
+    }
+  }
+
+  if (result.totalDefeated <= 0) return null;
+
+  state.invaderDamage = normalizeInvaderDamage(state.invaders, state.invaderDamage, state.round.wavesResolved);
+  return result;
+}
+
+// Wash Away, whole: the sea from a coastal land, a shove into the next land over from anywhere
+// else. One rule, no prompt - the water runs downhill, and on this board downhill means the
+// ocean whenever the ocean is there.
+//
+// Three of the eight lands are coastal, so which of the two halves a cast gets is a question
+// about position rather than about luck, and the rest of the kit already answers it: the
+// Innate's push and pushDestinations' own coastal preference both walk stacks toward the water.
+function applyWashAway(state, abilityId, record, landId, quiet) {
+  if (!landIsCoastal(landId)) return applyPushAbility(state, abilityId, record, landId, quiet);
+
+  const drowned = applyWashToSea(state, landId, record.seaCount);
+  if (!drowned) return false;
+
+  markDefeatFxFromResult(state, landId, drowned);
+
+  if (!quiet) {
+    addLog(state, template(locale(state).seaResolved, {
+      ability: abilityName(state, abilityId),
+      total: drowned.totalDefeated,
+      land: landName(state, landId)
     }));
   }
   return true;
@@ -1979,6 +2213,8 @@ function applyAbilityEffect(state, abilityId, landId, quiet) {
       return applyRiversBounty(state, record, quiet);
     case "push_invaders":
       return applyPushAbility(state, abilityId, record, landId, quiet);
+    case "wash_invaders":
+      return applyWashAway(state, abilityId, record, landId, quiet);
     case "flood_damage":
       return Boolean(resolveDamageAbility(state, abilityId, landId, flashFloodsDamage(record, landId), quiet));
     case "damage_and_push":
@@ -1992,6 +2228,48 @@ function applyAbilityEffect(state, abilityId, landId, quiet) {
 
 function startCooldown(state, abilityId) {
   state.abilities[abilityId].cooldownRemaining = abilityCooldownSeconds(state, abilityId);
+}
+
+/* ---------- Auto-buy: the round's Energy spends itself ----------
+ *
+ * The one automation that spends a currency rather than a cooldown. Every other one buys back
+ * a cast; this buys back the two purchases the ability bar asks for - unlocking a locked
+ * ability and raising the Innate's tier - which by the time it is affordable a player is
+ * making in the same order every round anyway.
+ *
+ * Unlocks first and tiers after, which is not kit order and not price order across the whole
+ * bar. Two reasons, and they point the same way: an unlock is the cheaper claim on the Energy
+ * (5 / 10 / 20 against the Innate's 50 / 250), and it is what the three cast automations are
+ * waiting on - each of them sits idle all round on an ability that was never bought. Saving
+ * toward a tier while Wash Away stays locked is the one order no player actually plays.
+ *
+ * It goes through unlockAbility and upgradeAbility rather than writing the state itself, so an
+ * automated purchase and a clicked one are the same purchase: same refusals, same round-local
+ * bookkeeping, same log line. Nothing here can overspend, because each call re-reads the purse
+ * the one before it left behind.
+ */
+function resolveAutoBuyAbilities(state) {
+  if (activeUpgradeTier(state, "auto_buy_abilities") <= 0) return;
+
+  // Cheapest first within the unlocks, so a round holding 15 Energy takes the 5 and the 10
+  // rather than stalling in kit order on a 20 it cannot afford yet.
+  const locked = lockedAbilityIds(state)
+    .slice()
+    .sort((a, b) => abilityUnlockCost(state, a) - abilityUnlockCost(state, b));
+  for (const abilityId of locked) {
+    if (state.resources.energy < abilityUnlockCost(state, abilityId)) continue;
+    unlockAbility(state, abilityId);
+  }
+
+  // One rung per ability per tick. A tier is dear enough that no round buys two in the same
+  // beat, and stepping rather than climbing keeps this from emptying a purse the unlocks above
+  // may want on the very next tick.
+  for (const abilityId of unlockedAbilityIds(state)) {
+    if (!abilityIsTiered(abilityId)) continue;
+    const cost = abilityUpgradeCost(state, abilityId);
+    if (!Number.isFinite(cost) || state.resources.energy < cost) continue;
+    upgradeAbility(state, abilityId);
+  }
 }
 
 // The Boon fires itself once `auto_boon` is bought. It goes straight to the effect rather
@@ -2114,27 +2392,58 @@ function innateT1BreakBuildLands(state) {
   });
 }
 
-// Prio 2: an undefended land, pushed into a neighbour that already holds Dahan - now that
+// Prio 2: an undefended land, pushed into open ground that already holds Dahan - now that
 // pushDestinations prefers a defended neighbour on its own, this only has to check whether the
 // push this land would make lands on one.
+//
+// Open ground, not just any neighbour: this rung and the next push for *position*, and the
+// occupied fallback in pushDestinations would land the unit on a stack instead. A player
+// reaching for it can see what that costs the next Build; an automation cannot, so it stays
+// where the position it was buying is actually there to buy.
 function innateT1RouteToCoverLands(state) {
   return LAND_IDS.filter((land) => {
     if ((state.dahan[land] || 0) > 0) return false;
     if (!abilityLegalLand(state, "innate_power", land)) return false;
+    if (!pushHasOpenGround(state, land)) return false;
     const destination = pushDestination(state, land);
     return Boolean(destination) && (state.dahan[destination] || 0) > 0;
   });
 }
 
-// Prio 3: pull an invader off whichever defended land has the fewest Dahan left, before that
-// stack runs out.
-function innateT1ProtectThinDahanLands(state) {
+// Prio 3: carry a unit from an inland land onto an open coast, where the sea can reach it.
+// One push kills nothing and removes nothing, so the best a spare cast can do is hand a
+// better board to the two abilities that do - and the sea is the only removal in the kit that
+// the invader health ladder never catches up with.
+//
+// Only from an inland land: a coast-to-coast shove is already-drownable to still-drownable,
+// which is churn. Only from an undefended one: pulling a unit out from under Dahan trades a
+// kill that is already happening for one that might. Those two conditions together are also
+// what stops this from ever undoing prio 2 - the land prio 2 pushed *into* holds Dahan, so
+// this rung cannot pick it up next cast and shove it back out.
+//
+// Open ground, like every rung that pushes for position (see pushDestinations). It has a
+// second use here: an open coast holds nothing, so this can never top a coast past the two
+// units the sea would take anyway.
+function innateT1FeedTheSeaLands(state) {
   return LAND_IDS.filter((land) => {
-    if ((state.dahan[land] || 0) <= 0) return false;
-    return abilityLegalLand(state, "innate_power", land);
+    if (landIsCoastal(land)) return false;
+    if ((state.dahan[land] || 0) > 0) return false;
+    if (!abilityLegalLand(state, "innate_power", land)) return false;
+    if (!pushHasOpenGround(state, land)) return false;
+    const destination = pushDestination(state, land);
+    return Boolean(destination) && landIsCoastal(destination);
   });
 }
 
+// The order of these rungs follows pushDestination's own order rather than arguing with it.
+// That function puts a defended neighbour above a coastal one, so a land with both open next
+// to it routes into cover whatever this list says - putting the sea rung above cover would
+// only be a lie about what the push then does.
+//
+// There is no protect-the-thin-stack rung here, though tier 2 and Wash Away both have one.
+// At one unit it does not lift enough pressure off a stack to save it, and it was the exact
+// mirror of prio 2 - onto Dahan, then off Dahan - which on an 8-beat clock against a 10-beat
+// Dahan strike meant the same unit ping-ponging over the same border all round.
 function pickInnateTargetTier1(state) {
   const breakBuild = innateT1BreakBuildLands(state);
   if (breakBuild.length > 0) return lowestLandId(breakBuild);
@@ -2142,8 +2451,8 @@ function pickInnateTargetTier1(state) {
   const routeToCover = innateT1RouteToCoverLands(state);
   if (routeToCover.length > 0) return lowestLandId(routeToCover);
 
-  const protectThin = innateT1ProtectThinDahanLands(state);
-  if (protectThin.length > 0) return thinnestDefendedLand(state, protectThin);
+  const feedTheSea = innateT1FeedTheSeaLands(state);
+  if (feedTheSea.length > 0) return lowestLandId(feedTheSea);
 
   return null;
 }
@@ -2167,6 +2476,7 @@ function innateT2RouteToCoverLands(state) {
     if ((state.dahan[land] || 0) > 0) return false;
     if (invaderCountInLand(state.invaders[land]) <= 0) return false;
     if (pushableCount(state, land) <= 0) return false;
+    if (!pushHasOpenGround(state, land)) return false;
     const destination = pushDestination(state, land);
     return Boolean(destination) && (state.dahan[destination] || 0) > 0;
   });
@@ -2295,37 +2605,78 @@ function resolveAutoBounty(state) {
  * has, answered the same way: a ranked list of reasons to cast, and no cast at all when none
  * of them applies.
  *
- * The push never kills. Everything below is therefore about *where* the invaders end up
- * rather than how many are left, which is why none of these priorities look at damage.
+ * The ability is two abilities depending on where it is pointed, and the list is split the
+ * same way. On a coast it removes units, so the rungs read off what it takes off the board;
+ * inland it only relocates them, so those rungs read off where they end up.
  */
 
-// Prio 1: a land the next Build phase will thicken, that the push would empty outright.
+// What a cast on this land would actually do, on a scratch board. Simulated rather than
+// reasoned about, so the auto-caster can never disagree with applyWashAway about which half of
+// the ability a land gets.
+function washAwayOutcome(state, landId, record) {
+  const scratch = cloneCombatState(state);
+  const drowned = landIsCoastal(landId)
+    ? applyWashToSea(scratch, landId, record.seaCount)
+    : null;
+  const pushed = drowned ? null : applyPushFrom(scratch, landId, record.pushCount);
+
+  return {
+    removed: drowned ? drowned.totalDefeated : 0,
+    acted: Boolean(drowned) || Boolean(pushed),
+    clears: invaderCountInLand(scratch.invaders[landId]) <= 0
+  };
+}
+
+// Prio 1: a land the next Build phase will thicken, that the cast would empty outright.
 // Emptying it is the only thing that stops the build - Build needs something already standing
-// there to build on.
-function washAwayBreakBuildLands(state, pushCount) {
+// there to build on. On a coast this rung drowns and breaks the build in the same cast.
+function washAwayBreakBuildLands(state, record) {
   return buildThreatLands(state).filter((land) => {
     if (!abilityLegalLand(state, "wash_away", land)) return false;
-    const scratch = cloneCombatState(state);
-    applyPushFrom(scratch, land, pushCount);
-    return invaderCountInLand(scratch.invaders[land]) <= 0;
+    const outcome = washAwayOutcome(state, land, record);
+    return outcome.acted && outcome.clears;
   });
 }
 
-// Prio 2: an undefended land whose push lands on a neighbour that holds Dahan. Invaders that
-// nobody is fighting become invaders somebody is - the closest this ability gets to a kill.
+// Prio 2: any coast the water can carry something off. A removal pays Fear and Energy the way
+// a defeat does, and it is the only thing this ability does that the invaders cannot undo by
+// walking back, so it outranks every reason to merely move them. The most units wins; ties go
+// to the lowest land id, like every other choice on this board.
+function washAwaySeaLands(state, record) {
+  return LAND_IDS.filter((land) => {
+    if (!landIsCoastal(land)) return false;
+    if (!abilityLegalLand(state, "wash_away", land)) return false;
+    return washAwayOutcome(state, land, record).removed > 0;
+  });
+}
+
+function mostRemovedLand(state, landIds, record) {
+  return landIds.slice().sort((a, b) => {
+    const diff = washAwayOutcome(state, b, record).removed - washAwayOutcome(state, a, record).removed;
+    return diff !== 0 ? diff : Number(a) - Number(b);
+  })[0];
+}
+
+// Prio 3: an undefended land whose push lands on open ground that holds Dahan. Invaders that
+// nobody is fighting become invaders somebody is.
+//
+// Prio 2 has already taken every coast worth casting on, so this rung and the next only ever
+// see inland lands - which is why they can be about the push alone.
 function washAwayRouteToCoverLands(state) {
   return LAND_IDS.filter((land) => {
     if ((state.dahan[land] || 0) > 0) return false;
     if (!abilityLegalLand(state, "wash_away", land)) return false;
+    if (!pushHasOpenGround(state, land)) return false;
     const destination = pushDestination(state, land);
     return Boolean(destination) && (state.dahan[destination] || 0) > 0;
   });
 }
 
-// Prio 3: take the weight off whichever defended land is closest to losing its last Dahan.
+// Prio 4: take the weight off whichever defended land is closest to losing its last Dahan.
 function washAwayProtectThinDahanLands(state) {
   return LAND_IDS.filter((land) => {
     if ((state.dahan[land] || 0) <= 0) return false;
+    if (!pushHasOpenGround(state, land)) return false;
     return abilityLegalLand(state, "wash_away", land);
   });
 }
@@ -2334,8 +2685,11 @@ function pickWashAwayAutoTarget(state) {
   const record = abilityRecord(state, "wash_away");
   if (!record) return null;
 
-  const breakBuild = washAwayBreakBuildLands(state, record.pushCount);
+  const breakBuild = washAwayBreakBuildLands(state, record);
   if (breakBuild.length > 0) return lowestLandId(breakBuild);
+
+  const sea = washAwaySeaLands(state, record);
+  if (sea.length > 0) return mostRemovedLand(state, sea, record);
 
   const routeToCover = washAwayRouteToCoverLands(state);
   if (routeToCover.length > 0) return lowestLandId(routeToCover);
@@ -2356,6 +2710,88 @@ function resolveAutoWashAway(state) {
 
   if (!applyAbilityEffect(state, "wash_away", landId, true)) return;
   startCooldown(state, "wash_away");
+}
+
+/* ---------- Auto-cast: Flash Floods' own judgement ----------
+ *
+ * The third targeted automation, and the only one whose ability kills. Wash Away's priorities
+ * are all about where units end up because its push never removes one; these are the mirror
+ * image - every rung below is read off what dies.
+ *
+ * The coastal bonus is the other thing that makes this list its own. The same cast is worth
+ * 1 inland and 2 on lands 1, 2 and 3, so "which of these lands" is a real question here where
+ * for the push it was only ever a tie-break. bestFloodLand answers it once, for every rung.
+ */
+
+// What a cast into this land would actually deal, coastal bonus folded in - the same number
+// the player's own click would spend there.
+function flashFloodsDamageIn(state, landId) {
+  const record = abilityRecord(state, "flash_floods");
+  return record ? flashFloodsDamage(record, landId) : 0;
+}
+
+// Among candidates, the land the flood hits hardest; ties go to the lowest land id, like every
+// other choice on this board. In practice this reads "a coast before an inland" - which is the
+// ability's own character, not a heuristic bolted onto it.
+function bestFloodLand(state, landIds) {
+  return landIds.slice().sort((a, b) => {
+    const diff = flashFloodsDamageIn(state, b) - flashFloodsDamageIn(state, a);
+    return diff !== 0 ? diff : Number(a) - Number(b);
+  })[0];
+}
+
+// Prio 1: a land the next Build phase will thicken, that the flood would empty outright.
+// Build needs something already standing there, so emptying it is what stops it.
+function flashFloodsBreakBuildLands(state) {
+  return buildThreatLands(state).filter((land) => {
+    if (!abilityLegalLand(state, "flash_floods", land)) return false;
+    const scratch = cloneCombatState(state);
+    applyDamage(scratch, land, flashFloodsDamageIn(state, land));
+    return invaderCountInLand(scratch.invaders[land]) <= 0;
+  });
+}
+
+// Prio 2: anywhere the cast kills something at all. A defeat pays Fear and Energy both, and
+// this is the only ability in the kit that can produce one on its own - so a cooldown spent
+// on a kill is never a cooldown spent badly. Simulated rather than reasoned about, so the
+// kill-first rule in applyDamage stays the only place that decides what dies.
+function flashFloodsKillLands(state) {
+  return LAND_IDS.filter((land) => {
+    if (!abilityLegalLand(state, "flash_floods", land)) return false;
+    const scratch = cloneCombatState(state);
+    return applyDamage(scratch, land, flashFloodsDamageIn(state, land)).totalDefeated > 0;
+  });
+}
+
+// Prio 3: nothing dies this cast, so put the damage where the round is being lost fastest -
+// the same fallback the Innate's upper tiers take, for the same reason.
+function flashFloodsBleedLand(state) {
+  const land = worstBlightLand(state);
+  return land && abilityLegalLand(state, "flash_floods", land) ? land : null;
+}
+
+function pickFlashFloodsAutoTarget(state) {
+  if (!abilityRecord(state, "flash_floods")) return null;
+
+  const breakBuild = flashFloodsBreakBuildLands(state);
+  if (breakBuild.length > 0) return bestFloodLand(state, breakBuild);
+
+  const kills = flashFloodsKillLands(state);
+  if (kills.length > 0) return bestFloodLand(state, kills);
+
+  return flashFloodsBleedLand(state);
+}
+
+function resolveAutoFlashFloods(state) {
+  if (activeUpgradeTier(state, "auto_flash_floods") <= 0) return;
+  if (!abilityIsUnlocked(state, "flash_floods")) return;
+  if (!abilityIsReady(state, "flash_floods")) return;
+
+  const landId = pickFlashFloodsAutoTarget(state);
+  if (!landId) return;
+
+  if (!applyAbilityEffect(state, "flash_floods", landId, true)) return;
+  startCooldown(state, "flash_floods");
 }
 
 // The single entry point for the ability bar. Everything it can answer with - cancel,
@@ -3029,7 +3465,6 @@ function endRound(state) {
   // what makes surviving the round the thing that pays rather than the kills inside it.
   state.meta.fear += state.round.fearEarned;
 
-  state.meta.totalRoundsPlayed += 1;
   // How far up the ladder this run has ever climbed. The wave is the honest measure of a
   // run's depth now that the ladder is keyed to it - the round number only counts attempts,
   // and every round starts at the bottom rung regardless of which number it wears.
@@ -3154,6 +3589,72 @@ function startNextRound(state) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Playtest tools (06-ui-contract.md Playtest tools)                     *
+ *                                                                      *
+ * Switched on by typing a code into the redeem bar, and off again by    *
+ * the button that appears beside it. Everything here is deliberately    *
+ * outside the game's economy: nothing costs anything, nothing is        *
+ * earned, and no rule reads the flag - it only widens the speed dial    *
+ * and adds two buttons that hand out currency.                          *
+ * ------------------------------------------------------------------ */
+
+function playtestOn(state) {
+  return state.ui.playtest === true;
+}
+
+// Turning it off has to take the extra speed with it: a player sitting at 8x when the tools go
+// away would otherwise be left at a speed the dial no longer draws a button for.
+function setPlaytest(state, on) {
+  state.ui.playtest = on === true;
+  if (!state.ui.playtest && !GAME_SPEEDS.includes(Number(state.ui.gameSpeed))) {
+    state.ui.gameSpeed = DEFAULT_GAME_SPEED;
+  }
+  return state.ui.playtest;
+}
+
+// The dial as it currently stands. The base speeds are always on it; the playtest ones are
+// appended rather than mixed in, so 8x stays visibly the odd one out.
+function availableGameSpeeds(state) {
+  return playtestOn(state) ? GAME_SPEEDS.concat(PLAYTEST_GAME_SPEEDS) : GAME_SPEEDS.slice();
+}
+
+// Three answers rather than a boolean: the bar says something different for a code that was
+// already redeemed than for one it has never heard of, and "nothing happened" would cover both.
+function redeemCode(state, text) {
+  const code = String(text == null ? "" : text).trim().toLowerCase();
+  if (!code) return "unknown";
+
+  const flag = REDEEM_CODES[code];
+  if (!flag) return "unknown";
+  if (flag === "playtest" && playtestOn(state)) return "already";
+
+  if (flag === "playtest") {
+    setPlaytest(state, true);
+    addLog(state, locale(state).redeemPlaytestLog);
+  }
+  return "ok";
+}
+
+// Both grants refuse while the tools are off, so a stale click from a page that has not
+// re-rendered yet cannot hand out a hundred of anything.
+function grantPlaytestEnergy(state) {
+  if (!playtestOn(state)) return false;
+  state.resources.energy += PLAYTEST_GRANT;
+  addLog(state, template(locale(state).playtestEnergyLog, { amount: PLAYTEST_GRANT }));
+  return true;
+}
+
+// Fear lands in the banked pool, not in what the round has earned: the point of the button is
+// to be able to buy something in the shop right now, and round Fear is not money until the
+// round ends.
+function grantPlaytestFear(state) {
+  if (!playtestOn(state)) return false;
+  state.meta.fear += PLAYTEST_GRANT;
+  addLog(state, template(locale(state).playtestFearLog, { amount: PLAYTEST_GRANT }));
+  return true;
+}
+
+/* ------------------------------------------------------------------ *
  * Pacing: the speed dial and the wave gate (02-core-loop.md Pacing)     *
  *                                                                      *
  * Two controls over the same thing - how fast the round is allowed to   *
@@ -3164,15 +3665,16 @@ function startNextRound(state) {
 // Game seconds per real second, and the whole of the speed dial: the engine only ever thinks
 // in the seconds it was authored in, so the setting never reaches past this one multiplication
 // on dt. It is read through a function rather than off the state because an unknown value has
-// to fall back to the shipped speed, not stop the game.
+// to fall back to the shipped speed, not stop the game - and "unknown" now includes a playtest
+// speed on a state whose tools have been switched off.
 function gameSpeed(state) {
   const value = Number(state.ui.gameSpeed);
-  return GAME_SPEEDS.includes(value) ? value : DEFAULT_GAME_SPEED;
+  return availableGameSpeeds(state).includes(value) ? value : DEFAULT_GAME_SPEED;
 }
 
 function setGameSpeed(state, value) {
   const next = Number(value);
-  if (!GAME_SPEEDS.includes(next)) return false;
+  if (!availableGameSpeeds(state).includes(next)) return false;
   state.ui.gameSpeed = next;
   return true;
 }
@@ -3266,12 +3768,22 @@ function tick(state, dt) {
 
   state.round.elapsedSeconds += step;
   tickCooldowns(state, step);
+  // Ahead of every cast, because what it buys is what they fire: an ability unlocked here is
+  // ready this tick (see unlockAbility), so the automation waiting on it does not idle out a
+  // whole cooldown behind its own purchase.
+  resolveAutoBuyAbilities(state);
   // Before the fight, so Energy the Boon just paid is spendable on the same tick the player
   // sees it - the ability bar is read after the tick, not during it.
   resolveAutoBoon(state);
-  resolveAutoInnate(state);
   resolveAutoBounty(state);
   resolveAutoWashAway(state);
+  resolveAutoFlashFloods(state);
+  // The Innate last, and the order among these five is deliberate. It has the shortest
+  // cooldown in the kit and the weakest effect - one unit moved, nothing killed, nothing
+  // removed - so letting it go first meant the two automations that do kill and remove chose
+  // their target on a board it had just stirred. Casting it last leaves it doing what its
+  // priority list is now written for: tidying up whatever the heavier casts left standing.
+  resolveAutoInnate(state);
 
   // The fight first: it is what actually ends the round, and resolving it before the wave
   // means a land cannot be reinforced out from under damage it had already taken this tick.
@@ -3332,7 +3844,6 @@ function createInitialState() {
     },
     meta: {
       fear: 0,
-      totalRoundsPlayed: 0,
       bestWaveReached: 0
     },
     spirit: {
@@ -3353,6 +3864,10 @@ function createInitialState() {
       // wanting it on right now are two different things - a player who wants to stop and
       // shop should not have to un-buy anything to get the pause back.
       autoStartRound: true,
+      // The playtest code, once redeemed. It sits with the other settings rather than in meta
+      // because it is the same kind of thing: how the game is being read, not what has been
+      // earned inside it. Nothing in the rules reads it - see the playtest section.
+      playtest: false,
       defeatFx: null,
       blightFx: null,
       selectedLand: null
@@ -3430,7 +3945,10 @@ function normalizeState(raw) {
   if (merged.spirit.unlockedSpiritIds.length === 0) merged.spirit.unlockedSpiritIds = ["core_spirit_01"];
 
   merged.ui.language = merged.ui.language === "en" ? "en" : "de";
-  merged.ui.gameSpeed = GAME_SPEEDS.includes(Number(merged.ui.gameSpeed))
+  // Read before the speed, which is validated against the dial this flag decides the width of:
+  // a save at 8x loads at 8x only if it also carries the redeemed code.
+  merged.ui.playtest = merged.ui.playtest === true;
+  merged.ui.gameSpeed = availableGameSpeeds(merged).includes(Number(merged.ui.gameSpeed))
     ? Number(merged.ui.gameSpeed)
     : DEFAULT_GAME_SPEED;
   merged.ui.autoProceed = merged.ui.autoProceed === true;
@@ -3444,12 +3962,14 @@ function normalizeState(raw) {
   // Floored, not just clamped: a save written while Fear was fractional loads as the whole
   // number the shop can actually spend, and never as 6.3.
   merged.meta.fear = Math.max(0, Math.floor(Number(merged.meta.fear) || 0));
-  merged.meta.totalRoundsPlayed = Math.max(0, Math.floor(merged.meta.totalRoundsPlayed || 0));
   // A save from before the ladder tracked waves has no best wave to carry. The old best round
   // is not a substitute - it counted attempts, not depth - so the record simply restarts at 0
   // and the first finished round writes a true one.
   merged.meta.bestWaveReached = Math.max(0, Math.floor(merged.meta.bestWaveReached || 0));
   delete merged.meta.bestRoundReached;
+  // Rounds played was only ever a tally: nothing reads it, and the record that does say
+  // something about a run is the best wave above. A save that carries one drops it here.
+  delete merged.meta.totalRoundsPlayed;
 
   // Upgrade tiers survive anything: an unknown id is dropped, a bad value clamps to 0.
   const purchased = {};
@@ -3553,12 +4073,14 @@ function migrateSave(raw) {
   const fromVersion = raw && typeof raw === "object" && raw.schemaVersion ? String(raw.schemaVersion) : "?";
   const fresh = createFreshGameState();
 
-  // The three toggles are display preferences, not run state, so they survive the reset.
-  // Coming back to a wiped run in the wrong language - or at a speed the player did not pick -
-  // would read as a second bug.
+  // The toggles are display preferences, not run state, so they survive the reset. Coming back
+  // to a wiped run in the wrong language - or at a speed the player did not pick - would read
+  // as a second bug. The redeemed code carries for the same reason, and is read before the
+  // speed because it is what says whether a playtest speed is still on the dial.
   const prefs = (raw && raw.ui) || {};
   if (prefs.language === "en") fresh.ui.language = "en";
-  if (GAME_SPEEDS.includes(Number(prefs.gameSpeed))) fresh.ui.gameSpeed = Number(prefs.gameSpeed);
+  if (prefs.playtest === true) setPlaytest(fresh, true);
+  if (availableGameSpeeds(fresh).includes(Number(prefs.gameSpeed))) fresh.ui.gameSpeed = Number(prefs.gameSpeed);
   // Set after the round has already started, so the gate startRound closed on the default has
   // to be reopened by hand here - waveGateHeld would ignore it, but the flag would outlive the
   // preference the moment auto-proceed was switched back off.
@@ -3619,6 +4141,9 @@ const ENGINE_EXPORTS = {
   TIME_SCALE,
   GAME_SPEEDS,
   DEFAULT_GAME_SPEED,
+  PLAYTEST_GAME_SPEEDS,
+  PLAYTEST_GRANT,
+  REDEEM_CODES,
   WAVE_INTERVAL_SECONDS,
   BLIGHT_THRESHOLD_BASE,
   BLIGHT_PER_DAMAGE_SECOND,
@@ -3680,6 +4205,9 @@ const ENGINE_EXPORTS = {
   upgradeTier,
   upgradeMaxTier,
   upgradeCost,
+  upgradeIsLocked,
+  gatedUpgradesUnlocked,
+  GATED_UPGRADE_IDS,
   upgradeTotals,
   purchaseUpgrade,
   spiritAbilityIds,
@@ -3702,6 +4230,8 @@ const ENGINE_EXPORTS = {
   pushDestinations,
   pushDestination,
   applyPushFrom,
+  applyWashToSea,
+  pushHasOpenGround,
   riversBountyLand,
   waveLands,
   effectiveSelectedLand,
@@ -3729,7 +4259,7 @@ const ENGINE_EXPORTS = {
   worstBlightLand,
   innateT1BreakBuildLands,
   innateT1RouteToCoverLands,
-  innateT1ProtectThinDahanLands,
+  innateT1FeedTheSeaLands,
   innateT2BreakBuildLands,
   innateT2RouteToCoverLands,
   innateT3BreakBuildLands,
@@ -3743,6 +4273,10 @@ const ENGINE_EXPORTS = {
   resolveAutoBounty,
   resolveAutoWashAway,
   pickWashAwayAutoTarget,
+  resolveAutoFlashFloods,
+  resolveAutoBuyAbilities,
+  pickFlashFloodsAutoTarget,
+  flashFloodsDamageIn,
   addBlight,
   blightReached,
   resolveLandCombat,
@@ -3765,6 +4299,12 @@ const ENGINE_EXPORTS = {
   endRound,
   gameSpeed,
   setGameSpeed,
+  availableGameSpeeds,
+  playtestOn,
+  setPlaytest,
+  redeemCode,
+  grantPlaytestEnergy,
+  grantPlaytestFear,
   autoProceedOn,
   autoStartRoundOwned,
   autoStartRoundOn,

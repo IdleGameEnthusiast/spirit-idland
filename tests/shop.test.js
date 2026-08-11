@@ -148,20 +148,20 @@
     assertEqual(state.round.number, numberBefore, "round number unchanged");
   });
 
-  test("shop: totalRoundsPlayed increments once per round ended", () => {
+  // Rounds are no longer tallied at all: a fresh game has no counter, and a save that carries
+  // one from before loses it on load.
+  test("shop: rounds played is not counted", () => {
     const { state } = newGame();
-    assertEqual(state.meta.totalRoundsPlayed, 0, "nothing played yet");
+    assertEqual("totalRoundsPlayed" in state.meta, false, "no counter on a fresh game");
 
     engine.endRound(state);
-    assertEqual(state.meta.totalRoundsPlayed, 1, "after one round");
+    assertEqual("totalRoundsPlayed" in state.meta, false, "and none after a round ends");
 
-    // A second endRound on an already-ended round must not double count.
-    engine.endRound(state);
-    assertEqual(state.meta.totalRoundsPlayed, 1, "no double counting");
-
-    engine.startNextRound(state);
-    engine.endRound(state);
-    assertEqual(state.meta.totalRoundsPlayed, 2, "after two rounds");
+    const carried = engine.migrateSave({
+      schemaVersion: engine.VERSION,
+      meta: { fear: 5, totalRoundsPlayed: 7 }
+    });
+    assertEqual("totalRoundsPlayed" in carried.state.meta, false, "an old save drops it");
   });
 
   // The record is the deepest wave any round reached, not how many rounds were played. The
@@ -243,14 +243,86 @@
       [
         "blight_resilience",
         "auto_innate",
-        "auto_wash_away",
         "auto_bounty",
+        "auto_flash_floods",
+        "auto_wash_away",
+        "auto_buy_abilities",
         "auto_start_round",
         "dahan_reinforcement",
         "auto_boon"
       ],
       "the two sold-out upgrades sink to the bottom, catalogue order preserved on both sides"
     );
+  });
+
+  /* ------------------------------------------------------------------ *
+   * The gate on the last two purchases                                   *
+   * ------------------------------------------------------------------ */
+
+  // Buys out the whole catalogue except the two behind the gate. Fear is granted rather than
+  // played for: what these checks are about is the gate, not the grind up to it.
+  function buyEverythingButTheGated(state) {
+    state.meta.fear = 1e9;
+    for (const id of engine.UPGRADE_IDS) {
+      if (engine.GATED_UPGRADE_IDS.includes(id)) continue;
+      while (engine.upgradeTier(state, id) < engine.upgradeMaxTier(id)) {
+        if (!engine.purchaseUpgrade(state, id)) throw new Error(`could not buy ${id}`);
+      }
+    }
+    return state;
+  }
+
+  test("shop: the last two purchases are sealed while anything else is still for sale", () => {
+    const { state } = newGame();
+    state.meta.fear = 1e9;
+
+    for (const id of engine.GATED_UPGRADE_IDS) {
+      assert(engine.upgradeIsLocked(state, id), `${id} is locked on a fresh save`);
+      assert(!engine.purchaseUpgrade(state, id), "and all the Fear in the world does not buy it");
+      assertEqual(engine.upgradeTier(state, id), 0, "still unowned");
+    }
+
+    assert(!engine.upgradeIsLocked(state, "auto_boon"), "nothing else in the shop is gated");
+    assert(engine.purchaseUpgrade(state, "auto_boon"), "and the rest sells as it always did");
+  });
+
+  test("shop: one unbought ladder rung is enough to keep the gate shut", () => {
+    const state = buyEverythingButTheGated(newGame().state);
+    assert(engine.gatedUpgradesUnlocked(state), "the catalogue is finished");
+
+    // One rung handed back. The gate reads what is owned, so it shuts again.
+    state.upgrades.purchased.blight_resilience = engine.upgradeMaxTier("blight_resilience") - 1;
+    assert(!engine.gatedUpgradesUnlocked(state), "a single missing tier closes it");
+    assert(!engine.purchaseUpgrade(state, "auto_start_round"), "and the purchase is refused again");
+  });
+
+  test("shop: finishing the catalogue opens both of them", () => {
+    const state = buyEverythingButTheGated(newGame().state);
+
+    for (const id of engine.GATED_UPGRADE_IDS) {
+      assert(!engine.upgradeIsLocked(state, id), `${id} is for sale now`);
+      assert(engine.purchaseUpgrade(state, id), "and it sells");
+      assertEqual(engine.upgradeTier(state, id), 1, "owned");
+    }
+  });
+
+  test("shop: the gated pair does not gate itself", () => {
+    // The rule reads "everything else", and the pair is excluded from it on purpose: read the
+    // other way each would be waiting on the other and neither would ever open.
+    const state = buyEverythingButTheGated(newGame().state);
+
+    assert(engine.purchaseUpgrade(state, "auto_buy_abilities"), "one of the pair lands");
+    assert(!engine.upgradeIsLocked(state, "auto_start_round"), "the other did not lock behind it");
+  });
+
+  test("shop: a locked row is refused for being locked, not for being unaffordable", () => {
+    const { state } = newGame();
+    state.meta.fear = 1e9;
+    const before = (state._log || []).length;
+
+    assert(!engine.purchaseUpgrade(state, "auto_buy_abilities"), "refused");
+    assert((state._log || []).length > before, "and it says why");
+    assertEqual(state.meta.fear, 1e9, "no Fear changed hands");
   });
 
   test("shop: an ability defeat during a round feeds the purse the shop spends, once banked", () => {

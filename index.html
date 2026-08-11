@@ -73,6 +73,11 @@
         <button type="button" class="speed-btn" data-game-speed="0">0x</button>
         <button type="button" class="speed-btn" data-game-speed="1">1x</button>
         <button type="button" class="speed-btn" data-game-speed="2">2x</button>
+        <!-- The playtest speed. It is in the markup at all times and hidden until the code is
+             redeemed, so the dial is one control the renderer only shows and hides buttons on
+             rather than a list it rebuilds. Which buttons are shown comes from the engine's
+             availableGameSpeeds, never from a second copy of the rule here. -->
+        <button type="button" class="speed-btn playtest-tool" data-game-speed="8" hidden>8x</button>
       </div>
       <button id="languageToggleBtn" class="small-btn lang-btn">English</button>
     </div>
@@ -102,11 +107,13 @@
             <h3 id="waveLabel">Naechste Welle</h3>
             <p id="waveValue" class="value">20s</p>
             <div class="meter"><span id="waveFill" class="meter-fill"></span></div>
-            <!-- The only part of the strip that takes a click, so it is also the only part
-                 that switches pointer events back on - everything around it stays inert and
-                 the lands underneath stay reachable. Both controls answer the same question
-                 the bar above them asks, which is why they live under it: whether the next
-                 wave arrives on its own, and when. -->
+          </div>
+          <!-- The only part of the strip that takes a click, so it is also the only part
+               that switches pointer events back on - everything around it stays inert and
+               the lands underneath stay reachable. Both controls answer the same question
+               the countdown does, which is why they sit directly beside it: whether the next
+               wave arrives on its own, and when. -->
+          <div class="board-hud-tile hud-wave-controls">
             <div class="wave-controls">
               <button type="button" id="autoWaveBtn" class="hud-btn" aria-pressed="false">Auto: Aus</button>
               <button type="button" id="startNextWaveBtn" class="hud-btn is-call">Welle starten</button>
@@ -155,6 +162,11 @@
         <small id="abilitiesHint" class="action-info"></small>
         <div class="ability-purse">
           <span id="energyLabel">Energie</span>
+          <!-- Playtest only, and inside the purse rather than beside the panel: it is the
+               number it changes that makes it legible, the same way the Fear button sits in
+               the shop's purse. It sits left of that number so the total stays the last thing
+               on the row, where the eye already looks for it. -->
+          <button type="button" id="playtestEnergyBtn" class="purse-btn playtest-tool" hidden>+100 Energie</button>
           <strong id="energyValue">0</strong>
         </div>
         <!-- Where Energy comes from, under the number itself. It is the one currency the
@@ -169,6 +181,11 @@
         <p id="shopSummary" class="action-info"></p>
         <div class="shop-purse">
           <span id="shopFearLabel">Verfuegbare Furcht</span>
+          <!-- Playtest only, and inside the purse rather than in the Fear tile on the map: the
+               grant lands in the banked pool, and the banked pool is the number this purse
+               shows. The board's tile counts what the round has earned, which the button never
+               touches, so a grant pressed there read as doing nothing. -->
+          <button type="button" id="playtestFearBtn" class="purse-btn playtest-tool" hidden>+100 Furcht</button>
           <strong id="shopFearValue">0</strong>
         </div>
         <div id="upgradeList" class="upgrade-list"></div>
@@ -193,6 +210,22 @@
       <button id="wipeSaveBtn" class="small-btn danger-btn">Spielstand loeschen</button>
     </div>
     <small id="autosaveHint">Autosave alle 10s.</small>
+
+    <!-- The redeem bar, at the very bottom of the page because nothing in the round is played
+         through it. A form rather than a button beside an input, so Enter submits it - the code
+         is typed, and a typist expects Enter to be the button.
+
+         The switch-off lives here too: the tools were turned on from this bar, so this is where
+         a player looks to turn them off again. It is the only control on the page that appears
+         because of a redeemed code and removes it, so it stays beside the input that granted it
+         rather than travelling to whichever panel it hides. -->
+    <form class="redeem-bar" id="redeemForm">
+      <label class="redeem-label" id="redeemLabel" for="redeemInput">Code einloesen</label>
+      <input id="redeemInput" class="redeem-input" type="text" autocomplete="off" spellcheck="false" placeholder="Code eingeben">
+      <button type="submit" id="redeemBtn" class="small-btn">Einloesen</button>
+      <button type="button" id="playtestHideBtn" class="small-btn playtest-tool" hidden>Playtest-Werkzeuge ausblenden</button>
+      <span id="redeemStatus" class="redeem-status" role="status"></span>
+    </form>
   </footer>
 
   <script src="engine.js"></script>

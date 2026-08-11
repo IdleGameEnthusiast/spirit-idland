@@ -118,7 +118,10 @@ second buys. `1x` is the game as it ships, at the twenty-second wave `TIME_SCALE
 runs it at double speed for a ten-second wave; `0x` stops every clock in the round — the
 fight, both timers, the cooldowns and `elapsedSeconds` alike. The engine only ever thinks in
 the seconds it was authored in, so the whole of the dial is that one multiplication on `dt`,
-and nothing downstream of the tick knows a speed exists.
+and nothing downstream of the tick knows a speed exists. A redeemed playtest code appends `8x`
+to the dial — far past what the round is balanced to be read at, and a tool for looking at a
+late wave rather than a way of playing to one; see
+[06-ui-contract.md](./06-ui-contract.md#playtest-tools).
 
 **The wave gate** (`ui.autoProceed`, off by default) decides whether a wave may arrive
 unasked. With it on, the loop is exactly as it was: the timer empties, the wave resolves, the
@@ -300,6 +303,12 @@ the player has no lever at all. They have two, both indirect:
   `flash_floods`, or by pushing its occupants away with `wash_away` or the Innate — stops that
   land's bar dead. This is the main lever, and pushing is the cheaper half of it: a push moves
   the pressure to a land that was generating none, but it costs no damage to do.
+- **Pressure moved is not pressure gone.** A push into open, undefended ground leaves the
+  board's total exactly where it was — the same invaders seeping the same Blight, somewhere
+  else. What makes a push pay is *where* it lands: on a land holding Dahan, whose 2-per-Dahan
+  cancellation is what actually removes the damage. The one exception is the sea:
+  `wash_away` cast on a coastal land carries its units off the island, and that gross is gone
+  from every land's arithmetic for good.
 - **Dahan cancel 2 damage each, and a land whose Dahan out-defend its invaders sits at zero.**
   Keeping Dahan alive, or reinforcing with `rivers_bounty`, is the difference between a land
   that costs the round nothing and one that costs it everything. `rivers_bounty` always lands

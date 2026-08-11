@@ -74,6 +74,31 @@
   });
 
   /* ---------------------------------------------------------------- *
+   * The order the automations resolve in                               *
+   * ---------------------------------------------------------------- */
+
+  test("tick order: the Innate goes last, so the heavier casts choose on an unstirred board", () => {
+    const ctx = fullKit();
+    const { state } = ctx;
+    grantUpgrade(state, "auto_innate");
+    grantUpgrade(state, "auto_wash_away");
+    clearBoard(state);
+
+    // Land 4 is inland mountains holding two towns, with the open coast at land 1 beside it.
+    // Both automations are ready on the same tick and both want land 4. Wash Away resolves
+    // first and empties the build threat whole; the Innate going first would have carried one
+    // town off to the coast and left the wash a different, smaller board than the one its own
+    // priority list was read off.
+    state.invader = { build: ["mountains"], explore: [] };
+    setLand(state, "4", { towns: 2 }, 0);
+
+    advance(ctx, 1);
+
+    assertEqual(engine.invaderCountInLand(state.invaders["4"]), 0, "the wash emptied the build threat");
+    assertEqual(state.invaders["1"].towns, 2, "both towns went the same way, in one cast");
+  });
+
+  /* ---------------------------------------------------------------- *
    * Auto Wash Away                                                     *
    * ---------------------------------------------------------------- */
 
@@ -91,31 +116,83 @@
     grantUpgrade(state, "auto_wash_away");
     clearBoard(state);
 
-    // Wetlands is lands 1 and 7, and land 1 holds exactly what the push can clear out.
+    // Wetlands is lands 1 and 7. Land 7 is inland, so this is the push half of the ability,
+    // and it holds exactly what the push can clear out.
     state.invader = { build: ["wetlands"], explore: [] };
-    setLand(state, "1", { explorers: 2 }, 0);
+    setLand(state, "7", { explorers: 2 }, 0);
 
     engine.resolveAutoWashAway(state);
-    assertEqual(state.invaders["1"].explorers, 0, "the build threat was washed out");
+    assertEqual(state.invaders["7"].explorers, 0, "the build threat was washed out");
   });
 
-  test("auto-wash-away prio 2: routes an undefended stack into Dahan cover", () => {
+  test("auto-wash-away prio 2: takes the coast the sea empties hardest", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_wash_away");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    state.round.fearEarned = 0;
+
+    // Land 1 gives the water one unit to carry, land 3 gives it two. Nothing is on the build
+    // track, so what the sea takes is the whole question.
+    setLand(state, "1", { explorers: 1 }, 0);
+    setLand(state, "3", { towns: 2 }, 0);
+
+    assertEqual(engine.pickWashAwayAutoTarget(state), "3", "the fuller coast");
+
+    engine.resolveAutoWashAway(state);
+    assertEqual(engine.invaderCountInLand(state.invaders["3"]), 0, "both towns went out to sea");
+    assertEqual(state.round.fearEarned, 4, "and a removal pays like a defeat, even unclicked");
+  });
+
+  test("auto-wash-away prio 2 outranks routing: a coast beats an inland shove into cover", () => {
     const { state } = fullKit();
     grantUpgrade(state, "auto_wash_away");
     clearBoard(state);
     state.invader = { build: [], explore: [] };
 
-    // Nothing to break, so the pick falls to the routing priority. Land 1's neighbours
-    // include land 2, which is the only land holding Dahan.
-    setLand(state, "1", { explorers: 1 }, 0);
-    state.dahan["2"] = 3;
+    // Land 8 is inland and undefended, and land 5 next door holds Dahan - the routing case.
+    // Land 3 is a coast with one explorer on it, which is worth less on the board but is the
+    // only cast that takes a unit off it.
+    setLand(state, "8", { explorers: 2 }, 0);
+    state.dahan["5"] = 3;
+    setLand(state, "3", { explorers: 1 }, 0);
+
+    assertEqual(engine.pickWashAwayAutoTarget(state), "3", "removal outranks relocation");
+  });
+
+  test("auto-wash-away prio 3: routes an undefended stack into Dahan cover", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_wash_away");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+
+    // Nothing to break and no coast holding anything, so the pick falls to the routing
+    // priority. Land 8's neighbours include land 5, the only land holding Dahan.
+    setLand(state, "8", { explorers: 1 }, 0);
+    state.dahan["5"] = 3;
 
     const target = engine.pickWashAwayAutoTarget(state);
-    assertEqual(target, "1", "the undefended land is the one to push off");
+    assertEqual(target, "8", "the undefended land is the one to push off");
 
     engine.resolveAutoWashAway(state);
-    assertEqual(state.invaders["1"].explorers, 0, "pushed off the undefended land");
-    assertEqual(state.invaders["2"].explorers, 1, "and onto the defended one");
+    assertEqual(state.invaders["8"].explorers, 0, "pushed off the undefended land");
+    assertEqual(state.invaders["5"].explorers, 1, "and onto the defended one");
+  });
+
+  test("auto-wash-away: it will not stack invaders onto invaders to buy position", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_wash_away");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+
+    // Land 8 is inland, defended and thinning - the protect-thin case - but every neighbour
+    // it has is already occupied, so the only push available concentrates a stack. A player
+    // may make that trade with their eyes open; the automation declines it.
+    setLand(state, "8", { towns: 1 }, 1);
+    for (const id of ["5", "6", "7"]) setLand(state, id, { explorers: 1 }, 0);
+
+    assert(engine.abilityLegalLand(state, "wash_away", "8"), "a player could still click it");
+    assertEqual(engine.pickWashAwayAutoTarget(state), null, "the automation does not");
   });
 
   test("auto-wash-away: leaves the cooldown alone when no priority applies", () => {
@@ -130,6 +207,106 @@
   });
 
   /* ---------------------------------------------------------------- *
+   * Auto Flash Floods                                                  *
+   * ---------------------------------------------------------------- */
+
+  test("auto-flash-floods: does nothing until it is bought", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    setLand(state, "1", { explorers: 1 }, 0);
+
+    engine.resolveAutoFlashFloods(state);
+    assertEqual(state.invaders["1"].explorers, 1, "nothing burns unbought");
+  });
+
+  test("auto-flash-floods prio 1: empties a land the next Build would thicken", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_flash_floods");
+    clearBoard(state);
+
+    // Wetlands is lands 1 and 7. Land 1 is coastal, so the flood lands for 2 there - enough
+    // to take the explorer standing on the build threat.
+    state.invader = { build: ["wetlands"], explore: [] };
+    setLand(state, "1", { explorers: 1 }, 0);
+
+    assertEqual(engine.pickFlashFloodsAutoTarget(state), "1", "the build threat is the target");
+    engine.resolveAutoFlashFloods(state);
+    assertEqual(state.invaders["1"].explorers, 0, "and it was washed off the board");
+    assertEqual(
+      state.abilities.flash_floods.cooldownRemaining,
+      engine.abilityCooldownSeconds(state, "flash_floods"),
+      "on the same cooldown a click would have spent"
+    );
+  });
+
+  test("auto-flash-floods prio 2: strikes where the cast actually kills", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_flash_floods");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+
+    // Land 6 is inland and holds a city the flood cannot dent; land 3 is coastal and holds an
+    // explorer it takes outright. Nothing is on the track, so the kill is what decides.
+    setLand(state, "6", { cities: 1 }, 0);
+    setLand(state, "3", { explorers: 1 }, 0);
+
+    assertEqual(engine.pickFlashFloodsAutoTarget(state), "3", "the land where something dies");
+    engine.resolveAutoFlashFloods(state);
+    assertEqual(state.invaders["3"].explorers, 0, "the explorer fell");
+    assertEqual(state.invaders["6"].cities, 1, "the city was left alone");
+  });
+
+  test("auto-flash-floods: a coast beats an inland when both would kill", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+
+    // Land 4 is inland, land 3 coastal, and both hold a lone explorer. The tie-break is the
+    // coastal bonus, not the land id - land 4 would win a plain lowest-id sort.
+    setLand(state, "3", { explorers: 1 }, 0);
+    setLand(state, "4", { explorers: 1 }, 0);
+
+    assertEqual(engine.flashFloodsDamageIn(state, "3"), 2, "the coast takes the bonus point");
+    assertEqual(engine.flashFloodsDamageIn(state, "4"), 1, "the inland does not");
+    assertEqual(engine.pickFlashFloodsAutoTarget(state), "3", "so the coast is where it strikes");
+  });
+
+  test("auto-flash-floods: leaves the cooldown alone when no priority applies", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_flash_floods");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+
+    assertEqual(engine.pickFlashFloodsAutoTarget(state), null, "an empty board asks for nothing");
+    engine.resolveAutoFlashFloods(state);
+    assertEqual(state.abilities.flash_floods.cooldownRemaining, 0, "a tick that does nothing costs nothing");
+  });
+
+  test("auto-flash-floods: still needs the ability unlocked with Energy this round", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "auto_flash_floods");
+    clearBoard(state);
+    setLand(state, "1", { explorers: 1 }, 0);
+    assert(!engine.abilityIsUnlocked(state, "flash_floods"), "not in the opening kit");
+
+    engine.resolveAutoFlashFloods(state);
+    assertEqual(state.invaders["1"].explorers, 1, "the automation buys the click, not the ability");
+  });
+
+  test("auto-flash-floods: fires on its own through the tick", () => {
+    const ctx = fullKit();
+    const { state } = ctx;
+    grantUpgrade(state, "auto_flash_floods");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    setLand(state, "3", { explorers: 1 }, 0);
+
+    advance(ctx, engine.ABILITIES.flash_floods.cooldownSeconds);
+
+    assertEqual(state.invaders["3"].explorers, 0, "the explorer went without a click");
+  });
+
+  /* ---------------------------------------------------------------- *
    * Prices                                                             *
    * ---------------------------------------------------------------- */
 
@@ -139,23 +316,151 @@
 
     assertEqual(cost("auto_boon"), 25, "Boon: a click every twelve beats");
     assertEqual(cost("auto_innate"), 100, "Innate: a click and a decision");
-    assertEqual(cost("auto_wash_away"), 150, "Wash Away: a decision, but the push never kills");
-    assertEqual(cost("auto_bounty"), 250, "Bounty: a Dahan every cooldown, all round");
+    assertEqual(cost("auto_bounty"), 200, "Bounty: a Dahan every cooldown, all round");
+    assertEqual(cost("auto_flash_floods"), 300, "Flash Floods: damage, which the health ladder erodes");
+    assertEqual(cost("auto_wash_away"), 400, "Wash Away: removal, which the health ladder cannot touch");
     assertEqual(cost("auto_start_round"), 500, "Auto Start Round: every round after it");
 
-    // Bounty is priced against the reinforcement ladder's last rung rather than against the
-    // other automations, because more Dahan is what it actually sells.
+    // The three ability automations rank by what their ability does to the board: reinforce,
+    // then kill, then remove outright. Each rung is a stronger claim on the round than the one
+    // under it, and all three sit under the purchase that changes the game's shape.
+    assert(cost("auto_flash_floods") > cost("auto_bounty"), "killing is dearer than accruing");
+    assert(cost("auto_wash_away") > cost("auto_flash_floods"), "and removal is dearer than killing");
+    assert(cost("auto_wash_away") < cost("auto_start_round"), "and all of it is cheaper than every round after it");
+
+    // Deliberately under the last rung of the reinforcement ladder, which is what the Bounty
+    // used to be priced against: the ladder sells one Dahan for the whole round and this sells
+    // one every 15 beats, so the ladder is the early lever and this is what replaces it.
     const lastRung = Math.round(
       engine.UPGRADES.dahan_reinforcement.baseCost
       * Math.pow(engine.UPGRADE_COST_GROWTH, engine.upgradeMaxTier("dahan_reinforcement") - 1)
     );
-    assert(Math.abs(cost("auto_bounty") - lastRung) < 30, "Bounty sits in the same band as the last Dahan tier");
+    assert(cost("auto_bounty") < lastRung, "the Bounty undercuts the ladder's last rung");
   });
 
   test("shop: every automation is a one-off", () => {
-    for (const id of ["auto_boon", "auto_innate", "auto_wash_away", "auto_bounty", "auto_start_round"]) {
+    const ids = [
+      "auto_boon", "auto_innate", "auto_wash_away", "auto_bounty", "auto_flash_floods",
+      "auto_buy_abilities", "auto_start_round"
+    ];
+    for (const id of ids) {
       assertEqual(engine.upgradeMaxTier(id), 1, `${id} has a single tier`);
     }
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Auto-buy abilities                                                 *
+   * ---------------------------------------------------------------- */
+
+  test("auto-buy: does nothing until it is bought", () => {
+    const { state } = newGame();
+    state.resources.energy = 1000;
+
+    engine.resolveAutoBuyAbilities(state);
+
+    assert(!engine.abilityIsUnlocked(state, "rivers_bounty"), "the kit stays locked");
+    assertEqual(state.resources.energy, 1000, "and the purse is untouched");
+  });
+
+  test("auto-buy: unlocks the kit with the round's own Energy, ready at once", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "auto_buy_abilities");
+    state.resources.energy = 35;
+
+    engine.resolveAutoBuyAbilities(state);
+
+    for (const abilityId of ["rivers_bounty", "flash_floods", "wash_away"]) {
+      assert(engine.abilityIsUnlocked(state, abilityId), `${abilityId} was bought`);
+      assert(engine.abilityIsReady(state, abilityId), "and it arrives ready, as a click's would");
+    }
+    assertEqual(state.resources.energy, 0, "5 + 10 + 20, exactly what the ladder costs");
+  });
+
+  test("auto-buy: cheapest first, so a thin purse is not stalled by the dearest unlock", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "auto_buy_abilities");
+    state.resources.energy = 15;
+
+    engine.resolveAutoBuyAbilities(state);
+
+    assert(engine.abilityIsUnlocked(state, "rivers_bounty"), "the 5 landed");
+    assert(engine.abilityIsUnlocked(state, "flash_floods"), "and the 10");
+    assert(!engine.abilityIsUnlocked(state, "wash_away"), "the 20 is still out of reach");
+    assertEqual(state.resources.energy, 0, "nothing left over and nothing overspent");
+  });
+
+  test("auto-buy: unlocks come before tiers, whatever the purse could stretch to", () => {
+    // 50 Energy is exactly one Innate tier. Spending it there would leave the three cast
+    // automations idling all round on abilities that were never bought.
+    const { state } = newGame();
+    grantUpgrade(state, "auto_buy_abilities");
+    state.resources.energy = 50;
+
+    engine.resolveAutoBuyAbilities(state);
+
+    assert(engine.abilityIsUnlocked(state, "wash_away"), "the kit came first");
+    assertEqual(engine.abilityTier(state, "innate_power"), 0, "and the Innate waits its turn");
+    assertEqual(state.resources.energy, 15, "35 spent on the three unlocks");
+  });
+
+  test("auto-buy: raises the Innate once the kit is bought and the Energy is there", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_buy_abilities");
+    state.resources.energy = 50;
+
+    engine.resolveAutoBuyAbilities(state);
+
+    assertEqual(engine.abilityTier(state, "innate_power"), 1, "tier 2 on the card");
+    assertEqual(state.resources.energy, 0, "paid for out of the round's Energy");
+  });
+
+  test("auto-buy: one rung per tick, never two", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_buy_abilities");
+    state.resources.energy = 1000;
+
+    engine.resolveAutoBuyAbilities(state);
+    assertEqual(engine.abilityTier(state, "innate_power"), 1, "one rung this tick");
+
+    engine.resolveAutoBuyAbilities(state);
+    assertEqual(engine.abilityTier(state, "innate_power"), 2, "the next one on the next tick");
+
+    engine.resolveAutoBuyAbilities(state);
+    assertEqual(engine.abilityTier(state, "innate_power"), 2, "and it stops at the top of the ladder");
+    assertEqual(state.resources.energy, 1000 - 50 - 250, "spending only the two rungs it climbed");
+  });
+
+  test("auto-buy: the tick runs it, and what it buys can fire the same round", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    grantUpgrade(state, "auto_buy_abilities");
+    grantUpgrade(state, "auto_bounty");
+    clearBoard(state);
+    state.resources.energy = 5;
+
+    const before = engine.LAND_IDS.reduce((sum, id) => sum + state.dahan[id], 0);
+    advance(ctx, 1);
+
+    assert(engine.abilityIsUnlocked(state, "rivers_bounty"), "the tick bought it");
+    const after = engine.LAND_IDS.reduce((sum, id) => sum + state.dahan[id], 0);
+    assert(after > before, "and the automation waiting on it cast on the same tick");
+  });
+
+  test("auto-buy: bought mid-round, it leaves that round's Energy alone", () => {
+    // The same rule as every other automation: a round cannot benefit from itself. Written
+    // straight into the purchase list, without the round snapshot grantUpgrade also writes.
+    const { state } = newGame();
+    state.upgrades.purchased.auto_buy_abilities = 1;
+    state.resources.energy = 100;
+
+    engine.resolveAutoBuyAbilities(state);
+
+    assert(!engine.abilityIsUnlocked(state, "rivers_bounty"), "nothing bought this round");
+    assertEqual(state.resources.energy, 100, "and nothing spent");
+
+    engine.endRound(state);
+    engine.startNextRound(state);
+    assertEqual(engine.activeUpgradeTier(state, "auto_buy_abilities"), 1, "live from the next round");
   });
 
   /* ---------------------------------------------------------------- *

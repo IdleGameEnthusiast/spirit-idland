@@ -97,6 +97,17 @@ What is left:
   thinnest land on the board when nothing is contested, so it banks Dahan on a quiet island
   instead of refusing; and a push now always takes the lowest-numbered free neighbour. Both
   make the kit more reliable — and neither has been re-measured against the Blight rates.
+- **`wash_away` was rebuilt and nothing downstream has been measured.** It was too weak for
+  three reasons at once: a push into empty ground is Blight-neutral by construction (the same
+  gross, a different land), it never produced a defeat so it earned no Fear and no Energy, and
+  its two-land target rule made it uncastable exactly when the island filled up. It now pushes
+  onto an occupied neighbour when there is no open ground, and from a coastal land it carries
+  up to 2 units off the island outright, paying a defeat's Fear and Energy. Unlock stays 20,
+  `auto_wash_away` 150 → 400, and the other two automations reranked under it (`auto_bounty`
+  250 → 200, `auto_flash_floods` 350 → 300). Nothing here has been played: the open questions
+  are whether coastal removal outclasses `flash_floods` outright, whether the occupied fallback
+  hands the invaders too many Cities, and whether `auto_bounty` under the reinforcement
+  ladder's last rung makes that rung dead content.
 
 ## Still Open
 
