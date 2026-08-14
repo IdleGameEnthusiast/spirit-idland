@@ -329,7 +329,11 @@ const LAND_STATE_STYLE = {
   "wave-active": { fill: 0.56, ring: "#e76755", opacity: 1, chip: 1 },
   legal: { fill: 0.62, ring: "#8ed3e6", opacity: 1, chip: 1 },
   selected: { fill: 0.48, ring: "transparent", opacity: 1, chip: 1 },
-  out: { fill: 0.16, ring: "transparent", opacity: 0.4, chip: 0.32 }
+  out: { fill: 0.16, ring: "transparent", opacity: 0.4, chip: 0.32 },
+  // Never returned by landRenderStates: a Discover marks a land without changing what the
+  // land *is* to a click, so only the ring colour is read from here. Gold rather than the
+  // Build red, because a Discover seeds Explorers - it is the softer of the two warnings.
+  "explore-active": { fill: 0.42, ring: "#f2c45a", opacity: 1, chip: 1 }
 };
 
 // Sprite ids from index.html. Shapes follow the printed game: stick figure, two buildings,
@@ -392,8 +396,12 @@ function displaySeconds(state, gameSeconds) {
 // A land the wave will visit and find nothing gets the quiet variant. The loud frame is the
 // same warning colour as the pulsing wave ring, so wearing it while announcing that nothing
 // happens pulls the eye to the one land on the list that needs no attention.
+//
+// It survives an armed ability. Which land is about to be built on is exactly what the choice
+// of target is made against, and while armed the ring has been repainted for legality - the
+// banner is the only thing left saying where the wave lands. Illegal lands dim with the rest
+// of their chip, so legality still reads at a glance.
 function chipWaveMarkup(state, landId) {
-  if (state.pendingAbilityTarget) return "";
   if (!waveLands(state).includes(landId)) return "";
 
   const quiet = buildOutcomeInLand(state, landId) === null;
@@ -411,8 +419,11 @@ function chipWaveMarkup(state, landId) {
 // above, in unitGlyph. The bar fills continuously, so the fill itself is written by
 // patchLandMeters rather than baked in here - a bar rebuilt ten times a second could never
 // animate.
+//
+// Like the wave banner, this stays through an armed ability: how close a land is to blighting
+// out is the reason one target is picked over another, and blanking it makes the player disarm
+// to read the board and arm again.
 function chipMetersMarkup(state, landId) {
-  if (state.pendingAbilityTarget) return "";
   if (landPressure(state, landId).gross <= 0) return "";
 
   const t = locale(state);
@@ -430,6 +441,8 @@ function chipMetersMarkup(state, landId) {
 function renderBoard(state) {
   const t = locale(state);
   const states = landRenderStates(state);
+  const wave = waveLands(state);
+  const explore = exploreLands(state);
   const selected = effectiveSelectedLand(state);
   const defeatFx = activeDefeatFx(state);
   const blightFx = activeBlightFx(state);
@@ -451,16 +464,29 @@ function renderBoard(state) {
     if (ring) {
       // A wave target keeps its own colour even while selected, so the selection ring can
       // never quietly hide which lands the invaders are about to hit.
-      const isWaveTarget = states[landId] === "wave-active";
+      //
+      // Read from waveLands rather than the render state, because the render state stops
+      // saying "wave-active" the moment an ability is armed - which is precisely when the
+      // player is choosing between these lands and most needs to see them. Legality still
+      // reads without the ring: legal lands stay at full opacity while the rest fade to 0.4.
+      const isWaveTarget = wave.includes(landId);
+      // Build wins the clash. Once Discover widens far enough the two slots can name the same
+      // terrain, and a land taking both should wear the louder of the two warnings.
+      const isExploreTarget = !isWaveTarget && explore.includes(landId);
       const strokeColour = isWaveTarget
         ? LAND_STATE_STYLE["wave-active"].ring
-        : (landId === selected ? "#f7f1de" : style.ring);
+        : isExploreTarget
+          ? LAND_STATE_STYLE["explore-active"].ring
+          : (landId === selected ? "#f7f1de" : style.ring);
 
       // The ring lives in its own layer now, so it no longer inherits the land group's dim.
       ring.setAttribute("opacity", String(style.opacity));
       ring.setAttribute("stroke", strokeColour);
-      ring.setAttribute("stroke-width", isWaveTarget ? "4" : (landId === selected ? "2.6" : "3"));
+      ring.setAttribute("stroke-width", isWaveTarget || isExploreTarget
+        ? "4"
+        : (landId === selected ? "2.6" : "3"));
       ring.classList.toggle("is-wave-target", isWaveTarget);
+      ring.classList.toggle("is-explore-target", isExploreTarget);
     }
 
     const counts = state.invaders[landId];
@@ -1240,6 +1266,9 @@ function mapSignature(state) {
     `sel:${effectiveSelectedLand(state)}`,
     `armed:${state.pendingAbilityTarget || "-"}`,
     `wave:${state.invader.build || "-"}`,
+    // The Discover slot paints rings too now, so a redraw it does not trigger would leave
+    // gold on lands the track has already moved off.
+    `disc:${state.invader.explore || "-"}`,
     `status:${state.round.status}`
   ];
 

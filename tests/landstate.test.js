@@ -66,6 +66,30 @@
     assert(!Object.values(states).includes("wave-active"), "a frozen board has no incoming wave");
   });
 
+  test("landstate: the Discover slot names its lands, armed ability or not", () => {
+    const { state } = newGame();
+    unlockAllAbilities(state);
+    clearBoard(state);
+    setLand(state, "3", { towns: 1 }, 0);
+    state.invader = { build: "mountains", explore: "jungle" };
+
+    assertEqual(engine.exploreLands(state).sort().join(","), "3,5", "both jungle lands");
+
+    // The whole point of reading it off the track rather than off the render states: arming
+    // an ability is exactly when the player is choosing between these lands.
+    engine.triggerAbility(state, "flash_floods");
+    assert(state.pendingAbilityTarget, "the ability is waiting on a click");
+    assertEqual(engine.exploreLands(state).sort().join(","), "3,5", "still named while armed");
+  });
+
+  test("landstate: an ended round marks no land as a Discover target", () => {
+    const { state } = newGame();
+    state.invader = { build: null, explore: "jungle" };
+    engine.endRound(state);
+
+    assertEqual(engine.exploreLands(state).length, 0, "a frozen board has nothing coming ashore");
+  });
+
   test("landstate: selection falls back to a wave target, then to land 1", () => {
     const { state } = newGame();
     state.ui.selectedLand = null;

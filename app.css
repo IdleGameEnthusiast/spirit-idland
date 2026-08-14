@@ -470,9 +470,11 @@ h3 {
   font-family: "Cinzel", "Times New Roman", serif;
 }
 
-/* Build is the slot that makes the island measurably worse next wave, so it is the one that
-   carries the warning colour. Discover only ever adds a single explorer. */
+/* Build is the slot that makes the island measurably worse next wave, so it carries the
+   warning colour. Discover carries gold: a softer warning for a lighter blow, and the same
+   two colours the rings on the board are painted in, so the track and the island agree. */
 .track-slot-build span { color: var(--accent-pressure); }
+.track-slot-discover span { color: var(--accent-energy); }
 
 /* The escalation ladder. It is a reference table more than a readout, so it is set small and
    quiet by default and lets the two states that matter - in force, and next - do the talking.
@@ -1130,6 +1132,13 @@ button.reset {
   animation: phase-pulse 1.8s ease-in-out infinite;
 }
 
+/* A land the next wave will come ashore in pulses on the same clock, in the gold that means
+   Discover everywhere else on screen. Same rhythm because both are the same kind of news -
+   the wave is coming here - and the colour is what separates a Build from a landing. */
+.land-ring.is-explore-target {
+  animation: phase-pulse 1.8s ease-in-out infinite;
+}
+
 /* A legal target for the armed ability holds a steady ring instead: the wave is a warning,
    a legal target is an invitation, and they should not read the same. */
 .land-shape.land-legal-target { cursor: crosshair; }
@@ -1592,7 +1601,8 @@ button.reset {
   .hud-fear.is-milestone .value { animation: none; }
   .hud-fear.is-milestone .fear-milestone { animation: none; opacity: 1; }
 
-  .land-ring.is-wave-target { animation: none; }
+  .land-ring.is-wave-target,
+  .land-ring.is-explore-target { animation: none; }
   .hud-blight .meter-fill.is-critical { animation: none; }
 }
 

@@ -3577,6 +3577,18 @@ function waveLands(state) {
   return landsOfTerrains(buildTerrains(state));
 }
 
+// The lands the next wave will come ashore in. Weaker news than a Build - a Discover only
+// seeds Explorers - but it is the other half of what the track promises, and a player reading
+// only the Build slot cannot see where next wave's Build will land: the track slides, so the
+// terrains discovered now are the ones built after (see shiftInvaderTrack).
+//
+// A land can be on both lists once Discover widens far enough to clash with Build. Which
+// marking wins is the view's call, not this one's.
+function exploreLands(state) {
+  if (state.round.status !== "running") return [];
+  return landsOfTerrains(exploreTerrains(state));
+}
+
 // The detail panel is never empty: it falls back to the land the next wave will hit, so
 // the most urgent land is on screen without the player hunting for it.
 function effectiveSelectedLand(state) {
@@ -5204,6 +5216,7 @@ const ENGINE_EXPORTS = {
   pushHasOpenGround,
   riversBountyLand,
   waveLands,
+  exploreLands,
   effectiveSelectedLand,
   landRenderStates,
   invaderCountInLand,
