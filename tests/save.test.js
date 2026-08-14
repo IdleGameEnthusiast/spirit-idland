@@ -259,4 +259,110 @@
     assertEqual(loaded.round.fearEarned, 0, "missing field defaults");
     assertEqual(loaded.essence.jungle, 0, "missing pool defaults");
   });
+
+  /* Export and import - docs/spec/08-acceptance-tests.md#save-and-migration-checks */
+
+  test("export: a file round-trips the board, the upgrades and the log", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+
+    advance(ctx, 20);
+    state.meta.fear = 31;
+    state.upgrades.purchased.dahan_reinforcement = 2;
+    state.ui.language = "en";
+    state.invaders["5"] = { explorers: 2, towns: 1, cities: 0 };
+    state.dahan["5"] = 3;
+
+    const result = engine.importSave(engine.exportSave(state));
+
+    assert(result.ok, "the file we just wrote is accepted");
+    assert(!result.reset, "a current-version file loads as itself");
+    assertEqual(result.state.meta.fear, 31, "fear");
+    assertEqual(result.state.upgrades.purchased.dahan_reinforcement, 2, "upgrade tier");
+    assertEqual(result.state.round.wavesResolved, state.round.wavesResolved, "waves");
+    assertEqual(result.state.invaders["5"].explorers, 2, "invaders");
+    assertEqual(result.state.dahan["5"], 3, "dahan");
+    assertEqual(result.state.ui.language, "en", "language preference");
+    assertDeepEqual(result.state._log, state._log, "the log travels with the run");
+  });
+
+  // The log lines are German and the file is base64: a byte-wise encoder would mangle every
+  // umlaut in the export, and the damage would only show up on the import.
+  test("export: German log lines survive the encoding intact", () => {
+    const { state } = newGame();
+    engine.addLog(state, "Verderbnis über die Küste, Dörfer zerstört");
+
+    // Contains rather than equals: addLog stamps the time onto the front of every line.
+    const loaded = engine.importSave(engine.exportSave(state)).state;
+    assert(loaded._log[0].includes("Verderbnis über die Küste, Dörfer zerstört"), `umlauts intact: ${loaded._log[0]}`);
+  });
+
+  test("import: an edited file is refused rather than loaded", () => {
+    const { state } = newGame();
+    state.meta.fear = 5;
+
+    const file = engine.exportSave(state);
+    const [magic, payload, checksum] = file.split(".");
+    // The payload swapped for one that decodes to 9999 Fear, with the original checksum left
+    // in place - the edit a player would actually attempt.
+    const forged = engine.exportSave({ ...state, meta: { ...state.meta, fear: 9999 } }).split(".")[1];
+
+    const result = engine.importSave(`${magic}.${forged}.${checksum}`);
+    assert(!result.ok, "refused");
+    assertEqual(result.reason, "checksum", "and refused for the right reason");
+  });
+
+  test("import: junk, truncation and a bare JSON save are all refused by format", () => {
+    const { state } = newGame();
+    const file = engine.exportSave(state);
+
+    for (const [label, text] of [
+      ["empty", ""],
+      ["whitespace", "   \n"],
+      ["prose", "hello"],
+      ["no magic", file.split(".").slice(1).join(".")],
+      ["truncated", file.slice(0, file.length - 12)],
+      ["raw json", JSON.stringify(state)]
+    ]) {
+      const result = engine.importSave(text);
+      assert(!result.ok, `${label} is refused`);
+      assert(result.reason === "format" || result.reason === "checksum", `${label} names a reason`);
+    }
+  });
+
+  test("import: a file from an older version reports the reset instead of loading it", () => {
+    newGame();
+    const legacy = engine.exportSave({ schemaVersion: "2.0.0", meta: { fear: 999 }, ui: { language: "en" } });
+
+    const result = engine.importSave(legacy);
+    assert(result.ok, "a well-formed old file is still readable");
+    assert(result.reset, "but it is flagged as a reset, so the UI can ask first");
+    assertEqual(result.fromVersion, "2.0.0", "and names the version it came from");
+    assertEqual(result.state.meta.fear, 0, "none of the old run's Fear carries over");
+    assertEqual(result.state.ui.language, "en", "the language preference survives");
+  });
+
+  test("import: a file gets no offline credit for the time it spent on disk", () => {
+    const ctx = newGame();
+    advance(ctx, 5);
+
+    const file = engine.exportSave(ctx.state);
+    const timerAtExport = ctx.state.round.waveTimerRemaining;
+    const wavesAtExport = ctx.state.round.wavesResolved;
+    ctx.clock.advance(7200);
+
+    const loaded = engine.importSave(file).state;
+    assertClose(loaded.round.waveTimerRemaining, timerAtExport, 0.0001, "wave timer unchanged");
+    assertEqual(loaded.round.wavesResolved, wavesAtExport, "no waves credited");
+  });
+
+  test("export: the file name carries the wave and ends in the save extension", () => {
+    const { state } = newGame();
+    state.round.wavesResolved = 17;
+
+    const name = engine.exportSaveFileName(state, new Date("2026-08-15T09:30:00Z"));
+    assert(name.endsWith(engine.SAVE_FILE_EXT), `extension: ${name}`);
+    assert(name.includes("17"), `wave: ${name}`);
+    assert(name.includes("2026-08-15"), `date: ${name}`);
+  });
 })();

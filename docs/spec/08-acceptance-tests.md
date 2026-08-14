@@ -314,6 +314,15 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    starts `meta.fear` at 0, and logs a notice explaining the reset.
 4. Invalid `round.status` values normalize to `running` instead of corrupting the UI.
 5. An unknown `pendingAbilityTarget` id normalizes to `null`.
+6. An exported file re-imports as the run that wrote it: board, upgrades, Fear, language and
+   log, with German text intact through the encoding.
+7. An imported file gets no offline credit for the time it spent on disk, exactly as a stored
+   save gets none for a closed tab.
+8. A file whose contents no longer match its checksum is refused with reason `checksum`; junk,
+   truncation, a missing magic word and a bare JSON save are refused with reason `format`.
+   No refusal alters the run in progress.
+9. A file from an older `schemaVersion` imports as `reset`, naming the version it came from, so
+   the UI can ask before starting a fresh game rather than silently doing so.
 
 ## UI Checks
 
@@ -340,7 +349,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 
 ## Current Validation Status
 
-**365 automated checks, all passing.** Coverage by file:
+**372 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -357,7 +366,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/shop.test.js` | Fear persistence, purchases, tiers, next round |
 | `tests/fear.test.js` | The three Fear ladders, the locale tables, the gate |
 | `tests/haste.test.js` | The Dahan Remember: the Fear pool and the strike clock |
-| `tests/save.test.js` | Round-trip, no offline credit, migration, normalization |
+| `tests/save.test.js` | Round-trip, no offline credit, migration, normalization, export/import |
 | `tests/landstate.test.js` | Land state precedence (06) |
 
 Not automated, and verified by hand instead:
@@ -365,10 +374,12 @@ Not automated, and verified by hand instead:
 - Rendering itself — that the island draws, that chips sit on their lands, that colours are
   tellable apart. Screenshots via headless Edge, not assertions.
 - The click wiring was verified end to end by driving the real controls in a headless
-  browser (arm, dim, illegal click, legal click, cancel; and for the pacing controls: the
+  browser (arm, dim, illegal click, legal click, cancel; for the pacing controls: the
   gate at a fresh game, the call, each speed button, the auto toggle, and the labels in both
-  languages), but those probes were not kept as standing tests; they need a DOM the harness
-  does not currently build.
+  languages; and for export/import: the download the button produces, that same file fed back
+  through the picker, a declined confirm leaving the run untouched, and an edited file and a
+  junk file each refused with their own message), but those probes were not kept as standing
+  tests; they need a DOM the harness does not currently build.
 
 ## Acceptance
 

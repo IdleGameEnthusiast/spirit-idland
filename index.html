@@ -230,9 +230,17 @@
   <footer>
     <div class="footer-controls">
       <button id="manualSaveBtn" class="small-btn">Jetzt speichern</button>
+      <button id="exportSaveBtn" class="small-btn">Exportieren</button>
+      <button id="importSaveBtn" class="small-btn">Importieren</button>
       <button id="wipeSaveBtn" class="small-btn danger-btn">Spielstand loeschen</button>
+      <!-- The picker itself is never shown: the button above opens it, so it can be styled and
+           translated like every other control instead of wearing the browser's own file input. -->
+      <input id="importSaveInput" type="file" accept=".spiritsave,text/plain" hidden>
     </div>
     <small id="autosaveHint">Autosave alle 10s.</small>
+    <!-- Beneath the row rather than beside it: the message is a sentence, and a sentence in the
+         row would push the wipe button off the end of a narrow footer. -->
+    <span id="saveStatus" class="save-status" role="status"></span>
 
     <!-- The redeem bar, at the very bottom of the page because nothing in the round is played
          through it. A form rather than a button beside an input, so Enter submits it - the code

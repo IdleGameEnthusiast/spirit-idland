@@ -995,8 +995,15 @@ const I18N = {
 
     logTitle: "Spielprotokoll",
     manualSaveBtn: "Jetzt speichern",
+    exportSaveBtn: "Exportieren",
+    importSaveBtn: "Importieren",
     wipeSaveBtn: "Spielstand löschen",
     autosaveHint: "Autosave alle 10s.",
+    importOk: "Spielstand geladen.",
+    importReset: "Datei stammt aus Version {version} und wurde auf ein neues Spiel zurückgesetzt.",
+    importBadFormat: "Das ist keine Spirit-Idland-Datei.",
+    importBadChecksum: "Die Datei wurde verändert und wird nicht geladen.",
+    importCancelled: "Import abgebrochen.",
 
     redeemLabel: "Code einlösen",
     redeemPlaceholder: "Code eingeben",
@@ -1127,6 +1134,8 @@ const I18N = {
     migrationReset: "Alter Spielstand (Version {version}) ist nicht mit dem Rundenmodus kompatibel und wurde zurückgesetzt.",
     saveWiped: "Spielstand gelöscht.",
     manualSaved: "Manuelles Speichern abgeschlossen.",
+    saveExported: "Spielstand als {file} exportiert.",
+    saveImported: "Spielstand importiert: Runde {round}, Welle {wave}.",
     spiritAwakens: "Der Geist erwacht."
   },
 
@@ -1269,8 +1278,15 @@ const I18N = {
 
     logTitle: "Event log",
     manualSaveBtn: "Save now",
+    exportSaveBtn: "Export",
+    importSaveBtn: "Import",
     wipeSaveBtn: "Wipe save",
     autosaveHint: "Autosave every 10s.",
+    importOk: "Save loaded.",
+    importReset: "That file is from version {version} and was reset to a fresh game.",
+    importBadFormat: "That is not a Spirit Idland save file.",
+    importBadChecksum: "That file has been edited and will not be loaded.",
+    importCancelled: "Import cancelled.",
 
     redeemLabel: "Redeem code",
     redeemPlaceholder: "Enter code",
@@ -1400,6 +1416,8 @@ const I18N = {
     migrationReset: "The old save (version {version}) is not compatible with the round-based build and was reset.",
     saveWiped: "Save wiped.",
     manualSaved: "Manual save completed.",
+    saveExported: "Save exported as {file}.",
+    saveImported: "Save imported: round {round}, wave {wave}.",
     spiritAwakens: "The spirit awakens."
   }
 };
@@ -4949,6 +4967,104 @@ function saveState(state, storage) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Export and import                                                    *
+ *                                                                      *
+ * The same state localStorage holds, wrapped so it can travel as a      *
+ * file. The wrapper is three fields joined by dots: a magic word, the   *
+ * state as base64, and a checksum over the two.                        *
+ *                                                                      *
+ * The base64 is not encryption and the checksum is not a signature -    *
+ * engine.js is served to the browser, so anyone who reads it can        *
+ * recompute both. What they buy is that a save is no longer editable by *
+ * accident or by curiosity: opening the file shows no Fear count to     *
+ * raise, and a hand-edited one is refused rather than silently loaded.  *
+ * A player determined to cheat still can, and always could - the        *
+ * localStorage entry is right there in the dev tools.                  *
+ * ------------------------------------------------------------------ */
+
+const SAVE_FILE_MAGIC = "SPIRITIDLAND1";
+const SAVE_FILE_EXT = ".spiritsave";
+const SAVE_CHECKSUM_SALT = "the-ocean-remembers";
+
+// FNV-1a, 32 bits, salted. Not a cryptographic hash - it is here to catch a file that was
+// edited or truncated, not one that was forged.
+function saveChecksum(text) {
+  const salted = SAVE_CHECKSUM_SALT + text;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < salted.length; i += 1) {
+    hash ^= salted.charCodeAt(i);
+    // imul rather than *: the FNV prime overflows a double's 53-bit mantissa within a few
+    // characters, and the low bits that would be lost are the ones that carry the signal.
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+// Base64 through whichever door the environment opens: Buffer in node for the tests, btoa in
+// the browser. The log lines carry umlauts, so both paths go via UTF-8 bytes rather than
+// treating the JSON as Latin-1 - btoa alone would throw on the first "ä".
+function encodeBase64(text) {
+  if (typeof Buffer !== "undefined") return Buffer.from(text, "utf8").toString("base64");
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function decodeBase64(b64) {
+  if (typeof Buffer !== "undefined") return Buffer.from(b64, "base64").toString("utf8");
+  const binary = atob(b64);
+  return new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0)));
+}
+
+function exportSave(state) {
+  const payload = encodeBase64(JSON.stringify(state));
+  return `${SAVE_FILE_MAGIC}.${payload}.${saveChecksum(payload)}`;
+}
+
+// Named for the run inside it, so a folder of saves can be read without opening any of them.
+function exportSaveFileName(state, date) {
+  const day = (date || new Date()).toISOString().slice(0, 10);
+  const wave = Math.max(0, Math.floor((state && state.round && state.round.wavesResolved) || 0));
+  return `spirit-idland-welle-${wave}-${day}${SAVE_FILE_EXT}`;
+}
+
+/* Every failure is a reason rather than a throw: the caller has a message to show for each,
+ * and a bad file must never be the thing that ends the session. */
+function importSave(text) {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (!trimmed) return { ok: false, reason: "format" };
+
+  const parts = trimmed.split(".");
+  if (parts.length !== 3 || parts[0] !== SAVE_FILE_MAGIC) return { ok: false, reason: "format" };
+
+  const [, payload, checksum] = parts;
+  // Checked before decoding: Buffer.from drops characters it does not recognise instead of
+  // failing, so an unvalidated payload could decode to something plausible-looking.
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(payload)) return { ok: false, reason: "format" };
+  if (saveChecksum(payload) !== checksum) return { ok: false, reason: "checksum" };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(decodeBase64(payload));
+  } catch (_) {
+    return { ok: false, reason: "format" };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, reason: "format" };
+
+  // Through the same gate a stored save comes through, so an imported file cannot carry in a
+  // shape the game has stopped being able to read.
+  const migrated = migrateSave(parsed);
+  const state = migrated.state;
+  // No offline catch-up across the import either: a file written last month resumes where it
+  // was written, crediting nothing for the month.
+  state.time.lastTickUnixMs = nowMs();
+  state.time.lastSaveUnixMs = nowMs();
+
+  return { ok: true, state, reset: migrated.reset, fromVersion: migrated.fromVersion };
+}
+
+/* ------------------------------------------------------------------ *
  * Export shim                                                          *
  *                                                                      *
  * The browser loads this as a classic script, so ui.js can just call    *
@@ -4959,6 +5075,8 @@ function saveState(state, storage) {
 
 const ENGINE_EXPORTS = {
   SAVE_KEY,
+  SAVE_FILE_MAGIC,
+  SAVE_FILE_EXT,
   VERSION,
   TIME_SCALE,
   GAME_SPEEDS,
@@ -5182,6 +5300,9 @@ const ENGINE_EXPORTS = {
   migrateSave,
   loadState,
   saveState,
+  exportSave,
+  exportSaveFileName,
+  importSave,
   activeDefeatFx,
   activeBlightFx,
   activeFearFx,

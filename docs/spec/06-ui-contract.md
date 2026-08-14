@@ -194,8 +194,29 @@ island board, and the between-round shop.
 5. Log and utility controls
 - Event log
 - Manual save button
+- Export and import buttons, and the status line they answer on
 - Wipe save button
 - Language toggle
+
+**Export and import move a run between machines, and both are one click.** Export downloads the
+state as a file named for the wave it holds, so a folder of them can be read without opening
+any. Import opens a file picker, never a box to paste into: a save is carried between a desktop
+and a laptop, and what carries it is a file.
+
+Two rules protect the run already in progress:
+- **An import always asks first.** It replaces the run on screen, which makes it the second
+  control on the page — after the wipe — that can end a round the player is in the middle of.
+  A file from an older version says so in stronger terms, because loading it starts a fresh
+  game rather than the run in the file
+- **A file that fails is refused, not partially loaded.** The reasons are distinct and both are
+  shown on the status line: a file that is not a save at all, and a save whose contents no
+  longer match its checksum. Neither touches the current run
+
+The file is base64 with a checksum rather than plain JSON, so a save is not editable by accident
+or by curiosity. It is not a security measure and is not documented as one: engine.js is served
+to the browser, so anyone who reads it can recompute both. It raises the cost of nudging a Fear
+count from "open the file" to "read the engine" — the localStorage entry was always reachable
+from the dev tools, and still is.
 
 ## Ability Status Rules
 

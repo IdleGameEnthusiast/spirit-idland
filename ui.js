@@ -73,7 +73,11 @@ const dom = {
   eventLog: document.getElementById("eventLog"),
 
   manualSaveBtn: document.getElementById("manualSaveBtn"),
+  exportSaveBtn: document.getElementById("exportSaveBtn"),
+  importSaveBtn: document.getElementById("importSaveBtn"),
+  importSaveInput: document.getElementById("importSaveInput"),
   wipeSaveBtn: document.getElementById("wipeSaveBtn"),
+  saveStatus: document.getElementById("saveStatus"),
   autosaveHint: document.getElementById("autosaveHint"),
 
   redeemForm: document.getElementById("redeemForm"),
@@ -1115,6 +1119,21 @@ function patchRedeemStatus(state) {
   dom.redeemStatus.classList.toggle("is-bad", redeemStatusKey === "redeemUnknown");
 }
 
+// What the last export or import did, kept as a key and its variables for the same reason the
+// redeem status is: a finished sentence would survive the language toggle in the wrong tongue.
+let saveStatus = null;
+
+function setSaveStatus(key, tone, vars) {
+  saveStatus = key ? { key, tone, vars: vars || {} } : null;
+}
+
+function patchSaveStatus(state) {
+  const t = locale(state);
+  dom.saveStatus.textContent = saveStatus ? template(t[saveStatus.key], saveStatus.vars) : "";
+  dom.saveStatus.classList.toggle("is-ok", Boolean(saveStatus) && saveStatus.tone === "ok");
+  dom.saveStatus.classList.toggle("is-bad", Boolean(saveStatus) && saveStatus.tone === "bad");
+}
+
 function patchPlaytestTools(state) {
   const on = playtestOn(state);
   // The dial's own button is handled in patchPacingControls, with the rest of the dial.
@@ -1192,6 +1211,8 @@ function applyStaticLanguage(state) {
   dom.startNextRoundBtn.textContent = t.startNextRoundBtn;
   dom.logTitle.textContent = t.logTitle;
   dom.manualSaveBtn.textContent = t.manualSaveBtn;
+  dom.exportSaveBtn.textContent = t.exportSaveBtn;
+  dom.importSaveBtn.textContent = t.importSaveBtn;
   dom.wipeSaveBtn.textContent = t.wipeSaveBtn;
   dom.autosaveHint.textContent = t.autosaveHint;
 
@@ -1260,6 +1281,7 @@ function updateUI(state) {
   }
 
   patchPlaytestTools(state);
+  patchSaveStatus(state);
   patchMapHint(state);
 
   const nextAbilitySig = abilityBarSignature(state);
@@ -1508,6 +1530,98 @@ dom.manualSaveBtn.addEventListener("click", () => {
   updateUI(state);
 });
 
+/* ------------------------------------------------------------------ *
+ * Export and import                                                    *
+ *                                                                      *
+ * A file rather than a text box to paste: a save is carried between a   *
+ * desktop and a laptop, and the thing that carries it is a file. The    *
+ * engine does the wrapping and all of the checking; everything here is  *
+ * the download, the picker, and the question asked before a run is      *
+ * replaced.                                                            *
+ * ------------------------------------------------------------------ */
+
+dom.exportSaveBtn.addEventListener("click", () => {
+  // Written from the state in hand rather than from storage, so the file is the board on
+  // screen - including in fixture mode, where nothing was ever stored to read back.
+  const fileName = exportSaveFileName(state);
+  const url = URL.createObjectURL(new Blob([exportSave(state)], { type: "application/octet-stream" }));
+  const link = Object.assign(document.createElement("a"), { href: url, download: fileName });
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Released a tick later, not immediately: Firefox cancels a download whose blob URL is
+  // revoked in the same tick as the click that started it.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+
+  // The log carries the file name, so a player who lost the download can find what to search
+  // for. The status line stays clear - nothing failed, and the file itself is the receipt.
+  setSaveStatus(null);
+  addLog(state, template(locale(state).saveExported, { file: fileName }));
+  updateUI(state);
+});
+
+dom.importSaveBtn.addEventListener("click", () => {
+  // Cleared before opening rather than after picking: choosing the same file twice in a row
+  // is otherwise no change at all, and the second pick fires nothing.
+  dom.importSaveInput.value = "";
+  dom.importSaveInput.click();
+});
+
+dom.importSaveInput.addEventListener("change", () => {
+  const file = dom.importSaveInput.files && dom.importSaveInput.files[0];
+  if (!file) return;
+
+  const showFailure = (key) => {
+    setSaveStatus(key, "bad");
+    updateUI(state);
+  };
+
+  file.text().then((text) => {
+    const result = importSave(text);
+    if (!result.ok) {
+      showFailure(result.reason === "checksum" ? "importBadChecksum" : "importBadFormat");
+      return;
+    }
+
+    // Asked every time, not only for the files that cannot be loaded as they are: an import is
+    // the one control besides the wipe that ends the run in progress, and the player reaching
+    // for it has usually just been looking at a file picker rather than at their board.
+    const lang = currentLang(state);
+    const question = result.reset
+      ? (lang === "en"
+        ? `This file is from version ${result.fromVersion} and cannot be loaded as it is. Importing it starts a FRESH game, and your current run is lost. Continue?`
+        : `Diese Datei stammt aus Version ${result.fromVersion} und kann nicht so geladen werden. Der Import startet ein NEUES Spiel, dein laufender Spielstand geht verloren. Fortfahren?`)
+      : (lang === "en"
+        ? "Importing replaces your current run with the one in the file. Continue?"
+        : "Der Import ersetzt deinen laufenden Spielstand durch den aus der Datei. Fortfahren?");
+
+    if (!confirm(question)) {
+      showFailure("importCancelled");
+      return;
+    }
+
+    state = result.state;
+    // The redeemed code came in with the file, so a message about one typed into the run being
+    // replaced would be standing over a bar that is no longer the one it answered.
+    redeemStatusKey = null;
+    // Every render cache is keyed on the old state, and a different board can hash to the same
+    // signature - the language above all, which would leave an English file drawn in German.
+    // Cleared, so the next updateUI redraws the page from nothing.
+    for (const key of Object.keys(renderCache)) renderCache[key] = null;
+
+    setSaveStatus(result.reset ? "importReset" : "importOk", result.reset ? "bad" : "ok", { version: result.fromVersion });
+    addLog(state, template(locale(state).saveImported, {
+      round: state.round.number,
+      wave: state.round.wavesResolved
+    }));
+    updateUI(state);
+    // Written through at once rather than waiting for the autosave: a player who imports and
+    // closes the tab within ten seconds should not find the old run still sitting there.
+    persist();
+  }, () => showFailure("importBadFormat"));
+});
+
 dom.wipeSaveBtn.addEventListener("click", () => {
   const langBeforeWipe = currentLang(state);
   const ok = confirm(
@@ -1523,8 +1637,10 @@ dom.wipeSaveBtn.addEventListener("click", () => {
   state = createFreshGameState();
   state.ui.language = langBeforeWipe;
   // A wipe takes the redeemed code with it, so the message about it must go too - it would
-  // otherwise stand over a bar whose tools are gone.
+  // otherwise stand over a bar whose tools are gone. The import message goes for the same
+  // reason: it reports on a run that no longer exists.
   redeemStatusKey = null;
+  setSaveStatus(null);
   addLog(state, locale(state).saveWiped);
   updateUI(state);
 });

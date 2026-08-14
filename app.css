@@ -1617,9 +1617,22 @@ footer {
 
 .footer-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
   margin-bottom: 0.4rem;
 }
+
+/* Reads like the redeem bar's status because it does the same job: it answers a click that
+   happened in the row above it, and it has to be able to say no. */
+.save-status {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink-1);
+  min-height: 1.1rem;
+}
+
+.save-status.is-ok { color: var(--accent-calm); }
+.save-status.is-bad { color: var(--accent-pressure); }
 
 .small-btn {
   width: auto;
