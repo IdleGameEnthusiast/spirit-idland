@@ -41,7 +41,32 @@ island board, and the between-round shop.
   through, and a button that came and went would move the two beside it every wave
 - Dahan strike timer: seconds remaining until the next Dahan attack, shown separately from
   the wave timer because the two are separate clocks and will drift apart
-- Fear total (`meta.fear`)
+- Fear, as **three readings of one purse**, each answering a different question:
+
+  ```txt
+  FEAR
+  157 (+8 this round)
+  +7 base (+1 from upgrades)
+  ```
+
+  - the **value** is `meta.fear`, the banked pool and the only one the shop can spend
+  - **beside it on the same line**, what the round has added so far and will bank at round end.
+    They share a line because they are one sentence — what you have, and what is coming — and
+    the size difference is what says which of the two is spendable
+  - **below**, how that round total splits between what the round earned on its own and what
+    the Fear ladders added. The two figures always sum to exactly the number on the line above
+
+  The third line is drawn **only when a ladder is actually contributing**. With none owned it
+  would read `+8 base` under a line already saying `(+8 this round)` — the same number twice,
+  and a standing reminder of an upgrade the player has not bought. See
+  [03-state-contract.md](./03-state-contract.md) on `round.fearEarnedBase` for why the split is
+  tracked rather than derived, and why the two halves are floored the way they are.
+- The `high_water_mark` payout flashes over the Fear total on the wave that pays it, on the
+  same `DEFEAT_FX_MS` clock as the defeat and Blight chips (`ui.fearFx`). It is the only Fear
+  income that arrives as an event rather than as a rate, and a lump that showed up only as a
+  slightly larger running total would be an event the player never saw happen. It is
+  absolutely positioned so it cannot reflow a HUD that is patched ten times a second, and
+  `prefers-reduced-motion` holds it visible instead of animating it
 
 1a. Pacing controls — in the top bar, beside the language toggle
 - Three buttons, `0x / 1x / 2x`, drawn as one segmented control with the chosen speed lit.
@@ -122,6 +147,29 @@ island board, and the between-round shop.
 4. Between-round shop (visible only while `round.status` is `ended`)
 - The round just lost: its number and the Fear it earned
 - The upgrade catalogue: each entry's effect, its current tier if repeatable, and its cost
+- **A row whose per-tier gain is not constant describes its next rung, not its whole shape.**
+  That is `headwaters`, `high_water_mark` and `dahan_remember`: everywhere else "+1 Dahan, per
+  tier" already answers what the next price buys, while a table of nine numbers and a percentage
+  of a wave number do not. So those rows read as the next purchase — the Energy the next
+  tier adds and what a round would then open with, the Fear the next tier adds to the milestone
+  the player is heading for — with the tier chip beside the text saying which rung they are on.
+  `headwaters` at its top tier states what it ends up paying instead; `high_water_mark` is
+  soft-capped and so always has a next rung to describe. `dahan_remember` has no next rung at
+  all, so it describes where it stands: Fear invested against the full pool, and the strike
+  interval that buys — quoted in the same real seconds every countdown on the page uses, so it
+  moves with the speed dial
+- **The pool row is bought in denominations, not one rung at a time.** `dahan_remember` ends in
+  a strip of buttons — one per `bulkAmounts` entry, then a **Max** that takes everything the
+  purse can pay for — instead of a single Buy. Each button's tooltip names the Fear it will
+  actually spend, which near the cap is less than the button says: a `+1000` with 400 units of
+  pool left buys the 400 and charges for 400. A denomination the purse cannot cover is disabled
+  rather than dropped, so the strip never reshuffles under the cursor. A bulk buy the purse
+  cannot cover is refused whole and never part-paid — Max is how the player says "as much as I
+  can afford"
+- **A pool shows its effect where a ladder shows its tier.** `Tier 4271` is true and useless;
+  the row reads `42.71% faster`, to two decimals, because one Fear is a hundredth of a percent
+  and a readout that printed the same number for `+1` and `+10` would say a purchase did
+  nothing (`upgradeStatusText`)
 - A gated row (see [07-content-registry.md](./07-content-registry.md#permanent-upgrades)) stays
   on the list, fully readable, with its price shown and its button dead, and says that it opens
   once everything else is bought. It is not hidden: what is behind the gate is the reason to
@@ -155,7 +203,9 @@ island board, and the between-round shop.
 - **Under the Energy purse: where Energy comes from.** It is the one currency the player earns
   by fighting rather than by surviving, and the purse only ever shows a total. The note names
   the income (1/2/3 per Explorer/Town/City, plus Boon of Vigor) and — the part nothing else on
-  the page says — that it and everything bought with it reset when a round starts.
+  the page says — that it and everything bought with it reset when a round starts. It names
+  `headwaters` as the one thing that reset does not take to zero, since the shop row is
+  otherwise the only place a player could learn that a round can open with Energy at all.
 
 ## Map Hint Rules
 

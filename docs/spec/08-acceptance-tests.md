@@ -278,7 +278,27 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     names the gate rather than the price. Handing a single ladder rung back shuts the gate
     again. Once the rest of the catalogue is finished both are for sale, and buying one does
     not lock the other.
-12. `auto_buy_abilities` spends the round's Energy on the bar each tick: the locked kit first,
+12. `headwaters` pays its tier's Energy into every round start and nothing else: without it a
+    round still opens on an empty purse, and a round that ended holding 40 Energy still opens
+    the next one at the ladder's figure rather than at 40. Its gain table climbs strictly
+    (1 / 2 / 3 / 5 / 8 / 13 / 19 / 26 / 35), stops at nine tiers, and ends on exactly the sum
+    of the three unlock prices. Costs run 8 / 13 / 20 / 33 / 52 / 84 / 134 / 215 / 344 and the
+    tenth buy is refused. A tier bought mid-round leaves the running purse where it was and
+    pays out only from the next round. A tier past the end of the table clamps to its top
+    rather than reading `undefined`.
+13. `dahan_remember` is a pool, not a ladder. Every unit costs a flat 1 Fear at any depth, 100
+    units buy 1% of haste, and the haste divides the strike interval by `1 + haste` — so a full
+    10000-Fear pool halves it and no amount of haste reaches zero. The cap holds against a
+    doctored save and the 10001st unit is refused. A bulk buy spends exactly what the same
+    number of single clicks would have; one larger than the pool's remaining room buys only
+    what is left and is charged for only that; one the purse cannot cover is refused whole
+    rather than part-paid. The Max count is bounded by the purse and by the room left. The row
+    does not count toward the gate — an empty pool never seals the last two purchases — and no
+    soft-capped row is required for the gate either. Fear poured in mid-round leaves the
+    running round striking at its old rate and speeds up the next one. The row prints its haste
+    to two decimals instead of a tier, quotes the strike interval in the speed dial's own
+    seconds, and logs a purchase as Fear in and haste out.
+14. `auto_buy_abilities` spends the round's Energy on the bar each tick: the locked kit first,
     cheapest before dearest, so a purse of 15 takes the 5 and the 10 and leaves the 20; then
     one Innate rung per tick, never two, and never before the kit is bought. Bought mid-round
     it spends nothing until the next round starts, like every other automation. What it buys
@@ -320,7 +340,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 
 ## Current Validation Status
 
-**288 automated checks, all passing.** Coverage by file:
+**358 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -335,6 +355,8 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/blight.test.js` | Blight accrual, the per-land tally, round end |
 | `tests/ability.test.js` | Cooldowns, arming, cancelling, each ability's effect |
 | `tests/shop.test.js` | Fear persistence, purchases, tiers, next round |
+| `tests/fear.test.js` | The three Fear ladders, the locale tables, the gate |
+| `tests/haste.test.js` | The Dahan Remember: the Fear pool and the strike clock |
 | `tests/save.test.js` | Round-trip, no offline credit, migration, normalization |
 | `tests/landstate.test.js` | Land state precedence (06) |
 

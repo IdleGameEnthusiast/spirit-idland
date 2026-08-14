@@ -272,8 +272,41 @@ h3 {
 .hud-fear .value { color: var(--accent-fear); }
 .hud-round .value { color: var(--ink-0); }
 
-/* What this round has earned but not yet banked. Deliberately quieter than the total above
-   it: it is not money until the round ends, and it should not read like it is. */
+/* What this round has added, riding beside the banked purse on the same line. Quieter and much
+   smaller than the number it sits next to: that one is spendable and this one is not, and the
+   size difference is what says so before the wording does. `baseline` rather than the inline
+   default so it sits on the purse's feet instead of floating against its cap height.
+
+   Selected as `.board-hud-tile .fear-round` rather than `.fear-round` alone because every
+   <small> in a HUD tile is `display: block` (see below) and would otherwise drop this onto its
+   own line - which is the one thing it must not do. Two classes outrank a class and an
+   element, so this wins where a bare `.fear-round` loses. */
+.board-hud-tile .fear-round {
+  display: inline;
+  margin-left: 0.3rem;
+  /* 0.6rem is what every other <small> in the strip uses, and here it is also what makes the
+     German fit: "(+8 in dieser Runde)" beside a three-digit purse needs 144px at 0.68rem and
+     the tile is 135px. The longer of the two languages is the one that has to fit. */
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  vertical-align: baseline;
+  color: var(--accent-fear);
+  opacity: 0.72;
+}
+
+/* The tile is one of six equal columns, so a deep round's total can outrun the space. Clip it
+   rather than let it wrap: a wrapped line would push the split line below it out from under
+   the scrim, and every other readout in this strip already clips for the same reason. */
+.hud-fear .value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* How that round total splits. Deliberately quieter still - it is a breakdown of the line
+   above rather than a number of its own, and it is the third thing in this tile worth
+   reading, not the first. */
 #fearPending {
   display: block;
   font-size: 0.62rem;
@@ -281,6 +314,37 @@ h3 {
   color: var(--accent-fear);
   opacity: 0.7;
   min-height: 0.9rem;
+}
+
+/* The High-Water Mark payout, riding over the Fear total for as long as the fx is fresh.
+   Absolutely positioned so its arrival cannot reflow the tile under it - every other number
+   in this HUD is patched ten times a second, and a lump that pushed them around would read
+   as a glitch rather than as a reward. Louder than #fearPending on purpose: that one is
+   money not yet earned, this one is money that just landed. */
+.hud-fear { position: relative; }
+
+.fear-milestone {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-fear);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* Shares defeat-pop with the board's own chips so a payout reads as the same kind of event
+   as a kill, just in the HUD instead of on a land. */
+.hud-fear.is-milestone .fear-milestone { animation: defeat-pop 1.1s ease-out forwards; }
+.hud-fear.is-milestone .value { animation: fear-flash 1.1s ease-out; }
+
+@keyframes fear-flash {
+  0% { transform: scale(1); }
+  18% { transform: scale(1.14); text-shadow: 0 0 14px var(--accent-fear); }
+  100% { transform: scale(1); }
 }
 
 /* Two meters, same shape: one fills as the round runs out, one drains as the next wave
@@ -879,6 +943,40 @@ button.reset {
   text-align: center;
 }
 
+/* A pool is bought by the handful, so its row ends in a strip of denominations rather than in
+   one Buy. They wrap on a narrow panel instead of squeezing: four buttons at three characters
+   each is already the widest thing in the shop, and a squeezed Max is a mis-click waiting to
+   spend everything. */
+.upgrade-pool-buys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex: none;
+}
+
+.upgrade-pool-buys .upgrade-buy {
+  padding: 0.35rem 0.5rem;
+  min-width: 2.6rem;
+  font-size: 0.72rem;
+}
+
+/* Max is the one button here that spends an amount the player did not name, so it reads as a
+   different kind of thing rather than as the biggest denomination. */
+.upgrade-pool-buys .is-pool-max {
+  min-width: 3rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* The pool's own row: taller than a ladder's, because its text carries the state a tier chip
+   carries elsewhere, and the buttons need room to wrap under it on a narrow panel. */
+.upgrade.is-pool {
+  align-items: flex-start;
+}
+
+.upgrade.is-pool .upgrade-info { padding-top: 0.1rem; }
+
 /* The two answers to "when does the next round begin", side by side the way the wave strip
    pairs its own two. The toggle only shows up once it has been bought, so the row is a
    single centred button until then. */
@@ -1414,6 +1512,11 @@ button.reset {
   .chip-ring,
   .meter-fill,
   .ability-sweep { transition: none; animation: none; }
+
+  /* The payout still has to be readable without the pop, so it holds at full opacity for as
+     long as the fx is fresh instead of animating to it. */
+  .hud-fear.is-milestone .value { animation: none; }
+  .hud-fear.is-milestone .fear-milestone { animation: none; opacity: 1; }
 
   .land-ring.is-wave-target { animation: none; }
   .hud-blight .meter-fill.is-critical { animation: none; }

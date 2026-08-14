@@ -175,10 +175,43 @@ shared damage rule, and the shared push rule.
 See [05-progression.md](./05-progression.md#placeholder-upgrade-catalogue) for the full
 table and cost-curve note.
 
-- `dahan_reinforcement` — repeatable, +1 starting Dahan per tier. `baseCost` 4.
-- `blight_resilience` — repeatable, +1 Blight threshold per tier. `baseCost` 6.
-- `swift_currents` — repeatable, -5% ability cooldowns per tier, diminishing. `baseCost` 5,
-  capped at tier 12.
+- `dahan_reinforcement` — repeatable, +1 starting Dahan per tier. `baseCost` 10, max tier 8.
+- `blight_resilience` — repeatable, +1 Blight threshold per tier. `baseCost` 3, max tier 5.
+- `headwaters` — repeatable, the Energy every round opens with. `baseCost` 8, max tier 9. The
+  gain is a table rather than a per-tier step, `STARTING_ENERGY_BY_TIER` — 1 / 2 / 3 / 5 / 8 /
+  13 / 19 / 26 / 35 — because it climbs with the price instead of staying flat; read it through
+  `startingEnergyForTier`, which clamps a tier past the end of the table to its top rather than
+  answering `undefined`. It is the only row that spends Fear and pays out in Energy, and the
+  only one whose worth shrinks with depth. Its ceiling is exactly the unlock kit (5 + 10 + 20).
+- `rising_dread` — repeatable, **soft-capped**, +10% Fear from defeated invaders per tier.
+  `baseCost` 6.
+- `mounting_terror` — repeatable, **soft-capped**, +10% Fear from surviving waves per tier.
+  `baseCost` 6.
+- `high_water_mark` — repeatable, **soft-capped**, every 10th wave pays a bonus of `tier * 10%`
+  of its own wave number as Fear. `baseCost` 12. `mounting_terror` multiplies the payout, since
+  the payout is wave income; that interaction is why the pair is priced as a pair. It is the
+  only income in the game that is quadratic in depth, and the only one that arrives as an event
+  rather than as a rate — which is why it is also the only one with a HUD flash.
+
+- `dahan_remember` — *The Dahan Remember*, repeatable and the catalogue's one **pool**:
+  `costGrowth: 1`, `baseCost` 1, `maxTier` 10000, `bulkAmounts: [1, 10, 100, 1000]`. Its tier
+  is the Fear invested, and the Fear invested is haste on the Dahan strike clock —
+  `interval / (1 + invested / 10000)`, capped at 100% haste, which halves it. Bought in
+  denominations plus a Max button rather than one rung at a time, and its row shows the haste
+  where a ladder shows its tier (`upgradeStatusText`). Carries `requiredForGate: false`. Read
+  the formula in
+  [04-economy-formulas.md](./04-economy-formulas.md#the-interval-and-the-one-thing-that-shortens-it).
+
+A **soft-capped** row has no `maxTier`, which `upgradeIsSoftCapped` derives rather than the
+record declaring twice. It is never "maxed", so it
+never sinks into the shop's sold-out half and never shows a `Maximum` button — it shows a bare
+tier number and a price, forever.
+
+`requiredForGate: false` is a separate matter, and about the gate rather than about the shape
+of the ladder: it takes a row out of the "everything else is bought" test. Every soft-capped
+row must carry it, or the gate could never open; `dahan_remember` carries it because 10000
+Fear is a wall. See
+[04-economy-formulas.md](./04-economy-formulas.md#which-rows-the-gate-counts).
 - `unlock_<ability_id>` — one-time, adds an ability the active spirit's kit does not contain.
   **The machinery is implemented and no catalogue row uses it.** Unlocking a *kit* ability is
   now Energy's job and does not go through the shop at all; this key remains the path for a
@@ -308,10 +341,36 @@ consequences.
 - All visible player-facing strings are defined in the `I18N.de` and `I18N.en` tables in
   `engine.js` — including log lines, which the engine writes and the UI only displays.
 - New content must provide both German and English display strings.
-- German strings transliterate umlauts (`ae`, `oe`, `ue`) and the source stays ASCII-only.
-  That is a deliberate robustness choice, not a stylistic one: this file has already been
-  corrupted once by a tool that re-encoded it, and a table of display strings is the worst
-  possible place for a silent mojibake.
+- **German strings use real umlauts, and `engine.js` is UTF-8 without a BOM.**
+
+  This reverses an earlier rule. The source used to be ASCII-only with umlauts transliterated
+  (`ae`, `oe`, `ue`) because this file had been corrupted once by a tool that re-encoded it,
+  and a table of display strings is the worst possible place for a silent mojibake. That
+  reasoning was sound but it assumed the corruption would be *invisible*. It no longer is:
+  `tests/fear.test.js` carries an encoding guard with both halves it needs —
+
+  - a **negative** check that no German string contains `Â`, `Ã` or `U+FFFD`, which is what a
+    UTF-8 file read as ANSI turns every umlaut into; and
+  - a **positive** check that the table still contains umlauts at all, which catches the other
+    direction — a well-meaning pass transliterating back to ASCII would sail straight through
+    the negative check while quietly undoing the change.
+
+  With a red test standing behind it, prevention stopped being worth what it cost: `Doerfer`
+  and `Wueste` read visibly wrong to a German player, and the volume of German text is only
+  going to grow.
+
+  **Two hazards remain, and both are about tooling rather than the browser.** `index.html`
+  already declares `<meta charset="utf-8">`, so display was never the problem. But this is a
+  Windows project: PowerShell 5.1's `Set-Content`/`Add-Content` default to the system ANSI
+  codepage, so one command written without `-Encoding utf8` silently rewrites the file and
+  mojibakes every string in it. Write these files with a UTF-8-aware editor, or from
+  PowerShell via `[System.IO.File]::WriteAllText($path, $text, (New-Object
+  System.Text.UTF8Encoding $false))`. And a `.ps1` script that *contains* umlauts is itself
+  read as ANSI when it has no BOM, so a script doing the rewriting must keep its own source
+  ASCII and build the replacement characters from char codes.
+
+  Git needs no configuration for this — it stores bytes verbatim and does no encoding
+  conversion, so there is nothing in `.gitattributes` that would help.
 - Lines that name exactly one unit use the singular labels (`townsOne`, `citiesOne`), so a
   build log reads "+1 Dorf" rather than "+1 Doerfer".
 

@@ -224,40 +224,87 @@ when dahanAttackRemaining <= 0:
         pool = dahanCount * DAHAN_ATTACK_DAMAGE
         spend the pool 1 damage at a time on the highest tier present
         (cities, then towns, then explorers) until the pool or the invaders run out
-    dahanAttackRemaining = DAHAN_ATTACK_INTERVAL_SECONDS
+    dahanAttackRemaining = roundDahanAttackInterval(state)
 ```
 
 Defeated invaders award Fear through the normal defeat path. Partial damage carries per land
 and per type, exactly as it did for the old counterattack.
 
-## Fear Formula
-
-Fear is generated only from defeated invader power, whether the defeat came from a Dahan
-strike or an ability:
+### The interval, and the one thing that shortens it
 
 ```txt
-fearGain = defeatedPower * FEAR_PER_POWER      FEAR_PER_POWER = 0.35
-defeatedPower = the unit's damage value: explorer 1, town 2, city 3
+haste            = min(DAHAN_HASTE_MAX, investedFear / DAHAN_HASTE_FEAR_FOR_FULL)
+strikeInterval   = DAHAN_ATTACK_INTERVAL_SECONDS / (1 + haste)
 ```
 
-Examples:
+`investedFear` is the tier of `dahan_remember` — *The Dahan Remember*, the shop's one pool
+(see [The Fear pool](#the-fear-pool)). 10000 Fear fills it, 100 Fear buys 1%, and the cap is
+100%: `20s → 10s` at the 1x speed dial, twice as many strikes in the same round.
 
-- Defeating 1 explorer gives `0.35` fear.
-- Defeating 1 town gives `0.70` fear.
-- Defeating 1 city gives `1.05` fear.
+Haste **divides** rather than subtracting, for two reasons that are not arithmetic taste. The
+percentage then means what it says — 100% haste is 100% more strikes, not "100% off" a
+cooldown that would then be zero — and division composes. A second cooldown source multiplies
+its divisor in beside this one without either knowing the other exists, and no combination of
+them can reach zero. A subtractive rule would need a floor bolted on the moment a second
+source arrived, and the floor would be the real rule while the percentages were decoration.
 
-> This is **not** unchanged from the turn-based build, as an earlier draft of this file
-> claimed. That build awarded a flat 1 Fear per town and 2 per city, and nothing at all for
-> an explorer. The formula above is the one implemented, because it is the one this pack
-> specifies and because it gives explorers a value — which matters now that clearing a land
-> of every invader is how a player denies Blight.
+The interval is read through `roundDahanAttackInterval`, which takes the tier from the round's
+**upgrade snapshot** rather than from what is owned. Fear poured into the pool at 9/10 Blight
+buys the *next* round a faster strike, never the one being lost — the same rule, by the same
+mechanism, as every other row in the shop (see [Round Reset Formula](#round-reset-formula)).
 
-Fear is fractional by nature and is stored as a float. The UI renders it to one decimal;
-upgrade costs are whole numbers, so a purchase can leave a fraction behind.
+## Fear Formula
+
+Fear has two sources. Killing pays for what you clear; the wave pays for what you outlast.
+Without the second, a round that holds its line perfectly and kills little would earn almost
+nothing.
+
+```txt
+killFear = defeatedPower * FEAR_PER_POWER * (1 + tier(rising_dread) * 0.10)
+waveFear = FEAR_PER_WAVE * (1 + tier(mounting_terror) * 0.10)
+
+FEAR_PER_POWER = 1        defeatedPower = the unit's damage value, which rides
+FEAR_PER_WAVE  = 1        the difficulty ladder: see Unit Stats
+```
+
+Every tenth wave pays a third source on top, if `high_water_mark` is owned:
+
+```txt
+milestone = wave * tier(high_water_mark) * 0.10 * (1 + tier(mounting_terror) * 0.10)
+            ... on waves where wave % 10 == 0, and 0 otherwise
+```
+
+`mounting_terror` multiplies the milestone because the milestone *is* wave income. That is
+what makes the two worth owning together: alone, `mounting_terror` multiplies a flat 1 per
+wave and falls further behind kill income at every damage rung of the ladder; with the Mark it
+multiplies the one number in the game that grows faster than the invaders do.
+
+A run reaching wave `10m` collects `tier * m(m+1)/2` in milestones against `10m` in flat wave
+Fear — **quadratic in depth against linear**. At tier 5 a run to wave 100 collects 275 from
+milestones and 100 from waves.
+
+### Where the rounding happens
+
+`round.fearEarned` accumulates as a **float** for the whole round. `meta.fear` — the only pool
+the shop can spend — is a whole number, and `endRound` floors the round's total exactly once
+on the way in. Down, never up: a part-earned Fear is not a Fear.
+
+Flooring each award instead would round the ladders away to nothing. An explorer pays 1, and
+`floor(1 * 1.1)` is 1, so the first four tiers of `rising_dread` would buy a number the player
+watched not move. The bank is where fractions stop mattering, so it is where they are dropped.
+
+Every readout goes through `formatFear`, which floors, so nothing ever displays a fraction —
+including `round.fearEarned`, which is shown as the whole Fear it would bank.
+
+### The two pools
 
 Fear accumulates in `meta.fear`, which persists across rounds; nothing in this design resets
-it. `round.fearEarned` tracks the same income for the current round only, for the shop's
-summary line.
+it. `round.fearEarned` tracks the current round only and banks at round end.
+
+All three ladders are read through `activeUpgradeTier`, not `upgradeTier` — they are read
+every time Fear is earned, which makes them exactly the class the round snapshot exists for.
+A tier bought mid-round is owned immediately and pays nothing until the next round starts.
+See [02-core-loop.md](./02-core-loop.md#between-rounds).
 
 ## Energy Formula
 
@@ -274,14 +321,20 @@ Energy is whole-numbered where Fear is fractional — it is spent on flat intege
 purse reading `7.35` would be three decimal places of noise on a number nothing can use them
 for. Only an invader defeat pays it: a Dahan casualty is a loss, not an income.
 
-Energy accumulates in `resources.energy` and **dies with the round**. `startRound` zeroes the
+Energy accumulates in `resources.energy` and **dies with the round**. `startRound` resets the
 purse, empties `round.purchasedAbilityIds`, and clears `round.abilityTiers`: everything bought
 during a round is given back when the next one starts.
 
+The purse resets to `upgrades.startingEnergy` rather than to zero — 0 until `headwaters` is
+bought, and whatever its tier pays after that. Nothing else about the line moves: the Energy a
+round *earned* is still gone, and every unlock it bought is still given back. What carries is
+a figure the shop set before the round began, which is the same thing `dahan_reinforcement`
+carries.
+
 That is the sharp line between the two currencies. Fear carries and buys permanent upgrades,
 only between rounds. Energy is earned inside a round, spent inside that round, and gone when
-it ends. So the shop decides *how fast a round can be rebuilt* and the fight decides *how far
-that round gets* — and the two never trade against each other. See
+it ends. `headwaters` is the one place a Fear purchase pays out in Energy, and it pays only
+into the opening — it can never top a round up once the round is running. See
 [02-core-loop.md](./02-core-loop.md#energy).
 
 ## Ability Unlock Cost
@@ -480,6 +533,7 @@ steps. The ability bar rounds up for display.
 roundStart.dahanTotal        = DAHAN_PER_ROUND_START_BASE + upgrades.dahanBonus
 roundStart.blightThreshold   = BLIGHT_THRESHOLD_BASE + upgrades.blightThresholdBonus
 roundStart.abilityCooldownMult = 1 - upgrades.cooldownReductionPct
+roundStart.energy            = upgrades.startingEnergy
 ```
 
 Applied at [Round Sequence](./02-core-loop.md#round-sequence) step 1. `upgrades.*` values
@@ -507,17 +561,113 @@ gone; it silently discarded every tier past the sixteenth, which the current sho
 ## Upgrade Cost Curve
 
 ```txt
-cost(nextTier) = round(baseCost * 1.6 ^ tiersAlreadyOwned)
+cost(nextTier) = round(baseCost * growth ^ tiersAlreadyOwned)     growth = 1.6 unless the row names its own
 
-dahan_reinforcement  baseCost 4    4, 6, 10, 16, 26, ...
-blight_resilience    baseCost 6    6, 10, 15, 25, 39, ...
-swift_currents       baseCost 5    5, 8, 13, 20, 33, ...   (max tier 12)
-
-cooldownReductionPct = 1 - 0.95 ^ tier          multiplicative, so it never reaches zero
+dahan_reinforcement  baseCost 10   10, 16, 26, 41, 66, ...    (max tier 8)
+blight_resilience    baseCost 3     3,  5,  8, 12, 20         (max tier 5)
+headwaters           baseCost 8     8, 13, 20, 33, 52, ...    (max tier 9)
+rising_dread         baseCost 6     6, 10, 15, 25, 39, ...    (soft-capped)
+mounting_terror      baseCost 6     6, 10, 15, 25, 39, ...    (soft-capped)
+high_water_mark      baseCost 12   12, 19, 31, 49, 79, ...    (soft-capped)
+dahan_remember       baseCost 1     1,  1,  1,  1,  1, ...    (growth 1, max tier 10000)
 ```
 
-All placeholder. The growth rate is the only thing keeping the shop from being a flat
-checklist, and it has not been checked against how much Fear a round actually earns.
+Buying more than one rung at a time goes through `upgradeCostFor(state, id, count)`, which
+sums the individual rounded prices rather than rounding a sum: what a bulk button spends must
+equal what the same number of clicks would have spent, or it is a discount or a tax nobody
+asked for. `upgradeTiersAffordable` is the same walk against the purse, and is what the pool's
+**Max** button buys.
+
+### The Fear pool
+
+`dahan_remember` is the one row that is not a ladder. `costGrowth: 1` makes every unit cost
+the same 1 Fear forever, which is the whole of what makes it a pool: the 1.6 curve everywhere
+else exists to keep a ladder a decision, and a sink is the opposite of a decision. Its tier
+*is* the Fear invested, which is why it could be a catalogue row at all — saving, capping,
+ordering and the sold-out half all work on it unchanged.
+
+10000 Fear for the full 100% is several times the price of the rest of the catalogue put
+together (`headwaters` alone, the dearest ladder, is 903). That is deliberate: it is the sink
+that outlives the shop, priced against income the shop can no longer absorb rather than
+against the shop. Its value is front-loaded in the way that matters — the first 1000 Fear buys
++10% strike rate, the last 1000 buys +2.6% off the interval — so the early clicks are felt and
+the tail is where the money goes.
+
+The pool is also mildly self-reinforcing: more strikes are more defeats, and a defeat pays
+Fear. The flat price is what holds that in check.
+
+### headwaters and the shape of a gain
+
+Every other ladder here pays a flat gain against a rising price, which is what makes its top
+rungs deliberately bad buys. `headwaters` inverts that, and the curve is why: over nine tiers
+the last one costs 43× the first, so a flat gain would leave most of the ladder dead. Its gain
+is a table rather than a step, and it climbs with the price:
+
+| tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Energy at round start | 1 | 2 | 3 | 5 | 8 | 13 | 19 | 26 | 35 |
+| cost | 8 | 13 | 20 | 33 | 52 | 84 | 134 | 215 | 344 |
+| Fear per Energy | 8 | 13 | 20 | 16.5 | 17.3 | 16.8 | 22.3 | 30.7 | 38.2 |
+
+The price still pulls away from the payoff, from 8 per Energy to 38 — just gently enough that
+no rung is dead weight. Tiers 1–3 are weak by design and not an oversight: 3 Energy crosses
+none of the unlock prices, so it is worth about three Boon ticks off the opening. They are the
+entry fee on a ladder whose top is very strong.
+
+The ceiling is exactly `5 + 10 + 20`, the whole unlock kit. A tier 9 round paired with
+`auto_buy_abilities` opens with the entire kit bought and no Energy spare. That is why this
+ladder is capped where the three Fear ladders are not: what it buys genuinely runs out, and
+past 35 it would only be pre-banking toward the Innate's 50.
+
+Cumulative cost is **903 Fear**, the dearest row in the catalogue — above `auto_start_round`
+(500). It is also the only upgrade whose worth *shrinks* with depth, the exact inverse of
+`high_water_mark`: a run to wave 100 barely notices its first thirty seconds. This one pays
+for playing; the Mark pays for pushing. Because it is finishable it counts toward the gate
+below, so the catalogue's last two purchases now sit 903 Fear further out.
+
+### Soft caps
+
+A **soft-capped** ladder carries no `maxTier`, so `upgradeMaxTier` reports `Infinity` and it
+is never "maxed" — `upgradeIsSoftCapped` derives the fact from the record rather than the
+record declaring it twice. Nothing stops it but the curve — and the curve is
+enough. Each tier costs 60% more than the one under it while paying the same flat +10%, so the
+price pulls away from the payoff on its own:
+
+| tier | 1 | 5 | 10 | 12 |
+| --- | --- | --- | --- | --- |
+| `rising_dread` cost | 6 | 39 | 412 | 1056 |
+| payback, at ~30 Fear/round | ~2 rounds | ~13 | ~137 | ~350 |
+
+Reaching +100% costs about 1090 cumulative; tier 12 alone costs more than that. The ceiling
+also **floats**: payback is measured against the current Fear rate, so tiers that were absurd
+at wave 40 come back into range at wave 150 instead of sitting maxed and dead.
+
+This is a playtest decision, not a settled one. If the uncapped tail reads as noise rather
+than as depth, a `maxTier: 10` on each of the three turns them into finishable ladders — the
+matched set would then be ten tiers, +10% each, +100% at the top — and nothing else has to
+move except the gate below.
+
+### Which rows the gate counts
+
+`gatedUpgradesUnlocked` asks whether every other row is finished, and the row itself says
+whether it is one of those — `requiredForGate: false` opts out, and the default is in.
+
+Two kinds of row opt out, for two different reasons:
+
+- **Soft-capped ladders**, which can never finish. One would hold the gate shut forever,
+  taking `auto_buy_abilities` and `auto_start_round` off the table permanently while the shop
+  displayed a price the player could afford and a refusal that never lifted.
+- **`dahan_remember`**, which *can* finish, but only after 10000 Fear. That is a wall rather
+  than a gate, and what stands behind it was meant to be what finishing the shop pays for.
+
+So "you have finished the shop" means every row the gate counts. The flag used to be
+`softCapped`, which was the shape of a ladder standing in for a decision about the gate — fine
+while the two coincided, wrong the moment a capped row needed the same exemption. Asserted in
+`tests/fear.test.js` and `tests/haste.test.js`, including the structural check that no
+soft-capped row is ever required for the gate.
+
+The growth rate is what keeps the shop from being a flat checklist, and it has not been
+checked against how much Fear a round actually earns at depth.
 
 ## Offline Handling
 

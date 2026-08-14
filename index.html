@@ -123,11 +123,22 @@
             <h3 id="dahanAttackLabel">Dahan-Angriff</h3>
             <p id="dahanAttackValue" class="value">-</p>
           </div>
-          <div class="board-hud-tile hud-fear">
+          <div id="fearTile" class="board-hud-tile hud-fear">
             <h3 id="fearLabel">Furcht</h3>
-            <p id="fearValue" class="value">0</p>
-            <!-- The banked total is the number that can be spent; what this round has earned
-                 so far sits under it, unspendable until the round ends. -->
+            <!-- The banked purse, with what the round has added to it so far riding on the
+                 same line. One is what can be spent and the other is what is coming, so they
+                 read as one sentence rather than as two separate figures. -->
+            <p class="value">
+              <span id="fearValue">0</span><small id="fearRound" class="fear-round"></small>
+            </p>
+            <!-- The High-Water Mark payout, which is the one piece of Fear income that
+                 arrives as an event rather than as a rate. It burns off on its own timer
+                 (DEFEAT_FX_MS) and sits above the pending line so it cannot be mistaken for
+                 the running total. -->
+            <span id="fearMilestone" class="fear-milestone" aria-hidden="true"></span>
+            <!-- How the round's total splits: what it earned on its own, and what the Fear
+                 ladders added. Only drawn when a ladder is actually adding something - with
+                 none owned it would just restate the line above it. -->
             <small id="fearPending"></small>
           </div>
           <div class="board-hud-tile hud-round">

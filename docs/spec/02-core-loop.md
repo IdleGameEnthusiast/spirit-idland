@@ -19,9 +19,11 @@ upgrade shop between rounds.
   player can change how fast those seconds pass, and can make the round wait at the end of one,
   but can never pull a wave forward or shorten the interval before it.
 - Fear earned during a round is never lost, including when the round ends.
-- Energy, and the abilities bought with it, survive a round the same way Fear does. The two
-  currencies differ in where they are spent, not in whether a loss takes them: Fear buys
-  permanent upgrades between rounds, Energy unlocks abilities at any time.
+- Energy, and the abilities bought with it, die with the round that earned them — Fear does
+  not. That is the whole difference between the two: Fear buys permanent upgrades and carries,
+  Energy unlocks abilities inside the round it was earned in and is given back after. The one
+  crossing between them is `headwaters`, a Fear upgrade that pays into what a round *opens*
+  with; it never tops a round up once the round is running.
 - A new round resets the island (invaders, Dahan, Blight, wave timer) to the spirit's
   current permanent-upgrade baseline. It does not reset Fear or purchased upgrades.
 
@@ -89,12 +91,17 @@ ability bar rather than on individual casts:
 - **Persistence — none.** `resources.energy`, `round.purchasedAbilityIds` and
   `round.abilityTiers` are all cleared by `startRound`. Every round is built from the same
   opening hand, out of Energy earned in that round alone.
+- **The opening figure.** The one thing the shop sets here is what the purse *starts* at:
+  `headwaters` opens a round with 1 to 35 Energy already in hand, by tier. Nothing a round
+  earned is carried by it — the figure is fixed before the round begins, like the Dahan
+  placement, and a round that ends holding 40 Energy still opens the next one at the ladder's
+  number.
 
 That last point is what separates the two currencies. Fear carries and buys permanent
 upgrades between rounds; Energy is spent inside a round and dies with it. So the shop decides
-*how fast a round can be rebuilt* — more Dahan striking, longer before Blight ends it — and the
-fight decides *how far that round gets*. Neither can be traded for the other, and a round can
-never be won on a previous round's leftovers.
+*how fast a round can be rebuilt* — more Dahan striking, longer before Blight ends it, and now
+how much of the bar is already bought when the first wave lands — and the fight decides *how
+far that round gets*. A round can never be won on a previous round's leftovers.
 
 Answered against the alternative of a per-cast cost. A per-cast cost makes a good round
 cheaper to play than a bad one — exactly backwards for a loop whose whole tension is that
@@ -222,8 +229,13 @@ once: `DAHAN_ATTACK_DAMAGE` per Dahan, spent on the highest-tier invader type pr
 out. Defeated invaders award Fear through the normal defeat path.
 
 This timer is **not** the wave timer. It happens to start at the same value, so the two read
-as one rhythm in round one, but it is its own constant and the shop is expected to shorten it.
-Nothing should re-derive it from `WAVE_INTERVAL_SECONDS`.
+as one rhythm in round one, but it is its own constant and the shop does shorten it — see
+*The Dahan Remember* below. Nothing should re-derive it from `WAVE_INTERVAL_SECONDS`.
+
+The interval is read through `roundDahanAttackInterval` rather than off the constant:
+`dahan_remember` divides it by `1 + haste`, up to twice as fast at a full pool. The tier comes
+from the round's upgrade snapshot, so filling the pool mid-round speeds up the *next* round —
+see [04-economy-formulas.md](./04-economy-formulas.md#the-interval-and-the-one-thing-that-shortens-it).
 
 ## Blight
 

@@ -98,6 +98,29 @@ const BLIGHT_FLOOR_FRACTION = 0.25;
 const DAHAN_ATTACK_INTERVAL_SECONDS = 10 * TIME_SCALE;
 const DAHAN_ATTACK_DAMAGE = 1;
 
+/* ---------- The shop shortening it: haste, not subtraction ----------
+ *
+ * `dahan_remember` is a pool of Fear rather than a ladder of tiers, and what it buys is haste
+ * on the strike clock: the interval is *divided* by `1 + haste` rather than having seconds
+ * taken off it. Two reasons, and neither is arithmetic taste.
+ *
+ * The first is that the percentage then means something a player can check against the log:
+ * 100% haste is 100% more strikes, not "100% off" a cooldown that would then be zero. The
+ * second is that division composes. A second cooldown source - and the comment above says one
+ * is expected - multiplies its own divisor in without either source having to know the other
+ * exists, and no combination of them can ever reach zero. A subtractive rule would need a
+ * floor bolted onto it the moment the second source arrived, and the floor would be the real
+ * rule while the percentages were decoration.
+ *
+ * The cap is therefore a design decision rather than a safety rail: at 1.0 the Dahan strike
+ * twice as often, which at the 1x speed dial is every 10 real seconds against the base 20,
+ * and 10000 Fear is several times the price of the entire rest of the catalogue. It is meant
+ * to be the sink that outlives the shop, so it is priced against income the shop cannot
+ * spend rather than against the shop.
+ */
+const DAHAN_HASTE_FEAR_FOR_FULL = 10000;
+const DAHAN_HASTE_MAX = 1;
+
 /* ---------- The difficulty ladder ----------
  *
  * A round that survives its opening used to be flat: the Dahan out-kill the track and nothing
@@ -180,12 +203,50 @@ const FEAR_PER_WAVE = 1;
 // both rates are 1, a defeat now pays the same figure into each purse; what separates them
 // is where else the income comes from, and how long it lasts.
 //
-// Energy is the round's own currency and it does not survive one: startRound zeroes it along
+// Energy is the round's own currency and it does not survive one: startRound clears it along
 // with everything bought with it. The kit is rebuilt from scratch every round, and the only
 // thing that carries is Fear - which is what the shop's permanent upgrades are drawn from.
 // So the two currencies answer two different questions: Energy is "what can this round
-// become", Fear is "what does every round start as".
+// become", Fear is "what does every round start as". `headwaters` below is the one place the
+// second question is answered with the first currency.
 const ENERGY_PER_POWER = 1;
+
+/* ---------- headwaters: what a round opens with ----------
+ *
+ * Cumulative Energy at the start of a round, indexed by owned tier - not a per-tier step. It
+ * has to be a table because the gain is not linear: it climbs with the price instead of
+ * staying flat, which is the opposite of every other ladder in the shop.
+ *
+ * That inversion is deliberate and it is forced by the cost curve. A flat-gain ladder against
+ * 1.6x-a-tier is what makes the top rungs of `dahan_reinforcement` bad buys on purpose (see
+ * UPGRADE_COST_GROWTH) - fine over 5 tiers, useless over 9, where the last tier costs 43x the
+ * first. Tracking the gain to the price keeps all nine rungs live: Fear per point of Energy
+ * still climbs, from 8 at the bottom to 38 at the top, just gently enough that no tier is
+ * dead weight.
+ *
+ * The first three tiers are weak on purpose and are not a mistake to be fixed: 3 Energy
+ * crosses none of the ability prices (5 / 10 / 20), so it is worth about three Boon ticks off
+ * the opening. They are the entry fee on a ladder whose top is very strong, and they are
+ * priced like one.
+ *
+ * The ceiling is exactly 5 + 10 + 20, the whole unlock ladder. A tier 9 round paired with
+ * `auto_buy_abilities` opens with the entire kit bought and not one Energy spare, which is
+ * the most this is ever meant to be worth. That is why it is capped and the Fear ladders are
+ * not - what it buys genuinely runs out, and past 35 it would only be pre-banking toward the
+ * Innate's tier 2 (50).
+ */
+const STARTING_ENERGY_BY_TIER = [0, 1, 2, 3, 5, 8, 13, 19, 26, 35];
+
+// The three Fear ladders (see UPGRADES). All three step by the same +10% a tier so the shop
+// reads as one shape three times; what differs is which half of the income they multiply.
+const FEAR_KILL_BONUS_PER_TIER = 0.10;
+const FEAR_WAVE_BONUS_PER_TIER = 0.10;
+
+// high_water_mark: every Nth wave pays a bonus of `tier * FRACTION` of its own wave number.
+// The interval is what makes the payout quadratic in depth rather than linear - a run to wave
+// 10m collects `tier * m(m+1)/2` where the flat per-wave Fear collects 10m.
+const FEAR_MILESTONE_WAVE_INTERVAL = 10;
+const FEAR_MILESTONE_FRACTION_PER_TIER = 0.10;
 
 // `damage` is now a rate: what the unit deals every second it stands in a land. A Dahan's 2
 // is what it cancels out of the invader total, which is why one Dahan holds off two
@@ -265,9 +326,9 @@ function setRng(fn) {
 const SPIRITS = {
   core_spirit_01: {
     id: "core_spirit_01",
-    name: "Reissende Fluten im Sonnenlicht",
+    name: "Reißende Fluten im Sonnenlicht",
     englishName: "River Surges in Sunlight",
-    traits: "Schnelle Stroeme verschieben Invasoren und halten das Land beweglich. Fokus: Kontrolle, Positionierung und stetiger Fluss.",
+    traits: "Schnelle Ströme verschieben Invasoren und halten das Land beweglich. Fokus: Kontrolle, Positionierung und stetiger Fluss.",
     traitsEn: "Swift currents displace invaders and keep the land in motion. Focus: control, positioning, and steady flow.",
     // The spirit's whole kit, in bar order: the Innate first because it is the only one that
     // grows, then the free faucet, then the three Energy unlocks in ascending price. The bar
@@ -403,6 +464,117 @@ const UPGRADES = {
     // shop's growth lever - reinforcement and the one-offs are.
     baseCost: 3,
     maxTier: 5
+  },
+  headwaters: {
+    id: "headwaters",
+    repeatable: true,
+    effect: "starting_energy_per_tier",
+    // The gain per tier is not flat, so it lives in STARTING_ENERGY_BY_TIER rather than here -
+    // see the note above that table for why this ladder is shaped against the grain of every
+    // other one. `maxTier` is its length: the ladder ends where the unlock kit does.
+    //
+    // Priced from the same 8 the ladder needs to reach 344 at tier 9, which is 903 Fear for
+    // the whole thing - the dearest row in the catalogue, above auto_start_round (500). It
+    // should be: what it ends at is the full kit in hand before the first wave, every round,
+    // forever. It is also the one upgrade whose worth *shrinks* with depth, the exact inverse
+    // of high_water_mark - a run to wave 100 barely notices its first thirty seconds. This
+    // pays for playing; the Mark pays for pushing.
+    baseCost: 8,
+    maxTier: STARTING_ENERGY_BY_TIER.length - 1
+  },
+
+  /* ---------- The three Fear ladders ----------
+   *
+   * One shape read three times: ten tiers, +10% a tier, +100% at the top, on the 1.6 curve
+   * every other repeatable uses. They carry no `maxTier` - the curve is what stops them, not a
+   * number (see upgradeIsSoftCapped). At 1.6 a tier costs 60% more than the
+   * one under it while paying the same flat +10%, so the price pulls away from the payoff on
+   * its own: tier 1 pays for itself in about two rounds, tier 10 in over a hundred.
+   *
+   * `requiredForGate: false` is what a ladder with no top has to carry: the gate asks whether
+   * everything else is finished, and a row that can never finish would hold it shut forever.
+   * See upgradeRequiredForGate.
+   *
+   * Leaving them uncapped rather than stopping at 10 is a playtest decision, not a permanent
+   * one. What it buys is that the ceiling floats: payback is measured against the *current*
+   * Fear rate, so tiers that were absurd at wave 40 come back into range at wave 150 instead
+   * of sitting maxed and dead. If that reads as noise rather than as depth, a `maxTier: 10`
+   * on each of these three turns them into finishable ladders and nothing else has to move.
+   */
+  rising_dread: {
+    id: "rising_dread",
+    repeatable: true,
+    requiredForGate: false,
+    effect: "fear_kill_bonus_per_tier",
+    // The cheapest ladder in the shop and deliberately the strongest early buy: at 6 Fear it
+    // pays back inside two rounds. It is priced under dahan_reinforcement (10) without being
+    // strictly better than it - the Dahan tier buys survival as well as income, and this buys
+    // only income - so the opening move becomes a choice rather than a script.
+    baseCost: 6
+  },
+  mounting_terror: {
+    id: "mounting_terror",
+    repeatable: true,
+    requiredForGate: false,
+    effect: "fear_wave_bonus_per_tier",
+    // Same price as rising_dread on purpose, even though wave Fear is the smaller half of the
+    // income and falls further behind at every damage rung of the ladder. What squares the two
+    // is high_water_mark below: it multiplies the milestone payout too, which is the half of
+    // wave income that grows with depth. Bought alone this is the weaker ladder; bought
+    // alongside the Mark it is the multiplier on the fastest-growing number in the game.
+    baseCost: 6
+  },
+  high_water_mark: {
+    id: "high_water_mark",
+    repeatable: true,
+    requiredForGate: false,
+    effect: "fear_wave_milestone_per_tier",
+    // Every tenth wave pays a bonus of `tier * 10%` of its own number. Wave 50 at tier 3 pays
+    // 15. That makes the total quadratic in depth - a run to wave 10m collects
+    // `tier * m(m+1)/2` - against the flat 1-per-wave the baseline pays, which is the one
+    // thing in the shop whose worth grows faster than the invaders do.
+    //
+    // Twice the base of the other two because each tier is worth roughly 3-5x as much at
+    // depth (about 55 Fear a run at wave 100 against a multiplier tier's 10-20). It is still
+    // the weakest of the three for a player dying at wave 30, where a tier is worth about 6 a
+    // run - which is the point: this is the ladder that pays for pushing rather than for
+    // playing, and it should not be the obvious first buy.
+    baseCost: 12
+  },
+
+  /* ---------- The Dahan Remember: a pool, not a ladder ----------
+   *
+   * Every other row in the shop asks the same question - is the next tier worth its price -
+   * and the answer is a yes or a no. This one asks nothing. Fear goes in at one Fear a tier,
+   * flat, forever, and what comes back out is haste on the Dahan's strike clock at exactly
+   * the rate it went in. A tier here is not a rung; it is a unit of the pool, which is why
+   * the row shows a percentage where every other repeatable shows "Tier n" - the tier number
+   * is an implementation detail and 4271 of them is not a thing to tell a player.
+   *
+   * `costGrowth: 1` is the whole of what makes it a pool. The 1.6 curve everywhere else is
+   * there to keep a ladder a decision; a sink is the opposite of a decision, and a sink whose
+   * price climbed would just be another ladder with a worse name.
+   *
+   * `requiredForGate: false` for a different reason than the three Fear ladders carry it.
+   * They are unfinishable, so the gate could never open. This one is finishable and the gate
+   * would eventually open - after 10000 Fear, which is several times the rest of the
+   * catalogue put together. That is not a gate, it is a wall, and what stands behind it was
+   * meant to be what finishing the shop pays for.
+   */
+  dahan_remember: {
+    id: "dahan_remember",
+    repeatable: true,
+    requiredForGate: false,
+    effect: "dahan_attack_haste",
+    // One Fear, one hundredth of a percent, and the cap is the whole pool - see
+    // DAHAN_HASTE_FEAR_FOR_FULL for why the price is what it is.
+    baseCost: 1,
+    costGrowth: 1,
+    maxTier: DAHAN_HASTE_FEAR_FOR_FULL,
+    // What the row offers instead of a single Buy. A pool this deep cannot be filled a click
+    // at a time, and the small denominations stay because the last few hundred Fear before
+    // the cap should not have to be overpaid in thousands.
+    bulkAmounts: [1, 10, 100, 1000]
   },
 
   auto_boon: {
@@ -606,12 +778,17 @@ const I18N = {
 
     hudTitle: "Runde",
     roundLabel: "Welle",
-    bestWaveLabel: "Hoechste Welle",
+    bestWaveLabel: "Höchste Welle",
     blightLabel: "Verderbnis",
-    waveLabel: "Naechste Welle",
+    waveLabel: "Nächste Welle",
     fearLabel: "Furcht",
     // Die Furcht dieser Runde ist noch nicht ausgebbar - sie wird erst am Rundenende gebucht.
-    fearPendingHint: "+{fear} in dieser Runde",
+    // Neben der gebuchten Furcht: was diese Runde bisher dazugelegt hat, gebucht erst am
+    // Rundenende.
+    fearRoundHint: "(+{fear} in dieser Runde)",
+    // Eine Zeile tiefer, und nur wenn ein Aufstieg wirklich etwas beisteuert: wie sich die
+    // Zeile darüber aufteilt. Beide Zahlen zusammen ergeben genau den Wert oben.
+    fearSplitHint: "+{fear} Basis (+{bonus} durch Upgrades)",
     secondsShort: "{seconds}s",
     // The two readings the wave tile has that are not a countdown: a stopped clock, and a
     // wave standing due behind the gate waiting to be called.
@@ -620,22 +797,22 @@ const I18N = {
     startNextWaveBtn: "Welle starten",
     autoWaveOnBtn: "Auto: An",
     autoWaveOffBtn: "Auto: Aus",
-    autoWaveHint: "Naechste Welle laeuft von selbst an. Aus: am Ende der Leiste haelt die Zeit an, bis du die Welle startest.",
+    autoWaveHint: "Nächste Welle läuft von selbst an. Aus: am Ende der Leiste hält die Zeit an, bis du die Welle startest.",
     autoRoundOnBtn: "Auto-Runde: An",
     autoRoundOffBtn: "Auto-Runde: Aus",
-    autoRoundHint: "Die naechste Runde startet von selbst. Aus: der Laden bleibt offen, bis du sie startest.",
+    autoRoundHint: "Die nächste Runde startet von selbst. Aus: der Laden bleibt offen, bis du sie startest.",
     speedLabel: "Tempo",
     speedOptionTitle: "Spieltempo {speed}x",
     speedPausedTitle: "Pause - die Zeit steht still",
     blightMeter: "{value} / {max}",
     activeSpiritLabel: "Aktiver Geist:",
 
-    abilitiesTitle: "Faehigkeiten",
-    abilitiesHint: "Einsetzen kostet nur Abklingzeit. Energie schaltet neue Faehigkeiten frei.",
+    abilitiesTitle: "Fähigkeiten",
+    abilitiesHint: "Einsetzen kostet nur Abklingzeit. Energie schaltet neue Fähigkeiten frei.",
     energyLabel: "Energie",
-    energyHint: "Energie kommt aus besiegten Invasoren: 1 pro Entdecker, 2 pro Dorf, 3 pro Stadt. Boon of Vigor gibt +1. Zu Rundenbeginn faellt sie auf 0 zurueck - und alles, was mit ihr gekauft wurde, mit ihr.",
+    energyHint: "Energie kommt aus besiegten Invasoren: 1 pro Entdecker, 2 pro Dorf, 3 pro Stadt. Boon of Vigor gibt +1. Zu Rundenbeginn fällt sie zurück - auf 0, oder auf das, was Quellwasser hergibt - und alles, was mit ihr gekauft wurde, ist damit weg.",
     abilityReady: "Bereit",
-    abilityArmed: "Ziel waehlen",
+    abilityArmed: "Ziel wählen",
     abilityCooldown: "{seconds}s",
     abilityLocked: "Gesperrt",
     abilityUnlockBtn: "{cost} Energie",
@@ -652,100 +829,129 @@ const I18N = {
     abilityTexts: {
       innate_power: [
         "Schiebt {push} Entdecker/Dorf in ein angrenzendes Gebiet.",
-        "{damage} Schaden. Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet.",
-        "{damage} Schaden auf jeden Invasor im gewaehlten Gebiet."
+        "{damage} Schaden. Schiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet.",
+        "{damage} Schaden auf jeden Invasor im gewählten Gebiet."
       ],
       boon_of_vigor: "+{amount} Energie.",
-      rivers_bounty: "+{amount} Dahan im Gebiet mit den wenigsten Dahan und Invasoren, wenn moeglich.",
-      flash_floods: "{damage} Schaden. Liegt das Ziel an der Kueste: +{coastal} Schaden.",
-      wash_away: "Schiebt bis zu {push} Entdecker/Doerfer in ein angrenzendes Gebiet. An der Kueste spuelt das Wasser stattdessen bis zu {sea} von der Insel ins Meer."
+      rivers_bounty: "+{amount} Dahan im Gebiet mit den wenigsten Dahan und Invasoren, wenn möglich.",
+      flash_floods: "{damage} Schaden. Liegt das Ziel an der Küste: +{coastal} Schaden.",
+      wash_away: "Schiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet. An der Küste spült das Wasser stattdessen bis zu {sea} von der Insel ins Meer."
     },
 
     mapTitle: "Die Insel",
-    mapPlanHint: "Acht Gebiete, drei an der Kueste. Waehle ein Gebiet fuer Details.",
+    mapPlanHint: "Acht Gebiete, drei an der Küste. Wähle ein Gebiet für Details.",
     mapHintArmed: "{ability}: {requirement}",
-    mapHintWave: "Naechste Welle baut in {terrain} ({lands}).",
-    abilityNeedInvaders: "waehle ein Gebiet mit Invasoren.",
-    abilityNeedPushable: "waehle ein Gebiet mit Entdeckern/Doerfern.",
-    abilityNeedAnyLand: "waehle ein beliebiges Gebiet.",
+    mapHintWave: "Nächste Welle baut in {terrain} ({lands}).",
+    abilityNeedInvaders: "wähle ein Gebiet mit Invasoren.",
+    abilityNeedPushable: "wähle ein Gebiet mit Entdeckern/Dörfern.",
+    abilityNeedAnyLand: "wähle ein beliebiges Gebiet.",
 
     shopTitle: "Zwischen den Runden",
     shopLostRound: "Runde {round} verloren. {fear} Furcht in dieser Runde erbeutet.",
-    // Waehrend eine Runde laeuft, steht statt der Verlustmeldung, was sie bisher eingebracht
+    // Während eine Runde läuft, steht statt der Verlustmeldung, was sie bisher eingebracht
     // hat - und dass es erst am Rundenende gebucht wird.
-    shopRoundRunning: "Runde {round} laeuft, Welle {wave}. {fear} Furcht bisher - buchbar am Rundenende.",
-    shopFearLabel: "Verfuegbare Furcht",
+    shopRoundRunning: "Runde {round} läuft, Welle {wave}. {fear} Furcht bisher - buchbar am Rundenende.",
+    shopFearLabel: "Verfügbare Furcht",
     shopTierLabel: "Stufe {tier}",
+    // Was ein Becken dort zeigt, wo eine Leiter ihre Stufe zeigt - siehe upgradeStatusText.
+    shopHasteLabel: "{pct}% schneller",
     shopCostLabel: "{cost} Furcht",
+    // Die Knöpfe des Beckens: je eine Stückelung, dann alles, was die Börse hergibt.
+    shopInvestBtn: "+{amount}",
+    shopInvestMaxBtn: "Max",
+    shopInvestTitle: "{amount} Furcht einlegen",
+    shopInvestMaxTitle: "{amount} Furcht einlegen - alles, was du dir leisten kannst",
     shopBuyBtn: "Kaufen",
     shopMaxedBtn: "Maximum",
     // A one-off is owned, not maxed: there was never a ladder for it to reach the top of.
     shopOwnedBtn: "Gekauft",
     shopOneOffLabel: "Einmalig",
-    // Ueberschrift ueber allem, was ausverkauft ist - nichts darunter ist noch zu haben.
+    // Überschrift über allem, was ausverkauft ist - nichts darunter ist noch zu haben.
     shopSoldOutLabel: "Bereits gekauft",
-    // Waehrend der Runde gekauft: gehoert dir, wirkt aber erst ab der naechsten Runde.
-    shopPendingHint: "Wirkt ab der naechsten Runde.",
+    // Während der Runde gekauft: gehört dir, wirkt aber erst ab der nächsten Runde.
+    shopPendingHint: "Wirkt ab der nächsten Runde.",
     // Verschlossen, nicht zu teuer: der Preis steht daneben und ist nicht der Grund.
     shopLockedHint: "Erst zu haben, wenn alles andere gekauft ist.",
-    startNextRoundBtn: "Naechste Runde starten",
+    startNextRoundBtn: "Nächste Runde starten",
     upgradeNames: {
-      dahan_reinforcement: "Verstaerkung der Dahan",
+      dahan_reinforcement: "Verstärkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
+      headwaters: "Quellwasser",
+      rising_dread: "Steigendes Grauen",
+      mounting_terror: "Wachsender Schrecken",
+      high_water_mark: "Hochwassermarke",
+      dahan_remember: "Die Dahan erinnern sich",
       auto_boon: "Segen von selbst",
       auto_innate: "Angeborener Instinkt",
-      auto_wash_away: "Stroemung von selbst",
+      auto_wash_away: "Strömung von selbst",
       auto_bounty: "Gabe des Flusses",
       auto_flash_floods: "Sturzflut von selbst",
-      auto_buy_abilities: "Der Fluss weiss, was er braucht",
+      auto_buy_abilities: "Der Fluss weiß, was er braucht",
       auto_start_round: "Die Flut kehrt wieder"
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 Dahan zu Rundenbeginn, pro Stufe.",
       blight_resilience: "+1 Verderbnisgrenze, pro Stufe.",
+      headwaters: "Jede Runde beginnt mit Energie in der Hand: 1 / 2 / 3 / 5 / 8 / 13 / 19 / 26 / 35 nach Stufe. Stufe 9 ist die ganze Ausrüstung, gekauft vor der ersten Welle.",
+      rising_dread: "+10% Furcht aus besiegten Invasoren, pro Stufe.",
+      mounting_terror: "+10% Furcht für überstandene Wellen, pro Stufe.",
+      high_water_mark: "Jede 10. Welle zahlt zusätzlich 10% ihrer eigenen Nummer als Furcht, pro Stufe. Welle 50 auf Stufe 3 bringt 15 dazu.",
+      dahan_remember: "Furcht, in die Erinnerung der Dahan gelegt - 100 je 1%. Sie schlagen früher dafür. Bei 100% schlagen sie doppelt so oft.",
       auto_boon: "Boon of Vigor wirkt sich selbst, sobald es bereit ist.",
       auto_innate: "Die Angeborene Kraft wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt.",
       auto_wash_away: "Wash Away wirkt sich selbst und sucht sich sein Ziel - sobald es freigeschaltet und bereit ist.",
       auto_bounty: "River's Bounty wirkt sich selbst, sobald es freigeschaltet und bereit ist.",
-      auto_flash_floods: "Flash Floods wirkt sich selbst und schlaegt dorthin, wo es toetet - sobald es freigeschaltet und bereit ist.",
-      auto_buy_abilities: "Energie kauft von selbst: erst die verschlossenen Faehigkeiten, guenstigste zuerst, dann die naechste Stufe der Angeborenen Kraft.",
-      auto_start_round: "Die naechste Runde startet von selbst. Abschaltbar, wenn du in Ruhe einkaufen willst."
+      auto_flash_floods: "Flash Floods wirkt sich selbst und schlägt dorthin, wo es tötet - sobald es freigeschaltet und bereit ist.",
+      auto_buy_abilities: "Energie kauft von selbst: erst die verschlossenen Fähigkeiten, günstigste zuerst, dann die nächste Stufe der Angeborenen Kraft.",
+      auto_start_round: "Die nächste Runde startet von selbst. Abschaltbar, wenn du in Ruhe einkaufen willst."
+    },
+    // Was die nächste Stufe bringt, statt der Form der ganzen Leiter - siehe
+    // NEXT_TIER_UPGRADE_TEXT.
+    upgradeNextTexts: {
+      headwaters: "Nächste Stufe: +{gain} Energie zu Rundenbeginn, dann {next} in der Hand.",
+      high_water_mark: "Nächste Stufe: +{pct}% der Wellennummer bei jeder 10. Welle - Welle {wave} zahlt dann {next} statt {current}.",
+      // Kein Vergleich mit dem Grundwert - siehe die englische Fassung.
+      dahan_remember: "{invested} / {full} Furcht erinnert ({pct}%). Die Dahan schlagen alle {seconds}s zu. 100 Furcht bringen 1% mehr."
+    },
+    upgradeMaxedTexts: {
+      headwaters: "Jede Runde beginnt mit {energy} Energie in der Hand: die ganze Ausrüstung, gekauft vor der ersten Welle.",
+      dahan_remember: "Alle {full} Furcht erinnert. Die Dahan schlagen alle {seconds}s zu - doppelt so oft wie die {base}s, mit denen sie begannen."
     },
 
     logTitle: "Spielprotokoll",
     manualSaveBtn: "Jetzt speichern",
-    wipeSaveBtn: "Spielstand loeschen",
+    wipeSaveBtn: "Spielstand löschen",
     autosaveHint: "Autosave alle 10s.",
 
-    redeemLabel: "Code einloesen",
+    redeemLabel: "Code einlösen",
     redeemPlaceholder: "Code eingeben",
-    redeemBtn: "Einloesen",
-    redeemOk: "Code eingeloest. Die Playtest-Werkzeuge sind aktiv.",
-    redeemAlready: "Dieser Code ist bereits eingeloest.",
+    redeemBtn: "Einlösen",
+    redeemOk: "Code eingelöst. Die Playtest-Werkzeuge sind aktiv.",
+    redeemAlready: "Dieser Code ist bereits eingelöst.",
     redeemUnknown: "Unbekannter Code.",
     redeemPlaytestLog: "Playtest-Werkzeuge aktiviert.",
     playtestHideBtn: "Playtest-Werkzeuge ausblenden",
     playtestHiddenLog: "Playtest-Werkzeuge ausgeblendet.",
     playtestEnergyBtn: "+{amount} Energie",
-    playtestEnergyTitle: "Playtest: {amount} Energie hinzufuegen",
+    playtestEnergyTitle: "Playtest: {amount} Energie hinzufügen",
     playtestEnergyLog: "Playtest: +{amount} Energie.",
     playtestFearBtn: "+{amount} Furcht",
-    playtestFearTitle: "Playtest: {amount} Furcht hinzufuegen",
+    playtestFearTitle: "Playtest: {amount} Furcht hinzufügen",
     playtestFearLog: "Playtest: +{amount} Furcht.",
 
     explorersLabel: "Entdecker",
-    townsLabel: "Doerfer",
-    citiesLabel: "Staedte",
-    // Build and defeat lines name one unit at a time, and "+1 Staedte" reads as a typo.
+    townsLabel: "Dörfer",
+    citiesLabel: "Städte",
+    // Build and defeat lines name one unit at a time, and "+1 Städte" reads as a typo.
     explorersOne: "Entdecker",
     townsOne: "Dorf",
     citiesOne: "Stadt",
     dahanLabel: "Dahan",
     invadersLabel: "Invasoren",
-    ownForcesLabel: "Eigene Kraefte",
+    ownForcesLabel: "Eigene Kräfte",
     noInvadersHere: "Keine Invasoren.",
     neighboursLabel: "Angrenzend",
-    coastalLabel: "Kueste",
+    coastalLabel: "Küste",
     inlandLabel: "Binnenland",
     invaderHpHint: "HP {current}/{max}",
     landBlightLabel: "Verderbnis hier",
@@ -755,9 +961,9 @@ const I18N = {
     etaNever: "nie",
     pressureNoInvaders: "keine Invasoren",
     pressureHeld: "gehalten - {line}",
-    pressureChip: "+{rate}% / s - naechste in {eta}",
-    pressureDetail: "{gross} Schaden - {defence} Dahan = {net}/s. +{rate}% Verderbnis pro Sekunde, naechste in {eta}.",
-    pressureDetailHeld: "{gross} Schaden gegen {defence} Dahan-Abwehr: aufgehalten, aber {net}/s sickern durch. +{rate}% Verderbnis pro Sekunde, naechste in {eta}.",
+    pressureChip: "+{rate}% / s - nächste in {eta}",
+    pressureDetail: "{gross} Schaden - {defence} Dahan = {net}/s. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
+    pressureDetailHeld: "{gross} Schaden gegen {defence} Dahan-Abwehr: aufgehalten, aber {net}/s sickern durch. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
     buildChip: "+1 {unit}",
     buildChipNone: "nichts hier",
     blightBarLabel: "Verderbnis",
@@ -775,54 +981,57 @@ const I18N = {
     landShort: "Gebiet {id}",
     invaderLandNames: {
       mountains: "Berge",
-      desert: "Wueste",
+      desert: "Wüste",
       jungle: "Dschungel",
-      wetlands: "Suempfe"
+      wetlands: "Sümpfe"
     },
 
     roundStarted: "Runde {round} beginnt. Verderbnisgrenze {threshold}.",
     roundEnded: "Runde {round} verloren bei Welle {wave}: Verderbnis {blight}/{threshold}. {fear} Furcht gebucht.",
-    waveResolved: "Welle {wave} aufgeloest.",
+    waveResolved: "Welle {wave} aufgelöst.",
+    waveMilestone: "Hochwassermarke bei Welle {wave}: +{fear} Furcht.",
     waveIncoming: "Invasorenleiste - Bauen: {build}, Entdecken: {discover}.",
     dahanAttackResolved: "Dahan greifen in {land} an: {damage} Schaden, {defeated} Invasoren besiegt.",
     dahanAttackNoTargets: "Dahan-Angriff: kein Gebiet mit Invasoren und Dahan.",
-    dahanFell: "{count} Dahan fallen in {land}. Noch {left} uebrig.",
+    dahanFell: "{count} Dahan fallen in {land}. Noch {left} übrig.",
     blightGained: "Verderbnis in {land}: +{amount}. Gesamt {total}/{threshold}.",
     buildNothing: "Bauen: noch kein Gebiet auf der Leiste.",
     buildNoInvaders: "Bauen in {land}: keine Invasoren, nichts wird gebaut.",
     buildResolved: "Bauen in {land}: +1 {unit}.",
     exploreNothing: "Entdecken: kein Gebiet gezogen.",
     exploreResolved: "Entdecken in {land}: +{count} Entdecker.",
-    exploreBlocked: "Entdecken in {land}: kein Zugang, keine Kueste und kein Dorf/keine Stadt daneben.",
+    exploreBlocked: "Entdecken in {land}: kein Zugang, keine Küste und kein Dorf/keine Stadt daneben.",
     exploreNoneReachable: "Entdecken in {terrain}: kein Gebiet erreichbar.",
     bonusTownResolved: "Ein Dorf erhebt sich in {land}.",
     setupExplore: "Die Invasoren gehen an Land.",
     dahanRoundLog: "Dahan versammeln sich: {summary}.",
 
     abilityOnCooldown: "{ability} klingt noch {seconds}s ab.",
-    abilityArmedLog: "{ability}: waehle ein Ziel.",
+    abilityArmedLog: "{ability}: wähle ein Ziel.",
     abilityCancelled: "{ability} abgebrochen.",
-    abilityNoTarget: "{ability} findet kein gueltiges Ziel. Abklingzeit laeuft nicht.",
-    abilityIllegalTarget: "{land} ist kein gueltiges Ziel fuer {ability}.",
+    abilityNoTarget: "{ability} findet kein gültiges Ziel. Abklingzeit läuft nicht.",
+    abilityIllegalTarget: "{land} ist kein gültiges Ziel für {ability}.",
     boonResolved: "Boon of Vigor: +{amount} Energie.",
     pushResolved: "{ability}: {total} Einheiten von {from} nach {to} geschoben.",
-    seaResolved: "{ability}: {total} Einheiten aus {land} ins Meer gespuelt.",
+    seaResolved: "{ability}: {total} Einheiten aus {land} ins Meer gespült.",
     damageResolved: "{ability} in {land}: {damage} Schaden, {defeated} Invasoren besiegt.",
     damageEachResolved: "{ability} in {land}: {damage} Schaden auf jeden Invasor, {defeated} besiegt.",
     riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}. Jetzt {total} dort.",
 
-    abilityUnlocked: "{ability} freigeschaltet fuer {cost} Energie.",
+    abilityUnlocked: "{ability} freigeschaltet für {cost} Energie.",
     abilityUnlockTooExpensive: "{ability} kostet {cost} Energie. Du hast {energy}.",
-    abilityUpgraded: "{ability} auf Stufe {tier} gebracht fuer {cost} Energie.",
+    abilityUpgraded: "{ability} auf Stufe {tier} gebracht für {cost} Energie.",
     abilityUpgradeTooExpensive: "Stufe {tier} von {ability} kostet {cost} Energie. Du hast {energy}.",
 
-    upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) fuer {cost} Furcht.",
+    upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) für {cost} Furcht.",
+    // Ein Becken hat keine Stufe zu melden - also meldet es, was hineinging und was herauskam.
+    upgradeInvested: "{upgrade}: {cost} Furcht erinnert. Jetzt {pct}% schneller - ein Schlag alle {seconds}s.",
     upgradeTooExpensive: "{upgrade} kostet {cost} Furcht. Du hast {fear}.",
-    upgradeMaxed: "{upgrade} ist bereits auf der hoechsten Stufe.",
+    upgradeMaxed: "{upgrade} ist bereits auf der höchsten Stufe.",
     upgradeLocked: "{upgrade} bleibt verschlossen, bis alles andere im Laden gekauft ist.",
 
-    migrationReset: "Alter Spielstand (Version {version}) ist nicht mit dem Rundenmodus kompatibel und wurde zurueckgesetzt.",
-    saveWiped: "Spielstand geloescht.",
+    migrationReset: "Alter Spielstand (Version {version}) ist nicht mit dem Rundenmodus kompatibel und wurde zurückgesetzt.",
+    saveWiped: "Spielstand gelöscht.",
     manualSaved: "Manuelles Speichern abgeschlossen.",
     spiritAwakens: "Der Geist erwacht."
   },
@@ -836,7 +1045,12 @@ const I18N = {
     blightLabel: "Blight",
     waveLabel: "Next wave",
     fearLabel: "Fear",
-    fearPendingHint: "+{fear} this round",
+    // Beside the banked purse: what this round has added to it so far, unspendable until the
+    // round ends.
+    fearRoundHint: "(+{fear} this round)",
+    // A line below, and only when a ladder is actually contributing: how the line above splits.
+    // The two figures together are exactly the number above them.
+    fearSplitHint: "+{fear} base (+{bonus} from upgrades)",
     secondsShort: "{seconds}s",
     wavePausedValue: "Paused",
     waveHeldValue: "Waiting",
@@ -856,7 +1070,7 @@ const I18N = {
     abilitiesTitle: "Abilities",
     abilitiesHint: "Casting costs only a cooldown. Energy unlocks new abilities.",
     energyLabel: "Energy",
-    energyHint: "Energy comes from defeated invaders: 1 per Explorer, 2 per Town, 3 per City. Boon of Vigor grants +1. It resets to 0 when a round starts - and everything bought with it goes with it.",
+    energyHint: "Energy comes from defeated invaders: 1 per Explorer, 2 per Town, 3 per City. Boon of Vigor grants +1. It resets when a round starts - to 0, or to whatever Headwaters pays - and everything bought with it goes with it.",
     abilityReady: "Ready",
     abilityArmed: "Pick a land",
     abilityCooldown: "{seconds}s",
@@ -896,7 +1110,14 @@ const I18N = {
     shopRoundRunning: "Round {round} running, wave {wave}. {fear} Fear so far - banked when the round ends.",
     shopFearLabel: "Fear available",
     shopTierLabel: "Tier {tier}",
+    // What a pool shows where a ladder shows its tier - see upgradeStatusText.
+    shopHasteLabel: "{pct}% faster",
     shopCostLabel: "{cost} Fear",
+    // The pool's buttons: a denomination each, then everything the purse holds.
+    shopInvestBtn: "+{amount}",
+    shopInvestMaxBtn: "Max",
+    shopInvestTitle: "Invest {amount} Fear",
+    shopInvestMaxTitle: "Invest {amount} Fear - everything you can afford",
     shopBuyBtn: "Buy",
     shopMaxedBtn: "Maxed",
     shopOwnedBtn: "Owned",
@@ -908,6 +1129,11 @@ const I18N = {
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
+      headwaters: "Headwaters",
+      rising_dread: "Rising Dread",
+      mounting_terror: "Mounting Terror",
+      high_water_mark: "High-Water Mark",
+      dahan_remember: "The Dahan Remember",
       auto_boon: "Boon Unbidden",
       auto_innate: "Innate Instinct",
       auto_wash_away: "The Current Unbidden",
@@ -919,6 +1145,11 @@ const I18N = {
     upgradeTexts: {
       dahan_reinforcement: "+1 starting Dahan, per tier.",
       blight_resilience: "+1 Blight threshold, per tier.",
+      headwaters: "Each round opens with Energy in hand: 1 / 2 / 3 / 5 / 8 / 13 / 19 / 26 / 35 by tier. Tier 9 is the whole unlock kit, bought before the first wave.",
+      rising_dread: "+10% Fear from defeated invaders, per tier.",
+      mounting_terror: "+10% Fear from surviving waves, per tier.",
+      high_water_mark: "Every 10th wave pays a bonus of 10% of its own number as Fear, per tier. Wave 50 at tier 3 pays 15 more.",
+      dahan_remember: "Fear poured into the memory of the Dahan, 100 for every 1% - they strike sooner for it. At 100% they strike twice as often.",
       auto_boon: "Boon of Vigor casts itself whenever it is ready.",
       auto_innate: "The Innate casts itself whenever it is ready, at whichever tier you own.",
       auto_wash_away: "Wash Away casts itself and picks its own target, once unlocked and ready.",
@@ -926,6 +1157,20 @@ const I18N = {
       auto_flash_floods: "Flash Floods casts itself and strikes where it kills, once unlocked and ready.",
       auto_buy_abilities: "Energy spends itself: the locked abilities first, cheapest before dearest, then the Innate's next tier.",
       auto_start_round: "The next round starts by itself. Switch it off when you want to shop in peace."
+    },
+    // What the next tier buys, in place of the shape of the whole ladder - see
+    // NEXT_TIER_UPGRADE_TEXT.
+    upgradeNextTexts: {
+      headwaters: "Next tier: +{gain} Energy at round start, for {next} in hand.",
+      high_water_mark: "Next tier: +{pct}% of each 10th wave's number as Fear - wave {wave} pays {next} instead of {current}.",
+      // No comparison against the base here: at zero invested - which is where every player
+      // first reads this row - "every 20s, against 20s" is a sentence that says nothing. The
+      // maxed text below is where the two numbers are worth putting side by side.
+      dahan_remember: "{invested} / {full} Fear remembered ({pct}%). The Dahan strike every {seconds}s. 100 Fear buys another 1%."
+    },
+    upgradeMaxedTexts: {
+      headwaters: "Every round opens with {energy} Energy in hand: the whole unlock kit, before the first wave.",
+      dahan_remember: "All {full} Fear remembered. The Dahan strike every {seconds}s - twice as often as the {base}s they began with."
     },
 
     logTitle: "Event log",
@@ -998,6 +1243,7 @@ const I18N = {
     roundStarted: "Round {round} begins. Blight threshold {threshold}.",
     roundEnded: "Round {round} lost at wave {wave}: Blight {blight}/{threshold}. {fear} Fear banked.",
     waveResolved: "Wave {wave} resolved.",
+    waveMilestone: "High-Water Mark at wave {wave}: +{fear} Fear.",
     waveIncoming: "Invader track - Build: {build}, Discover: {discover}.",
     dahanAttackResolved: "The Dahan strike in {land}: {damage} damage, {defeated} invaders defeated.",
     dahanAttackNoTargets: "Dahan attack: no land holds both invaders and Dahan.",
@@ -1032,6 +1278,8 @@ const I18N = {
     abilityUpgradeTooExpensive: "Tier {tier} of {ability} costs {cost} Energy. You have {energy}.",
 
     upgradePurchased: "Purchased: {upgrade} (tier {tier}) for {cost} Fear.",
+    // A pool has no tier to report, so it reports what went in and what came out of it.
+    upgradeInvested: "{upgrade}: {cost} Fear remembered. Now {pct}% faster - a strike every {seconds}s.",
     upgradeTooExpensive: "{upgrade} costs {cost} Fear. You have {fear}.",
     upgradeMaxed: "{upgrade} is already at its highest tier.",
     upgradeLocked: "{upgrade} stays sealed until everything else in the shop is bought.",
@@ -1215,6 +1463,27 @@ function pctText(rate) {
   return String(Math.round(rate * 1000) / 10);
 }
 
+/* The Dahan Remember needs two decimals where everything else needs one, because its smallest
+ * purchase is one Fear and one Fear is a hundredth of a percent. Rounding that to 0.1% would
+ * print the same number for the +1 button and the +10 one - a readout that says a purchase did
+ * nothing is worse than no readout.
+ *
+ * Trailing zeros are trimmed, so a round percentage still reads as "12%" rather than "12.00%"
+ * and the interesting digits only appear when they exist.
+ */
+function hastePctText(fraction) {
+  const pct = Math.round((Number(fraction) || 0) * 10000) / 100;
+  return String(Number(pct.toFixed(2)));
+}
+
+// The strike interval as the player's own stopwatch would measure it: game seconds divided by
+// the speed dial, exactly like every countdown on the HUD. One decimal, because the first few
+// hundred Fear move it by tenths and a whole-second readout would swallow them.
+function strikeSecondsText(state, gameSeconds) {
+  const speed = gameSpeed(state);
+  return formatAmount(speed > 0 ? gameSeconds / speed : gameSeconds);
+}
+
 // One decimal, with no trailing ".0". Needed wherever a readout can be fractional - the net
 // damage rate is, now that BLIGHT_FLOOR_FRACTION can be the thing setting it.
 function formatAmount(value) {
@@ -1266,9 +1535,103 @@ function upgradeName(state, upgradeId) {
   return (t.upgradeNames && t.upgradeNames[upgradeId]) || upgradeId;
 }
 
+/* ---------- The rows that describe where they stand ----------
+ *
+ * Every other repeatable pays a constant per tier, so "+1 Dahan, per tier" answers the only
+ * question the shop is ever asked: what does the next price buy. These three do not. `headwaters`
+ * climbs a hand-built table and `high_water_mark` pays a fraction of a wave number that grows
+ * with the run, so their honest descriptions are a list and a formula - both true, neither an
+ * answer. So these print the next rung instead of their own shape, and the tier chip beside the
+ * text says which rung that is.
+ *
+ * The Mark needs a wave to be concrete about, and the useful one is the next milestone the
+ * player is actually heading for rather than a fixed example: at wave 20 the row should talk
+ * about 30, and at wave 200 about 210. It has no top tier to run into - it is soft-capped, so
+ * there is always another rung to price - while `headwaters` ends, and a ladder at its top has
+ * to say what it pays rather than what it would next.
+ *
+ * Anything here may return "" to fall back to the static `upgradeTexts` entry, which is why
+ * those two entries stay in both locale tables: a row is never left blank because a
+ * translation is missing a key.
+ */
+const NEXT_TIER_UPGRADE_TEXT = {
+  headwaters(state, t) {
+    const tier = upgradeTier(state, "headwaters");
+    const current = startingEnergyForTier(tier);
+    if (tier >= upgradeMaxTier("headwaters")) {
+      return template((t.upgradeMaxedTexts || {}).headwaters, { energy: current });
+    }
+    const next = startingEnergyForTier(tier + 1);
+    return template((t.upgradeNextTexts || {}).headwaters, { gain: next - current, current, next });
+  },
+
+  // A pool describes where it stands rather than what the next rung buys: there is no next
+  // rung, only more of the same, and what the player wants to know is how far in they are and
+  // what the clock reads now. The static text under `upgradeTexts` still carries the rate, so
+  // between the two the row says what a Fear buys and what the Fear already spent bought.
+  dahan_remember(state, t) {
+    const invested = upgradeTier(state, "dahan_remember");
+    const parts = {
+      invested,
+      full: DAHAN_HASTE_FEAR_FOR_FULL,
+      pct: hastePctText(dahanHasteFraction(invested)),
+      seconds: strikeSecondsText(state, dahanAttackIntervalFor(invested)),
+      base: strikeSecondsText(state, DAHAN_ATTACK_INTERVAL_SECONDS)
+    };
+    if (invested >= upgradeMaxTier("dahan_remember")) {
+      return template((t.upgradeMaxedTexts || {}).dahan_remember, parts);
+    }
+    return template((t.upgradeNextTexts || {}).dahan_remember, parts);
+  },
+
+  high_water_mark(state, t) {
+    const tier = upgradeTier(state, "high_water_mark");
+    // Both the round in progress and the best ever reached, because neither alone is the
+    // player's depth: a save loaded between rounds has no running wave, and a run that is
+    // already past its record has left the record behind.
+    const deepest = Math.max(
+      Math.floor((state.meta && state.meta.bestWaveReached) || 0),
+      Math.floor((state.round && state.round.wavesResolved) || 0)
+    );
+    const wave = (Math.floor(deepest / FEAR_MILESTONE_WAVE_INTERVAL) + 1) * FEAR_MILESTONE_WAVE_INTERVAL;
+    const payout = (n) => Math.round(wave * n * FEAR_MILESTONE_FRACTION_PER_TIER);
+    return template((t.upgradeNextTexts || {}).high_water_mark, {
+      pct: pctText(FEAR_MILESTONE_FRACTION_PER_TIER),
+      wave,
+      current: payout(tier),
+      next: payout(tier + 1)
+    });
+  }
+};
+
 function upgradeText(state, upgradeId) {
   const t = locale(state);
+  const nextRung = NEXT_TIER_UPGRADE_TEXT[upgradeId];
+  if (nextRung) {
+    const text = nextRung(state, t);
+    if (text) return text;
+  }
   return (t.upgradeTexts && t.upgradeTexts[upgradeId]) || "";
+}
+
+/* The little chip above the row's note: "Tier 3" for a ladder, the haste for a pool, nothing
+ * at all for a one-off - it was never on a ladder, so there is no rung to report.
+ *
+ * A pool shows what its Fear bought rather than how many units of it are in there. "Tier 4271"
+ * is true and useless; "42.71% faster" is the same fact in the units the player was shopping
+ * in. It lives here rather than in the shop's renderer because every string the player reads
+ * is built in the engine, next to the table it is translated in.
+ */
+function upgradeStatusText(state, upgradeId) {
+  const t = locale(state);
+  const record = UPGRADES[upgradeId];
+  if (!record || !record.repeatable) return "";
+  if (upgradeIsPool(upgradeId)) {
+    return template(t.shopHasteLabel, {
+      pct: hastePctText(dahanHasteFraction(upgradeTier(state, upgradeId)))
+    });
+  }
+  return template(t.shopTierLabel, { tier: upgradeTier(state, upgradeId) });
 }
 
 /* ------------------------------------------------------------------ *
@@ -1475,6 +1838,18 @@ function normalizeBlightFx(blightFx) {
   return { lands, amount, at };
 }
 
+// The high_water_mark payout, for the Fear readout to flash. Unlike the other two this is not
+// tied to a land: it is the HUD's own number that moved, so it carries the wave that paid
+// rather than where it happened.
+function normalizeFearFx(fearFx) {
+  if (!fearFx || typeof fearFx !== "object") return null;
+  const wave = Math.max(0, Math.floor(fearFx.wave || 0));
+  const amount = Math.max(0, Math.floor(fearFx.amount || 0));
+  const at = Number(fearFx.at);
+  if (wave <= 0 || amount <= 0 || !Number.isFinite(at)) return null;
+  return { wave, amount, at };
+}
+
 function fxIsFresh(fx) {
   return Boolean(fx) && (nowMs() - fx.at) <= DEFEAT_FX_MS;
 }
@@ -1489,9 +1864,15 @@ function activeBlightFx(state) {
   return fxIsFresh(fx) ? fx : null;
 }
 
+function activeFearFx(state) {
+  const fx = normalizeFearFx(state.ui && state.ui.fearFx);
+  return fxIsFresh(fx) ? fx : null;
+}
+
 function pruneFx(state) {
   if (!fxIsFresh(normalizeDefeatFx(state.ui.defeatFx))) state.ui.defeatFx = null;
   if (!fxIsFresh(normalizeBlightFx(state.ui.blightFx))) state.ui.blightFx = null;
+  if (!fxIsFresh(normalizeFearFx(state.ui.fearFx))) state.ui.fearFx = null;
 }
 
 function markDefeatFx(state, land, unitType, count) {
@@ -1504,6 +1885,15 @@ function markBlightFx(state, lands, amount) {
   const valid = (lands || []).filter(isLandId);
   if (valid.length === 0 || amount <= 0) return;
   state.ui.blightFx = { lands: valid, amount, at: nowMs() };
+}
+
+// Floored to match what the bank will actually pay, so the flash never promises a Fear the
+// player does not get.
+function markFearFx(state, wave, amount) {
+  const w = Math.max(0, Math.floor(wave || 0));
+  const a = Math.floor(amount || 0);
+  if (w <= 0 || a <= 0) return;
+  state.ui.fearFx = { wave: w, amount: a, at: nowMs() };
 }
 
 /* ------------------------------------------------------------------ *
@@ -1584,12 +1974,44 @@ function upgradeMaxTier(upgradeId) {
  */
 const GATED_UPGRADE_IDS = ["auto_buy_abilities", "auto_start_round"];
 
-// Whether the rest of the catalogue is finished: every ladder at its top tier, every one-off
-// bought. Maxed is the same test the shop's sold-out half uses, so "nothing left to sell" and
-// "the gate is open" can never disagree.
+// A ladder the cost curve stops rather than a tier number: no maxTier, so upgradeMaxTier
+// reports Infinity and it is never "maxed". Derived rather than declared - a record that says
+// it has no top and a record that has one cannot disagree if only one of them is written down.
+function upgradeIsSoftCapped(upgradeId) {
+  return upgradeMaxTier(upgradeId) === Infinity;
+}
+
+/* Which rows the gate counts, and it is the row that says so rather than the gate.
+ *
+ * The question `gatedUpgradesUnlocked` asks is "is everything else finished", and there are
+ * two ways a row can be the wrong thing to ask that of. A soft-capped ladder can never be
+ * finished, so it would hold the gate shut forever - the pair behind it taken off the table
+ * permanently, with the shop showing a price the player could pay and a refusal that never
+ * lifts. A deep sink like `dahan_remember` *can* be finished, but only after several times
+ * the price of everything else, which is a wall rather than a gate.
+ *
+ * Both carry `requiredForGate: false`, and the flag is deliberately about the gate and
+ * nothing else. It used to be `softCapped`, which was the shape of the ladder standing in for
+ * the decision about the gate - fine while the two coincided, wrong the moment a capped row
+ * needed the same exemption. Default is true: a new row counts unless it says otherwise, so
+ * the gate can only be widened on purpose.
+ */
+function upgradeRequiredForGate(upgradeId) {
+  const record = UPGRADES[upgradeId];
+  if (!record) return false;
+  // The pair does not gate itself: read the other way, each would be waiting on the other and
+  // neither would ever open.
+  if (GATED_UPGRADE_IDS.includes(upgradeId)) return false;
+  return record.requiredForGate !== false;
+}
+
+// Whether the rest of the catalogue is finished: every ladder the gate counts at its top
+// tier, every one-off bought. Maxed is the same test the shop's sold-out half uses, so
+// "nothing left to sell" and "the gate is open" can never disagree.
 function gatedUpgradesUnlocked(state) {
   return UPGRADE_IDS.every((id) => (
-    GATED_UPGRADE_IDS.includes(id) || upgradeTier(state, id) >= upgradeMaxTier(id)
+    !upgradeRequiredForGate(id) ||
+    upgradeTier(state, id) >= upgradeMaxTier(id)
   ));
 }
 
@@ -1597,12 +2019,113 @@ function upgradeIsLocked(state, upgradeId) {
   return GATED_UPGRADE_IDS.includes(upgradeId) && !gatedUpgradesUnlocked(state);
 }
 
+// The 1.6 curve unless the row names its own. A `costGrowth` of 1 is what makes a row a pool
+// rather than a ladder (see dahan_remember): every unit costs what the first one did.
+function upgradeCostGrowth(upgradeId) {
+  const record = UPGRADES[upgradeId];
+  const growth = record && Number(record.costGrowth);
+  return Number.isFinite(growth) && growth > 0 ? growth : UPGRADE_COST_GROWTH;
+}
+
 // Cost of the *next* tier. Rounded to whole Fear so the shop never shows 6.4 Fear.
 function upgradeCost(state, upgradeId) {
   const record = UPGRADES[upgradeId];
   if (!record) return Infinity;
   const tier = upgradeTier(state, upgradeId);
-  return Math.round(record.baseCost * Math.pow(UPGRADE_COST_GROWTH, tier));
+  return Math.round(record.baseCost * Math.pow(upgradeCostGrowth(upgradeId), tier));
+}
+
+/* ---------- Buying more than one rung at once ----------
+ *
+ * Only the pool needs this, but it is written for the general case because a special-cased
+ * "and the pool works differently" is how the shop would end up with two purchase paths and
+ * one of them untested. The sum is of the individual rounded prices rather than a rounded sum
+ * of the curve: what a player pays for ten rungs has to equal what they would have paid
+ * clicking ten times, or the bulk button is either a discount or a tax nobody asked for.
+ *
+ * Flat growth gets the closed form. Not for speed at ten rungs - for the max button, which
+ * asks about thousands.
+ */
+function upgradeCostFor(state, upgradeId, count) {
+  const record = UPGRADES[upgradeId];
+  if (!record) return Infinity;
+  const want = Math.max(0, Math.floor(Number(count) || 0));
+  if (want === 0) return 0;
+
+  const tier = upgradeTier(state, upgradeId);
+  const growth = upgradeCostGrowth(upgradeId);
+  if (growth === 1) return Math.round(record.baseCost) * want;
+
+  let total = 0;
+  for (let i = 0; i < want; i += 1) total += Math.round(record.baseCost * Math.pow(growth, tier + i));
+  return total;
+}
+
+// How many rungs the purse can actually take, never more than the ladder has left. What the
+// max button buys, and what a bulk button is checked against before it is offered.
+function upgradeTiersAffordable(state, upgradeId) {
+  const record = UPGRADES[upgradeId];
+  if (!record) return 0;
+  const room = upgradeMaxTier(upgradeId) - upgradeTier(state, upgradeId);
+  if (!(room > 0)) return 0;
+  const fear = Math.max(0, Math.floor(Number(state.meta.fear) || 0));
+
+  if (upgradeCostGrowth(upgradeId) === 1) {
+    const each = Math.max(1, Math.round(record.baseCost));
+    return Math.min(room, Math.floor(fear / each));
+  }
+
+  // The geometric case walks rung by rung, because the curve is rounded per rung and a closed
+  // form would disagree with upgradeCostFor about the last one. The guard keeps it finite on a
+  // soft-capped row, where `room` is Infinity - though there the price outruns any purse long
+  // before the count gets interesting.
+  const tier = upgradeTier(state, upgradeId);
+  const growth = upgradeCostGrowth(upgradeId);
+  let count = 0;
+  let spent = 0;
+  while (count < room && count < 1000) {
+    spent += Math.round(record.baseCost * Math.pow(growth, tier + count));
+    if (spent > fear) break;
+    count += 1;
+  }
+  return count;
+}
+
+// The Energy a round opens with at a given owned tier. Clamped at both ends rather than
+// indexed raw: a save carrying a tier from a longer ladder must still answer with the top of
+// the one that exists now, not `undefined`.
+function startingEnergyForTier(tier) {
+  const owned = Math.max(0, Math.floor(Number(tier) || 0));
+  return STARTING_ENERGY_BY_TIER[Math.min(owned, STARTING_ENERGY_BY_TIER.length - 1)];
+}
+
+/* ---------- The Dahan Remember, as a number ----------
+ *
+ * The invested Fear *is* the tier, which is the whole reason the pool could be a catalogue row
+ * at all: saving, normalizing, ordering and the sold-out half all work on it unchanged. These
+ * two are the only places that know the tier means Fear rather than a rung.
+ */
+function dahanHasteFraction(invested) {
+  const fear = Math.max(0, Math.floor(Number(invested) || 0));
+  return Math.min(DAHAN_HASTE_MAX, fear / DAHAN_HASTE_FEAR_FOR_FULL);
+}
+
+// Divided, not subtracted - see the note above DAHAN_HASTE_FEAR_FOR_FULL. A second cooldown
+// source belongs in the denominator beside this one rather than in a second formula.
+function dahanAttackIntervalFor(invested) {
+  return DAHAN_ATTACK_INTERVAL_SECONDS / (1 + dahanHasteFraction(invested));
+}
+
+/* What the round in progress is actually striking on, as against what the player owns.
+ *
+ * Read off the round's upgrade snapshot rather than off a frozen interval of its own, so the
+ * pool obeys the same rule as every other row for the same reason and by the same mechanism:
+ * Fear poured in at 9/10 Blight buys the *next* round a faster strike, never the one being
+ * lost (see activeUpgradeTier). A second frozen number would have been a second way to be
+ * wrong about that, and one of them would eventually stop agreeing with the other.
+ */
+function roundDahanAttackInterval(state) {
+  return dahanAttackIntervalFor(activeUpgradeTier(state, "dahan_remember"));
 }
 
 // The permanent baseline every round starts from (04 Round Reset Formula).
@@ -1610,13 +2133,28 @@ function upgradeTotals(state) {
   return {
     dahanBonus: upgradeTier(state, "dahan_reinforcement"),
     blightThresholdBonus: upgradeTier(state, "blight_resilience"),
-    // No upgrade moves cooldowns today. The multiplier stays in the round state because the
-    // next cooldown upgrade will want it, and a round that reads 1 costs nothing to keep.
+    startingEnergy: startingEnergyForTier(upgradeTier(state, "headwaters")),
+    // The Dahan's strike clock, and the only cooldown the shop touches. Read off owned tiers
+    // here; startRound is what freezes it for the round (see the snapshot note there).
+    dahanAttackInterval: dahanAttackIntervalFor(upgradeTier(state, "dahan_remember")),
+    // No upgrade moves *ability* cooldowns today - the Dahan clock above is its own thing and
+    // deliberately not routed through this. The multiplier stays in the round state because
+    // the next ability-cooldown upgrade will want it, and a round that reads 1 costs nothing
+    // to keep.
     cooldownReductionPct: 0
   };
 }
 
-function purchaseUpgrade(state, upgradeId) {
+/* `count` is how many rungs to take at once, and it defaults to one because every row except
+ * the pool only ever buys one. Two rules about it:
+ *
+ *   - Asking for more than is left buys what is left, rather than refusing. The +1000 button
+ *     four hundred short of the cap should finish the pool, not sulk.
+ *   - Asking for more than the purse holds refuses the whole thing, rather than buying what
+ *     fits. A partial purchase would spend a number the player never chose - the max button
+ *     exists precisely so that "as much as I can afford" is a thing they can say out loud.
+ */
+function purchaseUpgrade(state, upgradeId, count) {
   const t = locale(state);
   const record = UPGRADES[upgradeId];
   if (!record) return false;
@@ -1625,7 +2163,8 @@ function purchaseUpgrade(state, upgradeId) {
   // remove the pause it used to live in - what keeps a round from buying its own way out is
   // the pool the Fear sits in, not the clock (see the two-pool note above FEAR_PER_POWER).
   const tier = upgradeTier(state, upgradeId);
-  if (tier >= upgradeMaxTier(upgradeId)) {
+  const room = upgradeMaxTier(upgradeId) - tier;
+  if (!(room > 0)) {
     addLog(state, template(t.upgradeMaxed, { upgrade: upgradeName(state, upgradeId) }));
     return false;
   }
@@ -1637,7 +2176,9 @@ function purchaseUpgrade(state, upgradeId) {
     return false;
   }
 
-  const cost = upgradeCost(state, upgradeId);
+  const want = Math.max(1, Math.floor(Number(count) || 1));
+  const amount = Math.min(want, room);
+  const cost = upgradeCostFor(state, upgradeId, amount);
   if (state.meta.fear < cost) {
     addLog(state, template(t.upgradeTooExpensive, {
       upgrade: upgradeName(state, upgradeId),
@@ -1648,13 +2189,36 @@ function purchaseUpgrade(state, upgradeId) {
   }
 
   state.meta.fear -= cost;
-  state.upgrades.purchased[upgradeId] = tier + 1;
-  addLog(state, template(t.upgradePurchased, {
-    upgrade: upgradeName(state, upgradeId),
-    tier: tier + 1,
-    cost
-  }));
+  state.upgrades.purchased[upgradeId] = tier + amount;
+
+  // A pool has no tier worth naming, so it reports what it is: Fear in, haste out. Every
+  // other row reports the rung it just reached.
+  if (upgradeIsPool(upgradeId)) {
+    addLog(state, template(t.upgradeInvested, {
+      upgrade: upgradeName(state, upgradeId),
+      cost,
+      pct: hastePctText(dahanHasteFraction(tier + amount)),
+      seconds: strikeSecondsText(state, dahanAttackIntervalFor(tier + amount))
+    }));
+  } else {
+    addLog(state, template(t.upgradePurchased, {
+      upgrade: upgradeName(state, upgradeId),
+      tier: tier + amount,
+      cost
+    }));
+  }
   return true;
+}
+
+// A row bought by the handful rather than by the rung. The denominations are the row's own,
+// so the shop asks the catalogue what to draw instead of naming the pool in the UI.
+function upgradeIsPool(upgradeId) {
+  const record = UPGRADES[upgradeId];
+  return Boolean(record && Array.isArray(record.bulkAmounts) && record.bulkAmounts.length > 0);
+}
+
+function upgradeBulkAmounts(upgradeId) {
+  return upgradeIsPool(upgradeId) ? UPGRADES[upgradeId].bulkAmounts.slice() : [];
 }
 
 // Fear is whole-numbered at every source, so it never needs a decimal place. The function
@@ -2328,7 +2892,11 @@ function cloneCombatState(state) {
     // `wavesResolved` carries because unit stats are read off it (see unitStats). A scratch
     // board without it would fight wave-1 invaders on a wave-100 island and tell the
     // auto-caster a land clears when it does not.
-    round: { fearEarned: 0, wavesResolved: state.round ? state.round.wavesResolved : 0 },
+    round: {
+      fearEarned: 0,
+      fearEarnedBase: 0,
+      wavesResolved: state.round ? state.round.wavesResolved : 0
+    },
     ui: {}
   };
 }
@@ -2915,6 +3483,25 @@ function landRenderStates(state) {
  * Combat (02-core-loop.md, 04-economy-formulas.md)                     *
  * ------------------------------------------------------------------ */
 
+/* ---------- What the Fear ladders multiply ----------
+ *
+ * Read through activeUpgradeTier, never upgradeTier. These are read every single time Fear is
+ * earned - every kill, every wave - which makes them exactly the class the round snapshot
+ * exists for. Without it, a tier bought while a round was running would pay out on Fear that
+ * round had already banked in spirit, and a round could buy its own way out through the back
+ * door the two-pool split closed at the front. Dahan Reinforcement and Blight Resilience never
+ * needed this because setup is the only thing that reads them.
+ *
+ * `round.fearEarned` stays fractional on purpose. Flooring each award instead would round a
+ * +10% multiplier away to nothing: an explorer pays 1, and floor(1 * 1.1) is 1, so the first
+ * four tiers of rising_dread would buy a number that never moved. The whole round accumulates
+ * in fractions and endRound floors the total once, which is the only place Fear becomes
+ * spendable and so the only place it has to be whole.
+ */
+function fearMultiplier(state, upgradeId, perTier) {
+  return 1 + activeUpgradeTier(state, upgradeId) * perTier;
+}
+
 // Fear from a defeat, by the unit's power value: explorer 1, town 2, city 3 - and one more
 // each at every damage rung of the ladder, so a tougher Invader is worth proportionally more
 // to kill rather than being strictly worse news.
@@ -2922,17 +3509,68 @@ function gainFearFromDefeat(state, unitType, defeatedCount) {
   const defeated = Math.max(0, Math.floor(defeatedCount || 0));
   if (defeated <= 0) return;
   const power = unitStats(state, unitType).damage || 0;
-  const gain = defeated * power * FEAR_PER_POWER;
+  const base = defeated * power * FEAR_PER_POWER;
+  const gain = base * fearMultiplier(state, "rising_dread", FEAR_KILL_BONUS_PER_TIER);
   if (gain <= 0) return;
 
   state.round.fearEarned += gain;
+  state.round.fearEarnedBase += base;
 }
 
 // Fear for outlasting a wave. Paid once per wave, at the wave, so a round that ends between
 // two waves is paid for the ones it finished and not for the one it was standing in.
 function gainFearFromWave(state) {
   if (FEAR_PER_WAVE <= 0) return;
-  state.round.fearEarned += FEAR_PER_WAVE;
+  state.round.fearEarned += FEAR_PER_WAVE
+    * fearMultiplier(state, "mounting_terror", FEAR_WAVE_BONUS_PER_TIER);
+  state.round.fearEarnedBase += FEAR_PER_WAVE;
+}
+
+// high_water_mark: every tenth wave pays a bonus of `tier * 10%` of its own wave number, and
+// mounting_terror multiplies it as it does any other wave income - which is what makes the
+// two worth owning together rather than instead of each other.
+//
+// Returns what it paid so the caller can log and flash it. This is the only Fear in the game
+// that arrives as an event rather than as a rate, and an event that shows up only as a
+// slightly larger running total is an event the player never sees happen.
+function gainFearFromWaveMilestone(state) {
+  const wave = Math.max(0, Math.floor(state.round.wavesResolved || 0));
+  if (wave <= 0 || wave % FEAR_MILESTONE_WAVE_INTERVAL !== 0) return 0;
+
+  const tier = activeUpgradeTier(state, "high_water_mark");
+  if (tier <= 0) return 0;
+
+  const bonus = wave * tier * FEAR_MILESTONE_FRACTION_PER_TIER
+    * fearMultiplier(state, "mounting_terror", FEAR_WAVE_BONUS_PER_TIER);
+  if (bonus <= 0) return 0;
+
+  // Nothing is added to `fearEarnedBase`: without high_water_mark there is no milestone at
+  // all, so every point of this is upgrade income by construction. That is what makes the Mark
+  // read as the strongest of the three in the HUD's split - all of it lands on the right-hand
+  // number, where the two multipliers only ever move part of theirs.
+  state.round.fearEarned += bonus;
+  return bonus;
+}
+
+/* ---------- The Fear readout's split ----------
+ *
+ * What this round would have earned with none of the three ladders owned, and what they added
+ * on top. The total cannot be inverted back into these - kill Fear, wave Fear and the
+ * milestone each carry a different multiplier, so one sum has no unique decomposition - which
+ * is why `fearEarnedBase` is tracked alongside rather than derived.
+ *
+ * The bonus is `floor(total) - floor(base)` rather than `floor(total - base)`. Two independent
+ * floors can lose a whole Fear between them and leave the HUD showing a split that does not
+ * add up to the number the bank pays; taking the difference of the floors makes the two halves
+ * sum to exactly what endRound will bank, always.
+ */
+function fearBreakdown(state) {
+  const round = (state && state.round) || {};
+  const total = Math.max(0, Math.floor(round.fearEarned || 0));
+  // Clamped to the total as well as to zero: a save hand-edited or written by an older build
+  // could carry a base above its own total, and a negative bonus would render as "+-2".
+  const base = Math.min(total, Math.max(0, Math.floor(round.fearEarnedBase || 0)));
+  return { total, base, bonus: total - base };
 }
 
 // Energy from the same defeat, on the same power scale: an explorer pays 1, a town 2, a
@@ -3449,6 +4087,16 @@ function resolveWave(state) {
 
   gainFearFromWave(state);
   addLog(state, template(locale(state).waveResolved, { wave: state.round.wavesResolved }));
+
+  // After the wave's own line, so the log reads as "wave 50 resolved, and it paid".
+  const milestone = gainFearFromWaveMilestone(state);
+  if (milestone > 0) {
+    markFearFx(state, state.round.wavesResolved, milestone);
+    addLog(state, template(locale(state).waveMilestone, {
+      wave: state.round.wavesResolved,
+      fear: formatFear(milestone)
+    }));
+  }
 }
 
 function endRound(state) {
@@ -3463,7 +4111,13 @@ function endRound(state) {
 
   // Payday. Everything the round earned becomes spendable here and nowhere else, which is
   // what makes surviving the round the thing that pays rather than the kills inside it.
-  state.meta.fear += state.round.fearEarned;
+  //
+  // Floored here and only here. `round.fearEarned` accumulates in fractions all round because
+  // the Fear ladders multiply it (see fearMultiplier) and a +10% on a 1-power explorer is
+  // nothing at all once rounded; the bank is where those fractions stop mattering, so it is
+  // where they get dropped. Down, never up: a part-earned Fear is not a Fear.
+  const banked = Math.floor(state.round.fearEarned);
+  state.meta.fear += banked;
 
   // How far up the ladder this run has ever climbed. The wave is the honest measure of a
   // run's depth now that the ladder is keyed to it - the round number only counts attempts,
@@ -3522,24 +4176,33 @@ function startRound(state) {
   state.round.dahanProgress = createProgressByLand();
   state.round.blightThreshold = BLIGHT_THRESHOLD_BASE + totals.blightThresholdBonus;
   state.round.waveTimerRemaining = WAVE_INTERVAL_SECONDS;
-  state.round.dahanAttackRemaining = DAHAN_ATTACK_INTERVAL_SECONDS;
+  // From `totals` rather than from roundDahanAttackInterval, because the snapshot this round
+  // will run on is written a few lines below and does not exist yet. The two agree by
+  // construction: both read the tiers owned at this instant.
+  state.round.dahanAttackRemaining = totals.dahanAttackInterval;
   // A manual round opens on a held gate, so the island stands still until the player has read
   // it. The timer is already full here, so that first click starts the clock without costing
   // a wave - see startNextWave.
   state.round.awaitingWave = !autoProceedOn(state);
   state.round.wavesResolved = 0;
   state.round.fearEarned = 0;
+  state.round.fearEarnedBase = 0;
   state.round.abilityCooldownMult = 1 - totals.cooldownReductionPct;
   // The shop stays open all round, so what the round runs on is fixed here and read from
   // here - see activeUpgradeTier. Anything bought after this line is owned but idle until
   // the next round takes its own snapshot.
   state.round.upgradeTiers = snapshotUpgradeTiers(state);
 
-  // The kit is rebuilt from nothing every round: the purse empties, every Energy unlock is
-  // given back, and the Innate drops to its first tier. What carries between rounds is Fear
-  // and the shop tiers it bought - so a round's power is earned inside that round, and the
-  // permanent progression is what decides how fast it can be earned again.
-  state.resources.energy = 0;
+  // The kit is rebuilt every round: every Energy unlock is given back and the Innate drops to
+  // its first tier. What carries between rounds is Fear and the shop tiers it bought - so a
+  // round's power is earned inside that round, and the permanent progression is what decides
+  // how fast it can be earned again.
+  //
+  // The purse is the one exception, and only by exactly what `headwaters` was bought up to.
+  // Set from `totals`, which reads owned tiers rather than the round snapshot, for the same
+  // reason the Dahan bonus does: this line runs before the round it is setting up exists, so
+  // there is no round to benefit from itself yet.
+  state.resources.energy = totals.startingEnergy;
   state.round.purchasedAbilityIds = [];
   state.round.abilityTiers = {};
 
@@ -3552,6 +4215,7 @@ function startRound(state) {
 
   state.ui.defeatFx = null;
   state.ui.blightFx = null;
+  state.ui.fearFx = null;
 
   addLog(state, template(locale(state).roundStarted, {
     round: state.round.number,
@@ -3797,7 +4461,7 @@ function tick(state, dt) {
   state.round.dahanAttackRemaining -= step;
   let dahanGuard = 0;
   while (state.round.dahanAttackRemaining <= 0 && dahanGuard < 16) {
-    state.round.dahanAttackRemaining += DAHAN_ATTACK_INTERVAL_SECONDS;
+    state.round.dahanAttackRemaining += roundDahanAttackInterval(state);
     resolveDahanAttack(state);
     dahanGuard += 1;
   }
@@ -3870,6 +4534,7 @@ function createInitialState() {
       playtest: false,
       defeatFx: null,
       blightFx: null,
+      fearFx: null,
       selectedLand: null
     },
     round: {
@@ -3888,6 +4553,9 @@ function createInitialState() {
       awaitingWave: false,
       wavesResolved: 0,
       fearEarned: 0,
+      // What the round would have earned with none of the Fear ladders owned. Tracked rather
+      // than derived: the three multiply different sources, so one total has no unique split.
+      fearEarnedBase: 0,
       abilityCooldownMult: 1,
       // What this round is running on, as against what the player owns - see
       // activeUpgradeTier. Filled by startRound; empty here because no round has started.
@@ -3958,6 +4626,7 @@ function normalizeState(raw) {
   merged.ui.selectedLand = isLandId(merged.ui.selectedLand) ? merged.ui.selectedLand : null;
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
+  merged.ui.fearFx = normalizeFearFx(merged.ui.fearFx);
 
   // Floored, not just clamped: a save written while Fear was fractional loads as the whole
   // number the shop can actually spend, and never as 6.3.
@@ -4010,6 +4679,18 @@ function normalizeState(raw) {
   merged.round.elapsedSeconds = Math.max(0, Number(merged.round.elapsedSeconds) || 0);
   merged.round.wavesResolved = Math.max(0, Math.floor(merged.round.wavesResolved || 0));
   merged.round.fearEarned = Math.max(0, Math.floor(Number(merged.round.fearEarned) || 0));
+  // A save written before the split was tracked has no base to read, and defaulting it to 0
+  // would have the HUD claim the entire round was upgrade income. Missing means "all of it was
+  // base" instead - no bonus shown, which is simply true for the save most likely to be
+  // missing the field: one from a build that had no Fear ladders in it.
+  //
+  // Read off `input` rather than off `merged`, because the merge has already filled the field
+  // in from the fresh-state defaults by this point and a genuine 0 is indistinguishable from
+  // an absent one there.
+  const hadBase = Boolean(input.round) && "fearEarnedBase" in input.round;
+  merged.round.fearEarnedBase = hadBase
+    ? Math.min(merged.round.fearEarned, Math.max(0, Math.floor(Number(merged.round.fearEarnedBase) || 0)))
+    : merged.round.fearEarned;
   merged.round.blightThreshold = Math.max(1, Math.floor(merged.round.blightThreshold || BLIGHT_THRESHOLD_BASE));
   merged.round.blight = clamp(Math.floor(Number(merged.round.blight) || 0), 0, merged.round.blightThreshold);
   merged.round.blightByLand = normalizeBlightByLand(merged.round.blightByLand);
@@ -4020,6 +4701,10 @@ function normalizeState(raw) {
     0,
     WAVE_INTERVAL_SECONDS
   );
+  // Against the base interval, not the round's hasted one: the hasted number is derived from
+  // the upgrade snapshot, which is normalized further down and is not to be trusted yet. Every
+  // legal remaining is under the base anyway, so the clamp is still the fence it was - the
+  // worst a doctored save buys itself is one late first strike.
   merged.round.dahanAttackRemaining = clamp(
     Number(merged.round.dahanAttackRemaining) || 0,
     0,
@@ -4151,12 +4836,22 @@ const ENGINE_EXPORTS = {
   BLIGHT_FLOOR_FRACTION,
   DAHAN_ATTACK_INTERVAL_SECONDS,
   DAHAN_ATTACK_DAMAGE,
+  DAHAN_HASTE_FEAR_FOR_FULL,
+  DAHAN_HASTE_MAX,
+  dahanHasteFraction,
+  dahanAttackIntervalFor,
+  roundDahanAttackInterval,
   DAHAN_PER_ROUND_START_BASE,
   DAHAN_MAX_SPREAD,
   DEFEAT_FX_MS,
   MAX_TICK_SECONDS,
   FEAR_PER_POWER,
   FEAR_PER_WAVE,
+  STARTING_ENERGY_BY_TIER,
+  FEAR_KILL_BONUS_PER_TIER,
+  FEAR_WAVE_BONUS_PER_TIER,
+  FEAR_MILESTONE_WAVE_INTERVAL,
+  FEAR_MILESTONE_FRACTION_PER_TIER,
   EXPLORE_UNRESTRICTED_FROM_WAVE,
   ENERGY_PER_POWER,
   UNIT_STATS,
@@ -4201,14 +4896,24 @@ const ENGINE_EXPORTS = {
   etaText,
   upgradeName,
   upgradeText,
+  upgradeStatusText,
   formatFear,
+  fearBreakdown,
   upgradeTier,
   upgradeMaxTier,
   upgradeCost,
+  upgradeCostFor,
+  upgradeCostGrowth,
+  upgradeTiersAffordable,
+  upgradeIsPool,
+  upgradeBulkAmounts,
   upgradeIsLocked,
+  upgradeIsSoftCapped,
+  upgradeRequiredForGate,
   gatedUpgradesUnlocked,
   GATED_UPGRADE_IDS,
   upgradeTotals,
+  startingEnergyForTier,
   purchaseUpgrade,
   spiritAbilityIds,
   unlockedAbilityIds,
@@ -4332,6 +5037,7 @@ const ENGINE_EXPORTS = {
   saveState,
   activeDefeatFx,
   activeBlightFx,
+  activeFearFx,
   pruneFx
 };
 

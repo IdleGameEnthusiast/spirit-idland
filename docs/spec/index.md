@@ -113,8 +113,18 @@ What is left:
 
 - The exact ability kit's effects and numbers (cooldowns, damage, reinforcement amounts) —
   implemented as specified, but never balanced.
-- The permanent upgrade shop's catalogue beyond the three placeholder entries, and its cost
-  curve.
+- The permanent upgrade shop's cost curve, and whether the three Fear ladders
+  (`rising_dread`, `mounting_terror`, `high_water_mark`) should stay soft-capped or cap at
+  tier 10. Shipped uncapped **to be playtested**, not as a settled decision — see
+  [04-economy-formulas.md](./04-economy-formulas.md#soft-caps).
+- **The shop still terminates**, and an ascension layer is the intended answer. Not designed,
+  not implemented. See [05-progression.md](./05-progression.md#the-shop-still-terminates) —
+  this is the largest open question in the design, not a balance detail. `dahan_remember`
+  (10000 Fear of linear sink) buys time against it and does not answer it: the pool fills.
+- **Whether 10000 Fear is the right price for a full Dahan Remember**, and whether 100% haste
+  is the right cap now that it is the only cooldown the shop touches. Both are first numbers,
+  shipped to be played against — see
+  [05-progression.md](./05-progression.md#the-dahan-remember).
 - **An invader scaling curve.** Energy income is flat within a round while the kit's prices
   are not, so a long round has nothing to spend a late 250 on but time. The intended answer is
   invaders that grow stronger as the player does, which is not implemented.

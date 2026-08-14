@@ -54,6 +54,7 @@ Define the canonical save shape for the round-based redesign.
     "awaitingWave": false,
     "wavesResolved": 0,
     "fearEarned": 0,
+    "fearEarnedBase": 0,
     "abilityCooldownMult": 1,
     "purchasedAbilityIds": [],
     "abilityTiers": {}
@@ -165,9 +166,12 @@ Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
   it up for display and must not scale it — `WAVE_INTERVAL_SECONDS` already carries
   `TIME_SCALE`. At 0 a wave resolves and it resets to `WAVE_INTERVAL_SECONDS`.
 - `dahanAttackRemaining` is the same idea on its own clock. At 0 every land holding both
-  Dahan and invaders strikes, and it resets to `DAHAN_ATTACK_INTERVAL_SECONDS`. It is a
+  Dahan and invaders strikes, and it resets to `roundDahanAttackInterval(state)` — the base
+  constant divided by the haste `dahan_remember` bought, read off `round.upgradeTiers` so a
+  running round keeps the clock it started with. It is a
   separate field from `waveTimerRemaining` on purpose — see
-  [04-economy-formulas.md](./04-economy-formulas.md#implemented-constants).
+  [04-economy-formulas.md](./04-economy-formulas.md#implemented-constants). There is no stored
+  interval beside it: the snapshot is the only frozen copy, so the two can never disagree.
 - `blightProgress` and `dahanProgress` are per-land floats in `[0, 1]`: the fraction of the
   next Blight, and of the next Dahan casualty, that land has accrued. They are the only
   fractional board state, and they are what makes the fight continuous rather than ticked.
@@ -192,9 +196,25 @@ Seven fields the first draft of this contract did not have. Each earns its place
   most-Blighted land automatically; it takes a click now, but the tally kept its other job.)
   `round.blight` stays the authoritative total; the tally is a breakdown of it, never a second
   source of truth.
-- **`round.fearEarned`** — Fear earned in this round alone. `meta.fear` is the purse and
-  never resets; the shop's "you earned N this round" line needs the delta, and recomputing
-  it from a purse that the player also spends from is not possible.
+- **`round.fearEarned`** — Fear earned in this round alone, kept as a **float**. `meta.fear` is
+  the purse and never resets; the shop's "you earned N this round" line needs the delta, and
+  recomputing it from a purse that the player also spends from is not possible. It is the only
+  fractional Fear in the schema — `endRound` floors it once on the way into `meta.fear`, which
+  is always whole. See
+  [04-economy-formulas.md](./04-economy-formulas.md#where-the-rounding-happens).
+- **`round.fearEarnedBase`** — the same income with none of the three Fear ladders applied, so
+  the HUD can show what the round earned on its own beside what the upgrades added. Tracked
+  rather than derived, because it cannot be derived: kill Fear, wave Fear and the milestone
+  each carry a different multiplier, so one total has no unique decomposition. The milestone
+  contributes nothing here — without `high_water_mark` there is no milestone at all, so every
+  point of it is upgrade income by construction.
+
+  `fearBreakdown()` is the only supported reader. It floors both and takes the bonus as
+  `floor(total) - floor(base)` rather than flooring the difference, so the two halves always
+  sum to exactly the figure the round banks. **On load, an absent field means "all base"**, not
+  zero: the deep merge fills a missing key from the fresh-state defaults, so presence is tested
+  against the raw save, and a save from a build without the Fear ladders shows no bonus rather
+  than claiming its whole round was upgrade income.
 - **`round.abilityCooldownMult`** — the cooldown multiplier copied from the upgrade baseline
   at round setup, for exactly the reason `blightThreshold` is copied: a purchase must not
   shorten a cooldown that is already ticking.
@@ -258,7 +278,10 @@ to resume mid-effect beyond "which ability is waiting for a click."
 - `round.blight` is clamped to `[0, round.blightThreshold]`.
 - `round.blightProgress` and `round.dahanProgress` are clamped to `[0, 1]` per land, and are
   filled for every land ID. A non-finite value normalizes to `0`.
-- `round.dahanAttackRemaining` is clamped to `[0, DAHAN_ATTACK_INTERVAL_SECONDS]`.
+- `round.dahanAttackRemaining` is clamped to `[0, DAHAN_ATTACK_INTERVAL_SECONDS]` — against the
+  base interval, not the round's hasted one, because the haste is derived from the upgrade
+  snapshot and that is normalized further down. Every legal value is under the base anyway, so
+  the worst a doctored save buys itself is one late first strike.
 - `invader` has exactly two slots; a save carrying a `ravage` slot drops it silently.
 - Invader damage cannot exceed the number of living invaders of each type in that land.
 - `pendingAbilityTarget` must be a known ability id or `null`; an unknown id normalizes to
@@ -312,6 +335,11 @@ bar. There is no honest mapping for either, and a reset costs the player one rou
   that round, and given back with everything it bought when the next one begins. `startRound`
   then rebuilds `abilities` from the unlocked set, which after the reset is the spirit's
   opening hand again.
+- `resources.energy` is reset rather than zeroed: `startRound` sets it to what `headwaters` was
+  bought up to, 0 until the ladder is owned. The figure comes from `upgradeTotals`, which reads
+  owned tiers rather than the round snapshot — the line runs before the round it is setting up
+  exists, so there is no round for a mid-round purchase to rescue. Everything the *last* round
+  earned is still gone.
 
   So every round starts from the same kit and is built up from nothing, and the only thing
   that carries is Fear and the shop tiers it buys. That is the whole division: the shop decides

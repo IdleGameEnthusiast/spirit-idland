@@ -1,7 +1,7 @@
 /* Fear and shop checks - docs/spec/08-acceptance-tests.md#fear-and-shop-checks */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities, grantUpgrade } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   test("shop: Fear earned mid-round is still there when the round ends", () => {
     const ctx = newGame();
@@ -242,6 +242,15 @@
       engine.orderedUpgradeIds(state),
       [
         "blight_resilience",
+        "headwaters",
+        // The soft-capped ladders never sink, because they can never sell out. They hold their
+        // place in the buyable half however deep the player has taken them.
+        "rising_dread",
+        "mounting_terror",
+        "high_water_mark",
+        // The pool sits with the repeatables and only sinks once it is full - 10000 Fear,
+        // which this state has but has not spent.
+        "dahan_remember",
         "auto_innate",
         "auto_bounty",
         "auto_flash_floods",
@@ -256,15 +265,183 @@
   });
 
   /* ------------------------------------------------------------------ *
+   * headwaters - the Energy a round opens with                           *
+   * ------------------------------------------------------------------ */
+
+  test("shop: without headwaters a round still opens on an empty purse", () => {
+    const { state } = newGame();
+    assertEqual(state.resources.energy, 0, "a fresh game starts at nothing");
+
+    state.resources.energy = 40;
+    engine.endRound(state);
+    engine.startNextRound(state);
+    assertEqual(state.resources.energy, 0, "and the next round clears what the last one held");
+  });
+
+  test("shop: headwaters pays its tier's Energy into every round start", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "headwaters", 4);
+
+    for (let i = 0; i < 3; i += 1) {
+      state.resources.energy = 99;
+      engine.endRound(state);
+      engine.startNextRound(state);
+      assertEqual(state.resources.energy, 5, `round ${state.round.number} opens on tier 4's 5`);
+    }
+  });
+
+  // The ladder is a table, not a step, so the shape is the thing worth asserting: it climbs
+  // with the price rather than staying flat, and it ends exactly on the unlock kit.
+  test("shop: the headwaters table climbs and stops at the whole unlock kit", () => {
+    assertDeepEqual(
+      engine.STARTING_ENERGY_BY_TIER,
+      [0, 1, 2, 3, 5, 8, 13, 19, 26, 35],
+      "the published ladder"
+    );
+    assertEqual(engine.upgradeMaxTier("headwaters"), 9, "nine tiers, one per entry past zero");
+
+    // 5 + 10 + 20: River's Bounty, Flash Floods and Wash Away, and nothing spare.
+    const kit = ["rivers_bounty", "flash_floods", "wash_away"]
+      .reduce((sum, id) => sum + engine.ABILITIES[id].unlockCost, 0);
+    assertEqual(engine.startingEnergyForTier(9), kit, "the top tier is exactly the unlock kit");
+
+    for (let tier = 1; tier <= 9; tier += 1) {
+      assert(
+        engine.startingEnergyForTier(tier) > engine.startingEnergyForTier(tier - 1),
+        `tier ${tier} must be worth more than the one under it`
+      );
+    }
+  });
+
+  test("shop: headwaters costs 8 and rides the same 1.6 curve as everything else", () => {
+    const { state } = newGame();
+    const expected = [8, 13, 20, 33, 52, 84, 134, 215, 344];
+
+    for (const cost of expected) {
+      assertEqual(engine.upgradeCost(state, "headwaters"), cost, `next tier costs ${cost}`);
+      state.meta.fear = cost;
+      assert(engine.purchaseUpgrade(state, "headwaters"), "and it sells at that price");
+      assertEqual(state.meta.fear, 0, "for exactly that much");
+    }
+
+    assertEqual(engine.upgradeTier(state, "headwaters"), 9, "nine tiers bought");
+    state.meta.fear = 1e9;
+    assert(!engine.purchaseUpgrade(state, "headwaters"), "and the tenth is refused");
+  });
+
+  // Same two-pool rule as every other upgrade: bought mid-round, live from the next one. It
+  // matters more here than elsewhere - startRound is the only line that reads this, so a round
+  // already under way has no way to pay out a tier bought during it anyway.
+  test("shop: a headwaters tier bought mid-round does not refill the running round", () => {
+    const { state } = newGame();
+    state.meta.fear = 100;
+    state.resources.energy = 0;
+
+    assert(engine.purchaseUpgrade(state, "headwaters"), "bought while the round runs");
+    assertEqual(state.resources.energy, 0, "the purse stays where it was");
+
+    engine.endRound(state);
+    engine.startNextRound(state);
+    assertEqual(state.resources.energy, 1, "the next round opens on it");
+  });
+
+  // A save carrying a tier past the end of the table - a longer ladder in some later build, or
+  // a hand-edited save - must answer with the top of the ladder that exists, not undefined.
+  test("shop: a tier past the end of the headwaters table clamps to its top", () => {
+    assertEqual(engine.startingEnergyForTier(50), 35, "clamped to the last entry");
+    assertEqual(engine.startingEnergyForTier(0), 0, "and tier 0 pays nothing");
+    assertEqual(engine.startingEnergyForTier(-3), 0, "as does a nonsense tier");
+  });
+
+  /* ------------------------------------------------------------------ *
+   * The two rows that describe their next rung (06-ui-contract.md)       *
+   *                                                                      *
+   * Asserted in both locales and by the numbers rather than by the        *
+   * wording: what the contract promises is that the row prices the next   *
+   * purchase, and a translation that dropped the figures would keep every *
+   * word of the sentence and none of the promise.                        *
+   * ------------------------------------------------------------------ */
+
+  function rowText(state, upgradeId, lang) {
+    state.ui.language = lang;
+    return engine.upgradeText(state, upgradeId);
+  }
+
+  test("shop: the headwaters row prices the next tier, not the whole table", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "headwaters", 4);
+
+    for (const lang of ["de", "en"]) {
+      const text = rowText(state, "headwaters", lang);
+      assert(/(^|\D)3(\D|$)/.test(text), `${lang}: the 3 the next tier adds to tier 4's 5`);
+      assert(/(^|\D)8(\D|$)/.test(text), `${lang}: and the 8 a round would then open with`);
+      assert(!/13/.test(text), `${lang}: and nothing about the rungs past it: ${text}`);
+    }
+  });
+
+  test("shop: a maxed headwaters row states what it ends up paying instead", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "headwaters", 9);
+
+    for (const lang of ["de", "en"]) {
+      const text = rowText(state, "headwaters", lang);
+      assert(/35/.test(text), `${lang}: the top of the ladder`);
+      assert(!/(^|\D)26(\D|$)/.test(text), `${lang}: with no next tier quoted: ${text}`);
+    }
+  });
+
+  test("shop: the High-Water Mark row prices its next tier against the milestone ahead", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "high_water_mark", 2);
+    state.round.wavesResolved = 34;
+
+    for (const lang of ["de", "en"]) {
+      const text = rowText(state, "high_water_mark", lang);
+      assert(/(^|\D)40(\D|$)/.test(text), `${lang}: wave 40 is the next milestone: ${text}`);
+      assert(/(^|\D)12(\D|$)/.test(text), `${lang}: 40 * 3 * 10%, what tier 3 would pay there`);
+      assert(/(^|\D)8(\D|$)/.test(text), `${lang}: against the 8 tier 2 pays there now`);
+    }
+  });
+
+  // The wave it quotes has to follow the player rather than sit on a fixed example, and depth
+  // lives in two places: the round in progress, and the record a finished round left behind.
+  test("shop: the milestone the Mark quotes follows the deepest wave reached", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "high_water_mark", 4);
+    const quotes = (wave) => (wave * 5 * 0.1);
+
+    // A fresh game looks at wave 10, and the payout it quotes there is what pins the wave down:
+    // 10 itself also appears in the sentence as the per-tier percentage.
+    let text = rowText(state, "high_water_mark", "en");
+    assert(new RegExp(`(^|\\D)${quotes(10)}(\\D|$)`).test(text), `wave 10's 5: ${text}`);
+
+    state.meta.bestWaveReached = 97;
+    text = rowText(state, "high_water_mark", "en");
+    assert(/(^|\D)100(\D|$)/.test(text), `a record of 97 looks at wave 100: ${text}`);
+    assert(new RegExp(`(^|\\D)${quotes(100)}(\\D|$)`).test(text), `and quotes its 50: ${text}`);
+
+    state.round.wavesResolved = 143;
+    text = rowText(state, "high_water_mark", "en");
+    assert(/(^|\D)150(\D|$)/.test(text), `a run already past the record looks at 150: ${text}`);
+    assert(new RegExp(`(^|\\D)${quotes(150)}(\\D|$)`).test(text), `and quotes its 75: ${text}`);
+  });
+
+  /* ------------------------------------------------------------------ *
    * The gate on the last two purchases                                   *
    * ------------------------------------------------------------------ */
 
   // Buys out the whole catalogue except the two behind the gate. Fear is granted rather than
   // played for: what these checks are about is the gate, not the grind up to it.
+  //
+  // Skips every row the gate does not count, for the same reason gatedUpgradesUnlocked does:
+  // a soft-capped ladder has no top tier to reach, so "buy it out" is not a thing that can
+  // happen to one, and the pool's top is 10000 Fear of sink rather than a rung. Without the
+  // skip this loop just climbs the cost curve until 1e9 Fear runs out and then reports a
+  // failed purchase as if the shop were broken.
   function buyEverythingButTheGated(state) {
     state.meta.fear = 1e9;
     for (const id of engine.UPGRADE_IDS) {
-      if (engine.GATED_UPGRADE_IDS.includes(id)) continue;
+      if (!engine.upgradeRequiredForGate(id)) continue;
       while (engine.upgradeTier(state, id) < engine.upgradeMaxTier(id)) {
         if (!engine.purchaseUpgrade(state, id)) throw new Error(`could not buy ${id}`);
       }

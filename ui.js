@@ -29,7 +29,10 @@ const dom = {
   dahanAttackValue: document.getElementById("dahanAttackValue"),
   fearLabel: document.getElementById("fearLabel"),
   fearValue: document.getElementById("fearValue"),
+  fearRound: document.getElementById("fearRound"),
   fearPending: document.getElementById("fearPending"),
+  fearTile: document.getElementById("fearTile"),
+  fearMilestone: document.getElementById("fearMilestone"),
 
   invaderTrackTitle: document.getElementById("invaderTrackTitle"),
   buildLabel: document.getElementById("buildLabel"),
@@ -769,14 +772,20 @@ function patchAbilityBar(state) {
 
 // The wave is in here because the running-round summary prints it, and the round-scoped
 // tiers because a purchase made mid-round changes a row's "takes effect next round" note
-// without changing anything the owned tiers can see.
+// without changing anything the owned tiers can see. The best wave joins them because the
+// High-Water Mark's row quotes the next milestone the player is heading for, which moves with
+// their depth rather than with anything else in this list.
 function shopSignature(state) {
   const tiers = UPGRADE_IDS.map((id) => `${id}:${upgradeTier(state, id)}:${activeUpgradeTier(state, id)}`).join(",");
   return [
     currentLang(state),
+    // The Dahan Remember prints its strike interval in real seconds, which the speed dial
+    // divides - so the row is stale the moment the dial moves unless the signature knows.
+    gameSpeed(state),
     state.round.status,
     state.round.number,
     state.round.wavesResolved,
+    state.meta.bestWaveReached,
     formatFear(state.meta.fear),
     formatFear(state.round.fearEarned),
     autoStartRoundOwned(state),
@@ -823,10 +832,10 @@ function renderShop(state) {
     const pending = !ended && tier > activeUpgradeTier(state, upgradeId);
 
     // A one-off has no ladder, so it shows nothing where a tier would go and reads "Owned"
-    // rather than "Maxed" once it is bought.
-    const status = repeatable
-      ? `<span class="upgrade-tier">${template(t.shopTierLabel, { tier })}</span>`
-      : "";
+    // rather than "Maxed" once it is bought. A pool shows its haste there instead of a tier -
+    // see upgradeStatusText, which decides all three.
+    const statusText = upgradeStatusText(state, upgradeId);
+    const status = statusText ? `<span class="upgrade-tier">${statusText}</span>` : "";
     const pendingNote = pending ? `<span class="upgrade-pending">${t.shopPendingHint}</span>` : "";
     // Only one note per row, and the lock outranks the pending hint: a locked row cannot have
     // been bought, so the two can never both apply anyway.
@@ -836,7 +845,7 @@ function renderShop(state) {
       : template(t.shopCostLabel, { cost });
 
     const row = document.createElement("div");
-    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}${pending ? " is-pending" : ""}${locked ? " is-locked" : ""}${soldOutRow ? " is-sold-out" : ""}`;
+    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}${pending ? " is-pending" : ""}${locked ? " is-locked" : ""}${soldOutRow ? " is-sold-out" : ""}${upgradeIsPool(upgradeId) ? " is-pool" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${upgradeName(state, upgradeId)}</span>
@@ -844,11 +853,47 @@ function renderShop(state) {
         ${status}
         ${lockedNote || pendingNote}
       </div>
+      ${upgradeIsPool(upgradeId) ? poolButtons(state, upgradeId, maxed) : `
       <button type="button" class="upgrade-buy" data-upgrade="${upgradeId}" ${maxed || !affordable ? "disabled" : ""}>
         ${buyLabel}
-      </button>
+      </button>`}
     `;
     dom.upgradeList.appendChild(row);
+  }
+
+  /* ---------- What a pool row offers instead of a Buy ----------
+   *
+   * One button per denomination the catalogue names, then a Max that takes everything the
+   * purse can pay for. Every button carries the Fear it will actually spend, because "+100"
+   * near the cap is not 100 Fear - purchaseUpgrade buys what is left rather than refusing, and
+   * a button that hid that would be spending a number the player did not agree to.
+   *
+   * A denomination the purse cannot cover is disabled rather than dropped. The row would
+   * reshuffle under the cursor otherwise, and what the next tier of the pool costs is worth
+   * seeing from below it.
+   */
+  function poolButtons(state, upgradeId, maxed) {
+    if (maxed) {
+      return `<div class="upgrade-pool-buys"><button type="button" class="upgrade-buy" disabled>${t.shopMaxedBtn}</button></div>`;
+    }
+
+    const room = upgradeMaxTier(upgradeId) - upgradeTier(state, upgradeId);
+    const affordableCount = upgradeTiersAffordable(state, upgradeId);
+    const buttons = upgradeBulkAmounts(upgradeId).map((amount) => {
+      // What this button will really take: the last +1000 before the cap spends what is left.
+      const spend = Math.min(amount, room);
+      const cost = upgradeCostFor(state, upgradeId, spend);
+      return `<button type="button" class="upgrade-buy is-pool-buy" data-upgrade="${upgradeId}" data-amount="${amount}"
+        title="${template(t.shopInvestTitle, { amount: cost })}" ${spend > affordableCount ? "disabled" : ""}>${template(t.shopInvestBtn, { amount })}</button>`;
+    });
+
+    // Max is offered even at zero, disabled, so the row keeps its shape whatever the purse
+    // holds - and so the button the player reaches for is always in the same place.
+    const maxCost = upgradeCostFor(state, upgradeId, affordableCount);
+    buttons.push(`<button type="button" class="upgrade-buy is-pool-max" data-upgrade="${upgradeId}" data-amount="${affordableCount}"
+      title="${template(t.shopInvestMaxTitle, { amount: maxCost })}" ${affordableCount <= 0 ? "disabled" : ""}>${t.shopInvestMaxBtn}</button>`);
+
+    return `<div class="upgrade-pool-buys">${buttons.join("")}</div>`;
   }
 
   // Two passes, not one sorted list: anything sold out - a maxed ladder or a bought one-off -
@@ -899,9 +944,29 @@ function patchHud(state) {
   // The banked pool, which is the only one the shop can spend. What this round has earned
   // rides underneath it so the player can watch it grow without mistaking it for money.
   dom.fearValue.textContent = formatFear(state.meta.fear);
-  dom.fearPending.textContent = state.round.fearEarned > 0
-    ? template(t.fearPendingHint, { fear: formatFear(state.round.fearEarned) })
+  // Three readings of one purse, each answering a different question. The value is what can be
+  // spent right now; beside it, what the round has added and will bank; below, how that splits
+  // between what the round earned on its own and what the Fear ladders added on top.
+  //
+  // The split line is drawn only when a ladder is actually contributing. With none owned it
+  // would read "+8 base" under a line already saying "(+8 this round)" - the same number twice,
+  // and a standing reminder of an upgrade the player has not bought yet.
+  const fear = fearBreakdown(state);
+  dom.fearRound.textContent = fear.total > 0
+    ? template(t.fearRoundHint, { fear: fear.total })
     : "";
+  dom.fearPending.textContent = fear.bonus > 0
+    ? template(t.fearSplitHint, { fear: fear.base, bonus: fear.bonus })
+    : "";
+
+  // The High-Water Mark payout. Every other Fear source is a rate that only ever nudges the
+  // running total, so the one source that arrives in a lump gets said out loud - otherwise
+  // the upgrade the player just spent hundreds on is invisible at the moment it pays.
+  // activeFearFx expires it on the same clock the defeat and Blight chips use, so the class
+  // comes off by itself on a later frame without anything here holding a timer.
+  const fearFx = activeFearFx(state);
+  dom.fearMilestone.textContent = fearFx ? `+${fearFx.amount}` : "";
+  dom.fearTile.classList.toggle("is-milestone", Boolean(fearFx));
   // Energy is whole-numbered and rises mid-fight, so it is patched with the rest of the
   // per-tick readouts rather than waiting on an ability-bar rebuild.
   dom.energyValue.textContent = String(state.resources.energy);
@@ -1347,7 +1412,11 @@ dom.upgradeList.addEventListener("click", (event) => {
   if (!(target instanceof Element)) return;
   const button = target.closest("button[data-upgrade]");
   if (!button) return;
-  purchaseUpgrade(state, button.getAttribute("data-upgrade") || "");
+  // Absent on every row but the pool's, where it is the denomination the button was drawn
+  // for. purchaseUpgrade reads a missing one as a single tier, which is what every other row
+  // has always bought.
+  const amount = Number(button.getAttribute("data-amount")) || 1;
+  purchaseUpgrade(state, button.getAttribute("data-upgrade") || "", amount);
   updateUI(state);
   persist();
 });

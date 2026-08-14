@@ -4,7 +4,7 @@
   const {
     engine, test, assert, assertEqual, assertClose, assertDeepEqual,
     newGame, advance, clearBoard, setLand, woundUnit, healthOf,
-    unlockAllAbilities, setAbilityTier
+    unlockAllAbilities, setAbilityTier, grantUpgrade
   } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   /* A game with the spirit's whole kit granted. Most of what follows is about what an
