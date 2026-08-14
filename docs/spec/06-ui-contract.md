@@ -241,15 +241,6 @@ from the dev tools, and still is.
   `headwaters` as the one thing that reset does not take to zero, since the shop row is
   otherwise the only place a player could learn that a round can open with Energy at all.
 
-## Map Hint Rules
-
-- Default hint names the board: eight lands, three of them coastal.
-- While an ability is armed, the hint names which ability is waiting and what land property
-  it needs: invaders present, or — for a push — something pushable. A push never asks about
-  the neighbours any more; it always has somewhere to go.
-- Otherwise, while a round runs, the hint names the terrain the next wave will Build in and
-  the lands that means.
-
 ## Interaction Rules
 
 - The board is otherwise read-only during a running round: there is no click that pauses,

@@ -55,7 +55,6 @@ const dom = {
   abilityBar: document.getElementById("abilityBar"),
 
   mapTitle: document.getElementById("mapTitle"),
-  mapPlanHint: document.getElementById("mapPlanHint"),
   islandSvg: document.getElementById("islandSvg"),
   landChips: document.getElementById("landChips"),
   landDetail: document.getElementById("landDetail"),
@@ -1171,30 +1170,6 @@ function patchPlaytestTools(state) {
   patchRedeemStatus(state);
 }
 
-function patchMapHint(state) {
-  const t = locale(state);
-  const armed = state.pendingAbilityTarget;
-
-  if (armed) {
-    dom.mapPlanHint.textContent = template(t.mapHintArmed, {
-      ability: abilityName(state, armed),
-      requirement: abilityRequirementText(state, armed)
-    });
-    return;
-  }
-
-  const pending = waveLands(state);
-  if (state.round.status === "running" && pending.length > 0) {
-    dom.mapPlanHint.textContent = template(t.mapHintWave, {
-      terrain: terrainNames(state, state.invader.build),
-      lands: pending.map((id) => template(t.landShort, { id })).join(", ")
-    });
-    return;
-  }
-
-  dom.mapPlanHint.textContent = t.mapPlanHint;
-}
-
 function renderLog(state) {
   dom.eventLog.innerHTML = (state._log || []).map((entry) => `<li>${entry}</li>`).join("");
 }
@@ -1311,7 +1286,6 @@ function updateUI(state) {
 
   patchPlaytestTools(state);
   patchSaveStatus(state);
-  patchMapHint(state);
 
   const nextAbilitySig = abilityBarSignature(state);
   if (renderCache.abilityBar !== nextAbilitySig) {

@@ -914,12 +914,6 @@ const I18N = {
     },
 
     mapTitle: "Die Insel",
-    mapPlanHint: "Acht Gebiete, drei an der Küste. Wähle ein Gebiet für Details.",
-    mapHintArmed: "{ability}: {requirement}",
-    mapHintWave: "Nächste Welle baut in {terrain} ({lands}).",
-    abilityNeedInvaders: "wähle ein Gebiet mit Invasoren.",
-    abilityNeedPushable: "wähle ein Gebiet mit Entdeckern/Dörfern.",
-    abilityNeedAnyLand: "wähle ein beliebiges Gebiet.",
 
     shopTitle: "Zwischen den Runden",
     shopLostRound: "Runde {round} verloren. {fear} Furcht in dieser Runde erbeutet.",
@@ -1201,12 +1195,6 @@ const I18N = {
     },
 
     mapTitle: "The Island",
-    mapPlanHint: "Eight lands, three of them coastal. Pick a land for details.",
-    mapHintArmed: "{ability}: {requirement}",
-    mapHintWave: "Next wave builds in {terrain} ({lands}).",
-    abilityNeedInvaders: "pick a land holding invaders.",
-    abilityNeedPushable: "pick a land with Explorers/Towns.",
-    abilityNeedAnyLand: "pick any land.",
 
     shopTitle: "Between Rounds",
     shopLostRound: "Round {round} lost. {fear} Fear earned this round.",
@@ -1522,17 +1510,6 @@ function abilityText(state, abilityId) {
     push: record.pushCount || 0,
     sea: record.seaCount || 0
   });
-}
-
-// What an armed ability is waiting for, in words. The board dims to teach the same rule;
-// this is the sentence version of it.
-function abilityRequirementText(state, abilityId) {
-  const t = locale(state);
-  const record = abilityRecord(state, abilityId);
-  if (!record || !record.needsTarget) return "";
-  return record.effect === "push_invaders" || record.effect === "wash_invaders"
-    ? t.abilityNeedPushable
-    : t.abilityNeedInvaders;
 }
 
 // Everything a land's fight is doing right now, in one object. The chip, the detail panel,
@@ -5164,7 +5141,6 @@ const ENGINE_EXPORTS = {
   unitLabelOne,
   abilityName,
   abilityText,
-  abilityRequirementText,
   landPressure,
   buildOutcomeInLand,
   pressureChipText,
