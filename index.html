@@ -163,6 +163,18 @@
           <span class="track-slot-build"><strong id="buildLabel">Bauen:</strong> <span id="buildTerrain">-</span></span>
           <span><strong id="discoverLabel">Entdecken:</strong> <span id="discoverTerrain">-</span></span>
         </div>
+
+        <!-- The difficulty ladder, which until now was written down only in engine.js: what
+             the island starts doing at which wave, and how far this round has climbed it. The
+             rows are painted from difficultyLadder, so nothing here knows a wave number. -->
+        <div class="ladder">
+          <div class="ladder-head">
+            <strong id="ladderTitle">Eskalation</strong>
+            <small id="ladderHint"></small>
+          </div>
+          <ul id="ladderList" class="ladder-list"></ul>
+        </div>
+
         <p id="spiritTraits" class="hint"></p>
       </section>
 

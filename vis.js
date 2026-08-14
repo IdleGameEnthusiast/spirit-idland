@@ -26,7 +26,10 @@
   // board frozen behind "waiting" is a different screen from the one being judged here.
   state.round.awaitingWave = false;
   state.round.dahanAttackRemaining = DAHAN_ATTACK_INTERVAL_SECONDS * 0.6;
-  state.round.wavesResolved = 9;
+  // Deep enough that the escalation ladder shows all three of its readings at once - rungs in
+  // force, the one coming next, and the climb still ahead. At wave 9 the whole list was dim,
+  // which is the one state that tells a layout nothing.
+  state.round.wavesResolved = 45;
   state.round.fearEarned = 4.2;
   state.meta.fear = 12.6;
   state.meta.bestRoundReached = 3;

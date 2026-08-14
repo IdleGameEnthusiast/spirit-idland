@@ -39,6 +39,9 @@ const dom = {
   buildTerrain: document.getElementById("buildTerrain"),
   discoverLabel: document.getElementById("discoverLabel"),
   discoverTerrain: document.getElementById("discoverTerrain"),
+  ladderTitle: document.getElementById("ladderTitle"),
+  ladderHint: document.getElementById("ladderHint"),
+  ladderList: document.getElementById("ladderList"),
 
   activeSpiritLabel: document.getElementById("activeSpiritLabel"),
   spiritName: document.getElementById("spiritName"),
@@ -88,6 +91,7 @@ const dom = {
 const renderCache = {
   language: null,
   map: null,
+  ladder: null,
   abilityBar: null,
   shop: null,
   log: null
@@ -1011,6 +1015,32 @@ function patchHud(state) {
   document.body.classList.toggle("round-ended", !running);
 }
 
+// The escalation ladder under the track. Rebuilt rather than patched, and only when the wave
+// count moves: eleven rows once a wave is nothing beside the board, and a row's whole text
+// changes when a repeating rung fires anyway.
+function ladderSignature(state) {
+  return `${currentLang(state)}|${state.round.wavesResolved}`;
+}
+
+// Three readings, and they are not "done / not done": a rung the round has passed is a rule
+// currently *in force*, not a task cleared, so it is the one drawn brightest. `is-next` is
+// what the round is about to walk into, and the rest are dim because they are not the
+// player's problem yet.
+function renderLadder(state) {
+  const t = locale(state);
+  dom.ladderList.innerHTML = difficultyLadder(state).map((row) => {
+    const classes = ["ladder-row"];
+    if (row.reached) classes.push("is-live");
+    if (row.next) classes.push("is-next");
+    return `
+      <li class="${classes.join(" ")}" title="${template(t.ladderWaveTitle, { wave: row.wave })}">
+        <span class="ladder-wave">${row.wave}</span>
+        <span class="ladder-text">${row.text}</span>
+      </li>
+    `;
+  }).join("");
+}
+
 // The two pacing controls, patched together because they are read together: how fast the
 // round is allowed to run, and whether it is allowed to run on without being asked. Both wear
 // their state rather than describing it - the chosen scale is the lit button, and the toggle
@@ -1141,6 +1171,8 @@ function applyStaticLanguage(state) {
   dom.buildLabel.textContent = t.buildLabel;
   dom.discoverLabel.textContent = t.discoverLabel;
   dom.dahanAttackLabel.textContent = t.dahanAttackLabel;
+  dom.ladderTitle.textContent = t.ladderTitle;
+  dom.ladderHint.textContent = t.ladderHint;
 
   dom.activeSpiritLabel.textContent = t.activeSpiritLabel;
   dom.spiritName.textContent = currentLang(state) === "en"
@@ -1220,6 +1252,13 @@ function updateUI(state) {
 
   patchHud(state);
   patchPacingControls(state);
+
+  const nextLadderSig = ladderSignature(state);
+  if (renderCache.ladder !== nextLadderSig) {
+    renderLadder(state);
+    renderCache.ladder = nextLadderSig;
+  }
+
   patchPlaytestTools(state);
   patchMapHint(state);
 

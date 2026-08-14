@@ -474,6 +474,80 @@ h3 {
    carries the warning colour. Discover only ever adds a single explorer. */
 .track-slot-build span { color: var(--accent-pressure); }
 
+/* The escalation ladder. It is a reference table more than a readout, so it is set small and
+   quiet by default and lets the two states that matter - in force, and next - do the talking.
+   No scroller: the whole climb has to be readable at once or it is not a plan. */
+.ladder { margin-top: 0.6rem; }
+
+.ladder-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.ladder-head strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+}
+
+.ladder-head small {
+  font-size: 0.68rem;
+  color: var(--ink-1);
+}
+
+.ladder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ladder-row {
+  display: grid;
+  grid-template-columns: 2.1rem 1fr;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.12rem 0.3rem;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  color: var(--ink-1);
+  opacity: 0.55;
+}
+
+.ladder-wave {
+  font-family: "Cinzel", "Times New Roman", serif;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink-1);
+}
+
+/* A rung the round has passed is not a task ticked off - it is a rule the island is playing
+   by right now, which is why it is the brightest thing in the list. */
+.ladder-row.is-live {
+  opacity: 1;
+  color: var(--ink-1);
+}
+
+.ladder-row.is-live .ladder-wave { color: var(--accent-pressure); }
+
+/* What the round is about to walk into. Marked with a border rather than a colour so it stays
+   legible whether the row above it is live or dim. */
+.ladder-row.is-next {
+  opacity: 1;
+  color: var(--ink-0);
+  background: rgba(242, 196, 90, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(242, 196, 90, 0.42);
+}
+
+.ladder-row.is-next .ladder-wave { color: var(--accent-energy); }
+
 button {
   width: 100%;
   margin-top: 0.55rem;

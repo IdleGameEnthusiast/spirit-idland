@@ -104,6 +104,15 @@ A unit's `damage` is a rate and is *not* scaled by `TIME_SCALE`. It is also the 
 which is what a defeat pays in Fear and Energy, so scaling it would move the economy. The two
 damage-second constants carry the whole of the scaling instead — see below.
 
+Those are the numbers a unit *ships* with. What it fights with is read through `unitStats`,
+which adds the two repeating rungs of the difficulty ladder — invader damage from wave 100,
+invader health from wave 110, each +1 again every 20 waves after. The rungs are keyed to
+`round.wavesResolved`, so they are per round like the rest of the ladder, and Dahan never ride
+them. Because power is read off `damage`, a damage rung raises what an invader is worth in the
+same stroke as what it threatens; a health rung does not, which is why removal outprices damage
+in the shop. The full rung table lives above `EXPLORE_UNRESTRICTED_FROM_WAVE` in `engine.js`,
+and the track panel prints it — see [06-ui-contract.md](./06-ui-contract.md).
+
 ## The Damage-Second
 
 The whole fight runs on one currency. One point of damage sustained for one second is a

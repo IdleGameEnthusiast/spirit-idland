@@ -340,7 +340,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 
 ## Current Validation Status
 
-**358 automated checks, all passing.** Coverage by file:
+**365 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -349,7 +349,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/wave.test.js` | Wave timing, Build, Discover, track shift, the tick cap |
 | `tests/pacing.test.js` | The speed dial and the wave gate (02 Pacing) |
 | `tests/playtest.test.js` | The redeem code and the playtest tools (06 Playtest Tools) |
-| `tests/ladder.test.js` | The difficulty ladder as the waves climb |
+| `tests/ladder.test.js` | The difficulty ladder as the waves climb, and the readout the track prints |
 | `tests/automation.test.js` | The bought automations and their target picks |
 | `tests/combat.test.js` | Blight and casualty rates, concentration, the Dahan strike |
 | `tests/blight.test.js` | Blight accrual, the per-land tally, round end |

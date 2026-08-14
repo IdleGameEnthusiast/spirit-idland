@@ -25,7 +25,7 @@
   }
 
   /* ---------------------------------------------------------------- *
-   * Wave 20 - two Explorers per discovered land                        *
+   * Wave 20 - one land of the Discover takes a second Explorer         *
    * ---------------------------------------------------------------- */
 
   test("ladder: Discover seeds one explorer per land below wave 20", () => {
@@ -35,10 +35,44 @@
     assert(explorersOn(state, ["1", "7"]).every((n) => n === 1), "one each below the rung");
   });
 
-  test("ladder: Discover seeds two explorers per land from wave 20", () => {
+  test("ladder: from wave 20 exactly one of the two lands takes a second explorer", () => {
+    // The rung is the half step: three Explorers across the terrain, not four. Which land
+    // takes the second is drawn, so the test asserts the pair rather than a land.
     const state = boardAt(20, { build: [], explore: ["wetlands"] });
     engine.resolveExplorePhase(state);
+    const seeded = explorersOn(state, ["1", "7"]).sort();
+    assertEqual(seeded.join(","), "1,2", "one land took one, the other took two");
+  });
+
+  test("ladder: the half rung holds all the way to the full one", () => {
+    // Every wave from 20 to 39 puts three Explorers on the terrain, and never four. Run the
+    // range rather than its ends: the land is drawn, and a rung that leaked would show up as
+    // a four on some wave in between rather than at a boundary.
+    for (let wave = 20; wave < 40; wave += 1) {
+      const state = boardAt(wave, { build: [], explore: ["wetlands"] });
+      engine.resolveExplorePhase(state);
+      const total = explorersOn(state, ["1", "7"]).reduce((sum, n) => sum + n, 0);
+      assertEqual(total, 3, `wave ${wave}`);
+    }
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Wave 40 - two Explorers per discovered land                        *
+   * ---------------------------------------------------------------- */
+
+  test("ladder: Discover seeds two explorers per land from wave 40", () => {
+    const state = boardAt(40, { build: [], explore: ["wetlands"] });
+    engine.resolveExplorePhase(state);
     assert(explorersOn(state, ["1", "7"]).every((n) => n === 2), "two each from the rung on");
+  });
+
+  test("ladder: the two seed rungs never stack into three", () => {
+    // The half rung reads explorersPerLand rather than a wave number of its own, so the wave
+    // the full rung lands on is the wave the half one stops answering. Without that, wave 40
+    // would put five Explorers on the terrain instead of four.
+    const state = boardAt(60, { build: [], explore: ["wetlands"] });
+    engine.resolveExplorePhase(state);
+    assert(explorersOn(state, ["1", "7"]).every((n) => n === 2), "still two apiece, deep in the round");
   });
 
   /* ---------------------------------------------------------------- *
@@ -80,16 +114,16 @@
   });
 
   /* ---------------------------------------------------------------- *
-   * Wave 40 - one extra land, off-terrain                              *
+   * Wave 50 - one extra land, off-terrain                              *
    * ---------------------------------------------------------------- */
 
-  test("ladder: Discover takes exactly one off-terrain land from wave 40", () => {
-    const below = boardAt(39, { build: [], explore: ["wetlands"] });
+  test("ladder: Discover takes exactly one off-terrain land from wave 50", () => {
+    const below = boardAt(49, { build: [], explore: ["wetlands"] });
     engine.resolveExplorePhase(below);
     const seededBelow = engine.LAND_IDS.filter((id) => below.invaders[id].explorers > 0);
     assertEqual(seededBelow.length, 2, "just the terrain's own two lands");
 
-    const at = boardAt(40, { build: [], explore: ["wetlands"] });
+    const at = boardAt(50, { build: [], explore: ["wetlands"] });
     engine.resolveExplorePhase(at);
     const seededAt = engine.LAND_IDS.filter((id) => at.invaders[id].explorers > 0);
     assertEqual(seededAt.length, 3, "the terrain's two, plus one more");
@@ -101,15 +135,15 @@
   });
 
   /* ---------------------------------------------------------------- *
-   * Waves 50 / 70 / 80 - Discover widens to 2, 3, then every terrain   *
+   * Waves 60 / 80 / 90 - Discover widens to 2, 3, then every terrain   *
    * ---------------------------------------------------------------- */
 
   test("ladder: the Discover terrain count climbs 1 -> 2 -> 3 -> all", () => {
     const counts = [
-      [0, 1], [49, 1],
-      [50, 2], [69, 2],
-      [70, 3], [79, 3],
-      [80, engine.INVADER_TERRAINS.length], [200, engine.INVADER_TERRAINS.length]
+      [0, 1], [59, 1],
+      [60, 2], [79, 2],
+      [80, 3], [89, 3],
+      [90, engine.INVADER_TERRAINS.length], [200, engine.INVADER_TERRAINS.length]
     ];
     for (const [wave, expected] of counts) {
       const state = boardAt(wave, { build: [], explore: [] });
@@ -118,14 +152,14 @@
   });
 
   test("ladder: a widened Discover actually draws that many distinct terrains", () => {
-    const state = boardAt(70, { build: [], explore: ["wetlands"] });
+    const state = boardAt(80, { build: [], explore: ["wetlands"] });
     engine.shiftInvaderTrack(state);
     assertEqual(state.invader.explore.length, 3, "three terrains drawn");
     assertEqual(new Set(state.invader.explore).size, 3, "and no duplicates among them");
   });
 
-  test("ladder: at wave 80 Discover holds every terrain, and Build inherits it next wave", () => {
-    const state = boardAt(80, { build: [], explore: ["wetlands"] });
+  test("ladder: at wave 90 Discover holds every terrain, and Build inherits it next wave", () => {
+    const state = boardAt(90, { build: [], explore: ["wetlands"] });
     engine.shiftInvaderTrack(state);
     assertEqual(state.invader.explore.length, engine.INVADER_TERRAINS.length, "all terrains");
 
@@ -136,11 +170,11 @@
   });
 
   /* ---------------------------------------------------------------- *
-   * Wave 60 - Build runs twice                                         *
+   * Wave 70 - Build runs twice                                         *
    * ---------------------------------------------------------------- */
 
-  test("ladder: Build adds one unit per land below wave 60", () => {
-    const state = boardAt(59, { build: ["wetlands"], explore: [] });
+  test("ladder: Build adds one unit per land below wave 70", () => {
+    const state = boardAt(69, { build: ["wetlands"], explore: [] });
     setLand(state, "1", { explorers: 1 }, 0);
 
     engine.resolveBuildPhase(state);
@@ -148,8 +182,8 @@
     assertEqual(state.invaders["1"].cities, 0, "and nothing above it");
   });
 
-  test("ladder: from wave 60 Build runs twice, and the second pass reads the first", () => {
-    const state = boardAt(60, { build: ["wetlands"], explore: [] });
+  test("ladder: from wave 70 Build runs twice, and the second pass reads the first", () => {
+    const state = boardAt(70, { build: ["wetlands"], explore: [] });
     setLand(state, "1", { explorers: 1 }, 0);
 
     engine.resolveBuildPhase(state);
@@ -161,31 +195,31 @@
   });
 
   test("ladder: a doubled Build still builds nothing in an empty land", () => {
-    const state = boardAt(60, { build: ["wetlands"], explore: [] });
+    const state = boardAt(70, { build: ["wetlands"], explore: [] });
     engine.resolveBuildPhase(state);
     assertEqual(state.invaders["1"].towns, 0, "Build needs something to build on");
     assertEqual(state.invaders["7"].towns, 0, "in both lands of the terrain");
   });
 
   /* ---------------------------------------------------------------- *
-   * Waves 90 / 100 and up - Invaders hit harder, then get tougher      *
+   * Waves 100 / 110 and up - Invaders hit harder, then get tougher     *
    * ---------------------------------------------------------------- */
 
-  test("ladder: invader damage rises at 90 and every 20 waves after", () => {
+  test("ladder: invader damage rises at 100 and every 20 waves after", () => {
     const damageAt = (wave) => engine.unitStats(boardAt(wave, { build: [], explore: [] }), "explorers").damage;
-    assertEqual(damageAt(89), 1, "wave 89");
-    assertEqual(damageAt(90), 2, "wave 90");
-    assertEqual(damageAt(109), 2, "wave 109");
-    assertEqual(damageAt(110), 3, "wave 110");
-    assertEqual(damageAt(130), 4, "wave 130");
+    assertEqual(damageAt(99), 1, "wave 99");
+    assertEqual(damageAt(100), 2, "wave 100");
+    assertEqual(damageAt(119), 2, "wave 119");
+    assertEqual(damageAt(120), 3, "wave 120");
+    assertEqual(damageAt(140), 4, "wave 140");
   });
 
-  test("ladder: invader health rises at 100 and every 20 waves after", () => {
+  test("ladder: invader health rises at 110 and every 20 waves after", () => {
     const healthAt = (wave) => engine.unitStats(boardAt(wave, { build: [], explore: [] }), "explorers").health;
-    assertEqual(healthAt(99), 1, "wave 99");
-    assertEqual(healthAt(100), 2, "wave 100");
-    assertEqual(healthAt(119), 2, "wave 119");
-    assertEqual(healthAt(120), 3, "wave 120");
+    assertEqual(healthAt(109), 1, "wave 109");
+    assertEqual(healthAt(110), 2, "wave 110");
+    assertEqual(healthAt(129), 2, "wave 129");
+    assertEqual(healthAt(130), 3, "wave 130");
   });
 
   test("ladder: the two stat rungs alternate every ten waves once both are live", () => {
@@ -194,10 +228,10 @@
       const s = engine.unitStats(state, "cities");
       return `${s.damage}/${s.health}`;
     };
-    assertEqual(at(90), "4/3", "damage only");
-    assertEqual(at(100), "4/4", "health catches up");
-    assertEqual(at(110), "5/4", "damage again");
-    assertEqual(at(120), "5/5", "health again");
+    assertEqual(at(100), "4/3", "damage only");
+    assertEqual(at(110), "4/4", "health catches up");
+    assertEqual(at(120), "5/4", "damage again");
+    assertEqual(at(130), "5/5", "health again");
   });
 
   test("ladder: the Dahan never ride the ladder", () => {
@@ -210,7 +244,7 @@
   test("ladder: a tougher invader is worth proportionally more to kill", () => {
     // Power is read off damage, so a damage rung raises Fear and Energy in the same stroke -
     // an invader that hits twice as hard is not simply worse news.
-    const state = boardAt(90, { build: [], explore: [] });
+    const state = boardAt(100, { build: [], explore: [] });
     clearBoard(state);
     state.round.fearEarned = 0;
     state.resources.energy = 0;
@@ -223,7 +257,7 @@
   });
 
   test("ladder: a scaled invader takes its extra hit point to kill", () => {
-    const state = boardAt(100, { build: [], explore: [] });
+    const state = boardAt(110, { build: [], explore: [] });
     clearBoard(state);
     setLand(state, "3", { explorers: 1 }, 0);
 
@@ -237,7 +271,7 @@
   test("ladder: normalizing a scaled board does not heal it", () => {
     // The wound cap is the unit's *current* health. Normalizing against the shipped health
     // would clamp a wound the extra hit point allowed straight back down to zero.
-    const state = boardAt(100, { build: [], explore: [] });
+    const state = boardAt(110, { build: [], explore: [] });
     clearBoard(state);
     setLand(state, "3", { explorers: 1 }, 0);
     engine.applyDamage(state, "3", 1);
@@ -255,7 +289,7 @@
     // cloneCombatState carries the wave count for exactly this reason: a scratch board that
     // dropped it would rate a land as clearable against wave-1 invaders and spend a real
     // cooldown on a cast that leaves the land standing.
-    const state = boardAt(100, { build: [], explore: [] });
+    const state = boardAt(110, { build: [], explore: [] });
     clearBoard(state);
     setLand(state, "3", { explorers: 1 }, 0);
 
@@ -269,6 +303,49 @@
     // One damage wounds but does not kill at this rung, on either board.
     engine.applyDamage(scratch, "3", 1);
     assertEqual(scratch.invaders["3"].explorers, 1, "the scratch explorer survived, as it should");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * The readout the track prints                                       *
+   * ---------------------------------------------------------------- */
+
+  test("ladder: the readout names every rung, in climbing order", () => {
+    const rows = engine.difficultyLadder(boardAt(0, { build: [], explore: [] }));
+    assertEqual(rows.length, engine.DIFFICULTY_RUNGS.length, "one row per rung");
+    for (let i = 1; i < rows.length; i += 1) {
+      assert(rows[i].wave > rows[i - 1].wave, `row ${i} climbs past the one before it`);
+    }
+    assert(rows.every((row) => typeof row.text === "string" && row.text.length > 0), "every row says what it does");
+  });
+
+  test("ladder: the readout marks what is in force and what lands next", () => {
+    const rows = engine.difficultyLadder(boardAt(35, { build: [], explore: [] }));
+    const live = rows.filter((row) => row.reached).map((row) => row.wave);
+    assertEqual(live.join(","), "10,20,30", "three rungs in force at wave 35");
+
+    const next = rows.filter((row) => row.next);
+    assertEqual(next.length, 1, "exactly one row is the next one");
+    assertEqual(next[0].wave, 40, "and it is the seed rung at 40");
+  });
+
+  test("ladder: a repeating rung prints its next firing, not the one it already had", () => {
+    // At wave 150 both stat rungs are long live, so a readout that showed first firings would
+    // show two cleared rows and nothing coming - which is the opposite of the truth.
+    const rows = engine.difficultyLadder(boardAt(150, { build: [], explore: [] }));
+    const damage = rows.find((row) => row.key === "rungInvaderDamage");
+    const health = rows.find((row) => row.key === "rungInvaderHealth");
+
+    assertEqual(damage.wave, 160, "damage fired at 100, 120, 140 - next is 160");
+    assertEqual(health.wave, 170, "health fired at 110, 130, 150 - next is 170");
+    assert(damage.reached && health.reached, "both are in force meanwhile");
+    assert(damage.next, "and the sooner of the two is what the round walks into next");
+    assert(/3/.test(damage.text), "the row carries what it is worth so far");
+  });
+
+  test("ladder: the readout is per round, like the rungs it reads", () => {
+    const rows = engine.difficultyLadder(boardAt(0, { build: [], explore: [] }));
+    assert(rows.every((row) => !row.reached), "nothing is in force at wave zero");
+    assertEqual(rows.filter((row) => row.next)[0].wave, 10, "the first rung is what is coming");
   });
 
   test("ladder: a new round starts back at the bottom rung", () => {

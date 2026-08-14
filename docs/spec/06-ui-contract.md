@@ -79,6 +79,19 @@ island board, and the between-round shop.
 
 1b. Invader track — in the side rail
 - The Build and Discover terrains. There is no Ravage slot
+- **The escalation ladder**, one row per rung: the wave it lands on and what it does, in
+  climbing order, from `difficultyLadder`. The panel holds no wave numbers of its own — a rung
+  that moves in `engine.js` moves here in the same edit
+- The whole climb is shown at once, never scrolled or collapsed. It is a plan the player reads
+  ahead on, and a rung hidden behind a toggle is a rung they meet by surprise
+- Three readings, and they are deliberately not "done / not done". A rung the round has
+  **passed is in force** — a rule the island is playing by right now — so it is drawn
+  brightest. The **next** rung is boxed. Everything above it is dim, because it is not the
+  player's problem yet
+- The two repeating rungs print their **next firing**, not their first, with what they are
+  worth so far in the text. A round at wave 150 reads `170 Invaders hit harder (now +3)`
+- A line under the heading says the rungs are counted **per round**. Without it the ladder
+  reads as run progress, which is the one thing it is not
 - Active spirit name and trait text
 
 2. Ability bar

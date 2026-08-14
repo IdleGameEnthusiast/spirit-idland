@@ -133,44 +133,119 @@ const DAHAN_HASTE_MAX = 1;
  *
  *    0  Discover runs at setup, so the island is never empty (see seedRoundExplore)
  *   10  Discover stops asking whether a land is reachable
- *   20  Discover seeds two Explorers per land instead of one
+ *   20  One land of each Discover takes a second Explorer
  *   30  A Town appears each wave in some land that has none
- *   40  Discover takes one extra land, off-terrain
- *   50  Discover draws two terrains instead of one
- *   60  Build runs twice
- *   70  Discover draws three terrains
- *   80  Discover draws every terrain
- *   90  Invaders hit harder, and again every 20 waves after
- *  100  Invaders are tougher, and again every 20 waves after
+ *   40  Discover seeds two Explorers per land instead of one
+ *   50  Discover takes one extra land, off-terrain
+ *   60  Discover draws two terrains instead of one
+ *   70  Build runs twice
+ *   80  Discover draws three terrains
+ *   90  Discover draws every terrain
+ *  100  Invaders hit harder, and again every 20 waves after
+ *  110  Invaders are tougher, and again every 20 waves after
+ *
+ * Doubling the Discover seed arrives in two steps rather than one. A single terrain covers
+ * exactly two lands (see BOARD_LANDS), so the old one-step rung went from two Explorers a wave
+ * to four - the sharpest jump on the whole ladder, and the one that decided most rounds. Wave
+ * 20 now adds the third Explorer and wave 40 adds the fourth, which is the same climb with the
+ * cliff taken out of it. Everything the old wave 40 carried and above sits ten waves later to
+ * make room, including both stat rungs.
  *
  * Because the track slides forward (see shiftInvaderTrack), every rung that widens Discover
  * widens Build one wave later - the terrains discovered this wave are the ones built next.
  * That coupling is the point: the player watches a terrain thicken before it does.
  */
 const EXPLORE_UNRESTRICTED_FROM_WAVE = 10;
-const EXPLORE_DOUBLE_SEED_FROM_WAVE = 20;
+const EXPLORE_SECOND_EXPLORER_FROM_WAVE = 20;
 const BONUS_TOWN_FROM_WAVE = 30;
-const EXPLORE_EXTRA_LAND_FROM_WAVE = 40;
-const BUILD_TWICE_FROM_WAVE = 60;
+const EXPLORE_DOUBLE_SEED_FROM_WAVE = 40;
+const EXPLORE_EXTRA_LAND_FROM_WAVE = 50;
+const EXPLORE_TWO_TERRAINS_FROM_WAVE = 60;
+const BUILD_TWICE_FROM_WAVE = 70;
+const EXPLORE_THREE_TERRAINS_FROM_WAVE = 80;
+const EXPLORE_ALL_TERRAINS_FROM_WAVE = 90;
 
 // How many terrains Discover draws, by wave. Read in order, first match wins - so the table
 // reads top-down as the ladder climbs rather than as a chain of comparisons. `Infinity` is
 // "every terrain there is", clamped against INVADER_TERRAINS at the point of use so this
 // table never has to know how many that is.
 const EXPLORE_TERRAIN_RUNGS = [
-  { fromWave: 80, terrains: Infinity },
-  { fromWave: 70, terrains: 3 },
-  { fromWave: 50, terrains: 2 }
+  { fromWave: EXPLORE_ALL_TERRAINS_FROM_WAVE, terrains: Infinity },
+  { fromWave: EXPLORE_THREE_TERRAINS_FROM_WAVE, terrains: 3 },
+  { fromWave: EXPLORE_TWO_TERRAINS_FROM_WAVE, terrains: 2 }
 ];
 
-// The last two rungs never stop. From wave 90 every point of Invader damage is +1, and again
-// every 20 waves; health does the same from 100, so the two alternate every ten waves forever
+// The last two rungs never stop. From wave 100 every point of Invader damage is +1, and again
+// every 20 waves; health does the same from 110, so the two alternate every ten waves forever
 // and a round can always be out-scaled eventually. Damage is deliberately the first of the
 // pair: power is read off damage (see gainFearFromDefeat), so a damage rung raises what an
 // Invader is worth in the same stroke as what it threatens, and the two stay in agreement.
-const INVADER_DAMAGE_RUNG_FROM_WAVE = 90;
-const INVADER_HEALTH_RUNG_FROM_WAVE = 100;
+const INVADER_DAMAGE_RUNG_FROM_WAVE = 100;
+const INVADER_HEALTH_RUNG_FROM_WAVE = 110;
 const INVADER_STAT_RUNG_INTERVAL = 20;
+
+/* ---------- The ladder as the track prints it ----------
+ *
+ * The same rungs again, in climbing order, as rows a panel can draw: the wave each lands on,
+ * what it does, and whether this round has reached it. It is a second reading of the table
+ * above rather than a second copy of it - every entry points at the constant its rule reads,
+ * so a rung that moves moves on the track in the same edit.
+ *
+ * This exists because the ladder was invisible. A round simply got worse and the only place
+ * the reason was written down was this file: nothing on screen said at which wave, or what was
+ * coming next, so a player could not plan a run around it. Since the rungs are per round, the
+ * readout doubles as the thing that teaches the shape of a round at all.
+ *
+ * `repeats` marks the two that never stop. Those print their *next* firing rather than their
+ * first - a round at wave 150 wants to read "170 Invaders hit harder", not a rung it cleared
+ * fifty waves ago - and carry what they are worth so far in their text.
+ */
+const DIFFICULTY_RUNGS = [
+  { wave: EXPLORE_UNRESTRICTED_FROM_WAVE, key: "rungUnrestricted" },
+  { wave: EXPLORE_SECOND_EXPLORER_FROM_WAVE, key: "rungSecondExplorer" },
+  { wave: BONUS_TOWN_FROM_WAVE, key: "rungBonusTown" },
+  { wave: EXPLORE_DOUBLE_SEED_FROM_WAVE, key: "rungDoubleSeed" },
+  { wave: EXPLORE_EXTRA_LAND_FROM_WAVE, key: "rungExtraLand" },
+  { wave: EXPLORE_TWO_TERRAINS_FROM_WAVE, key: "rungTwoTerrains" },
+  { wave: BUILD_TWICE_FROM_WAVE, key: "rungBuildTwice" },
+  { wave: EXPLORE_THREE_TERRAINS_FROM_WAVE, key: "rungThreeTerrains" },
+  { wave: EXPLORE_ALL_TERRAINS_FROM_WAVE, key: "rungAllTerrains" },
+  { wave: INVADER_DAMAGE_RUNG_FROM_WAVE, key: "rungInvaderDamage", repeats: true },
+  { wave: INVADER_HEALTH_RUNG_FROM_WAVE, key: "rungInvaderHealth", repeats: true }
+];
+
+// One row per rung: `wave` is the wave it next lands on, `reached` whether it is already live,
+// and `next` marks the single row that lands soonest. Text is finished here rather than in the
+// panel, so the two repeating rungs can say what they are worth without the panel knowing how
+// the ladder is built.
+function difficultyLadder(state) {
+  const t = locale(state);
+  const wave = state && state.round ? state.round.wavesResolved : 0;
+
+  const rows = DIFFICULTY_RUNGS.map((rung) => {
+    if (!rung.repeats) {
+      return { key: rung.key, wave: rung.wave, text: t[rung.key], reached: wave >= rung.wave, next: false };
+    }
+    const bonus = repeatingRungBonus(wave, rung.wave);
+    return {
+      key: rung.key,
+      wave: rung.wave + bonus * INVADER_STAT_RUNG_INTERVAL,
+      text: bonus > 0 ? template(t.rungRepeated, { text: t[rung.key], bonus }) : t[rung.key],
+      reached: bonus > 0,
+      next: false
+    };
+  });
+
+  // Whichever lands soonest, which is not simply the first unreached row: past the stat rungs
+  // every row is reached and what comes next is a repeat rather than a first firing.
+  let soonest = null;
+  for (const row of rows) {
+    if (row.wave > wave && (!soonest || row.wave < soonest.wave)) soonest = row;
+  }
+  if (soonest) soonest.next = true;
+
+  return rows;
+}
 
 /* ---------- The two Fear pools ----------
  *
@@ -973,6 +1048,25 @@ const I18N = {
     invaderTrackTitle: "Invasorenleiste",
     buildLabel: "Bauen:",
     discoverLabel: "Entdecken:",
+
+    // Die Eskalationsleiter, wie sie auf der Leiste steht. Jede Zeile nennt die Welle, ab der
+    // sie gilt - und weil die Leiter pro Runde zählt, fängt jede Runde wieder unten an.
+    ladderTitle: "Eskalation",
+    ladderHint: "Ab dieser Welle. Jede Runde beginnt wieder ganz unten.",
+    ladderWaveTitle: "Welle {wave}",
+    rungUnrestricted: "Entdecken erreicht jedes Gebiet",
+    rungSecondExplorer: "Ein Gebiet bekommt einen zweiten Entdecker",
+    rungBonusTown: "Ein Dorf erhebt sich, wo keines steht",
+    rungDoubleSeed: "Zwei Entdecker in jedem Gebiet",
+    rungExtraLand: "Ein zusätzliches Gebiet abseits der Leiste",
+    rungTwoTerrains: "Entdecken zieht zwei Geländearten",
+    rungBuildTwice: "Bauen läuft zweimal",
+    rungThreeTerrains: "Entdecken zieht drei Geländearten",
+    rungAllTerrains: "Entdecken zieht jede Geländeart",
+    rungInvaderDamage: "Invasoren schlagen härter",
+    rungInvaderHealth: "Invasoren werden zäher",
+    rungRepeated: "{text} (jetzt +{bonus})",
+
     dahanAttackLabel: "Dahan-Angriff",
     buildWord: "Bauen",
     discoverWord: "Entdecken",
@@ -1227,6 +1321,25 @@ const I18N = {
     invaderTrackTitle: "Invader track",
     buildLabel: "Build:",
     discoverLabel: "Discover:",
+
+    // The difficulty ladder, as the track prints it. Each line names the wave it starts at -
+    // and because the ladder is counted per round, every round starts back at the bottom.
+    ladderTitle: "Escalation",
+    ladderHint: "From this wave on. Every round starts back at the bottom.",
+    ladderWaveTitle: "Wave {wave}",
+    rungUnrestricted: "Discover reaches every land",
+    rungSecondExplorer: "One land takes a second Explorer",
+    rungBonusTown: "A Town rises where there is none",
+    rungDoubleSeed: "Two Explorers in every land",
+    rungExtraLand: "One extra land, off the track",
+    rungTwoTerrains: "Discover draws two terrains",
+    rungBuildTwice: "Build runs twice",
+    rungThreeTerrains: "Discover draws three terrains",
+    rungAllTerrains: "Discover draws every terrain",
+    rungInvaderDamage: "Invaders hit harder",
+    rungInvaderHealth: "Invaders are tougher",
+    rungRepeated: "{text} (now +{bonus})",
+
     dahanAttackLabel: "Dahan attack",
     buildWord: "Build",
     discoverWord: "Discover",
@@ -3968,10 +4081,25 @@ function resolveBuildPhase(state) {
   }
 }
 
-// How many Explorers each discovered land takes. One until the ladder says two - the cheapest
-// rung there is, and the one that first makes a single Discover worth answering.
+// How many Explorers *every* discovered land takes. One until the ladder says two - see
+// drawSecondExplorerLand for the half rung that lands twenty waves before this one.
 function explorersPerLand(state) {
   return state.round.wavesResolved >= EXPLORE_DOUBLE_SEED_FROM_WAVE ? 2 : 1;
+}
+
+// The half rung: from EXPLORE_SECOND_EXPLORER_FROM_WAVE one land of the Discover - one of the
+// two a single terrain covers - takes a second Explorer, twenty waves before every land does.
+// Which one is drawn rather than fixed, so the player cannot learn to hold one half of a
+// terrain and ignore the other.
+//
+// It reads explorersPerLand rather than a second wave number so the two rungs can never stack
+// into three: the moment the full rung is live this one stops answering. `lands` is what
+// Discover actually seeded, so a land the reachability rule turned away can never be given it.
+function drawSecondExplorerLand(state, lands) {
+  if (state.round.wavesResolved < EXPLORE_SECOND_EXPLORER_FROM_WAVE) return null;
+  if (explorersPerLand(state) > 1) return null;
+  if (lands.length === 0) return null;
+  return lands[Math.floor(rng() * lands.length)];
 }
 
 function seedExplorers(state, land, count) {
@@ -4025,16 +4153,25 @@ function resolveExplorePhase(state) {
   const perLand = explorersPerLand(state);
   const seededLands = [];
 
+  // Which lands are actually taking Explorers is settled before any are placed, because the
+  // half rung has to pick one of them and a land turned away for reachability is not one.
+  const reachable = [];
   for (const land of landsOfTerrains(terrains)) {
     if (!landAcceptsExplorer(state, land)) {
       addLog(state, template(t.exploreBlocked, { land: landName(state, land) }));
       continue;
     }
-    seedExplorers(state, land, perLand);
+    reachable.push(land);
+  }
+
+  const doubled = drawSecondExplorerLand(state, reachable);
+  for (const land of reachable) {
+    seedExplorers(state, land, land === doubled ? perLand + 1 : perLand);
     seededLands.push(land);
   }
 
-  // After the terrains have had theirs, so the extra land can never be one of them.
+  // After the terrains have had theirs, so the extra land can never be one of them. It takes
+  // the flat count: the half rung is long dead by the wave this one opens.
   if (state.round.wavesResolved >= EXPLORE_EXTRA_LAND_FROM_WAVE) {
     const extra = drawExtraExploreLand(state, seededLands);
     if (extra) {
@@ -4853,6 +4990,16 @@ const ENGINE_EXPORTS = {
   FEAR_MILESTONE_WAVE_INTERVAL,
   FEAR_MILESTONE_FRACTION_PER_TIER,
   EXPLORE_UNRESTRICTED_FROM_WAVE,
+  EXPLORE_SECOND_EXPLORER_FROM_WAVE,
+  EXPLORE_DOUBLE_SEED_FROM_WAVE,
+  EXPLORE_EXTRA_LAND_FROM_WAVE,
+  BONUS_TOWN_FROM_WAVE,
+  BUILD_TWICE_FROM_WAVE,
+  INVADER_DAMAGE_RUNG_FROM_WAVE,
+  INVADER_HEALTH_RUNG_FROM_WAVE,
+  INVADER_STAT_RUNG_INTERVAL,
+  DIFFICULTY_RUNGS,
+  difficultyLadder,
   ENERGY_PER_POWER,
   UNIT_STATS,
   unitStats,
