@@ -12,8 +12,13 @@ island board, and the between-round shop.
   panel.
 - A round in progress must communicate, at a glance and without opening any panel, how close
   Blight is to ending it.
-- The shop appears in the side rail while `round.status` is `ended`; the board stays visible
-  beside it as the frozen result of the round just lost.
+- The shop is always in the side rail, running round or not; the board stays visible beside
+  it, and when the round has ended it is the frozen result of the round just lost. The shop
+  no longer hides itself: Fear is banked at the round boundary rather than spendable the
+  moment it is earned, so shutting the panel is not what keeps a round from buying its own
+  way out — and once rounds can start themselves there would be no moment left to open it.
+  What `round.status` changes is the summary line the panel opens with and which purchases
+  are already in effect, not whether the panel is there.
 - A stopped clock must always say why it stopped. There are two reasons — the speed dial at
   `0x`, and a wave gate waiting to be called — and the wave tile names whichever holds, with
   the gate named first because it is the one with a button waiting to be pressed.
@@ -176,7 +181,7 @@ island board, and the between-round shop.
   the auto-wave toggle beside the wave countdown. It is drawn on ownership, so the row is a
   single centred button until the automation is bought
 
-5. Between-round shop (visible only while `round.status` is `ended`)
+5. The shop (always in the rail; its summary is what changes with `round.status`)
 - The round just lost: its number and the Fear it earned
 - The upgrade catalogue: each entry's effect, its current tier if repeatable, and its cost
 - **A row whose per-tier gain is not constant describes its next rung, not its whole shape.**

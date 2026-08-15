@@ -358,8 +358,8 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 2b. The Energy purse is visible in the ability panel, and a locked ability reads as
    affordable or not without the player comparing two numbers by hand.
 3. A land under a legal ability target renders distinctly from a land that isn't.
-4. The shop appears the instant `round.status` becomes `ended`, with no extra
-   acknowledge-the-loss click required.
+4. The shop is on screen throughout, and turns over to the between-round summary the instant
+   `round.status` becomes `ended`, with no extra acknowledge-the-loss click required.
 5. Defeat feedback appears briefly and then disappears.
 6. Values that change every second (wave timer, strike timer, cooldowns, Blight) patch in
    place without rebuilding the board.
