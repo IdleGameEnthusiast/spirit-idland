@@ -1089,20 +1089,23 @@ button.reset {
 
 /* The two answers to "when does the next round begin", side by side the way the wave strip
    pairs its own two. The toggle only shows up once it has been bought, so the row is a
-   single centred button until then. */
-.shop-controls {
+   single centred button until then. Its own row in the rail, above the shop panel rather
+   than inside it - no chrome, because two buttons are not a section of the page, and the
+   rail's own gap already holds them off the panels either side. That gap is also why
+   neither button carries a margin of its own: the nudge only ever existed to lift the row
+   off the upgrade list it used to follow, and with it gone align-items: stretch gives the
+   two equal height. */
+.round-controls {
   display: flex;
   align-items: stretch;
   gap: 0.4rem;
 }
 
-.shop-controls .primary-btn { flex: 1; }
-.shop-controls .hud-btn { margin-top: 0.7rem; }
+.round-controls .primary-btn { flex: 1; }
 
 /* Always available, whatever is left in the purse: the shop must never hold a round
    hostage to spending. */
 .primary-btn {
-  margin-top: 0.7rem;
   text-align: center;
   border-color: rgba(120, 201, 179, 0.55);
   background: linear-gradient(150deg, rgba(31, 84, 80, 0.95), rgba(23, 55, 60, 0.95));

@@ -198,6 +198,19 @@
         <div id="abilityBar" class="ability-bar"></div>
       </section>
 
+      <!-- Both controls answer "when does the next round begin". The toggle only appears
+           once the automation is owned - before that there is nothing for it to switch.
+           Above the shop rather than inside it, and a sibling of the panel rather than its
+           first child: the upgrade catalogue is the tallest thing in the rail and only ever
+           grows, so the control that leaves the shop must not sit behind everything the
+           player has already decided not to buy. Nothing added to the panel can push it
+           down again. No panel chrome of its own - both buttons carry their own border, and
+           the rail's gap is the separation. -->
+      <div class="round-controls">
+        <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
+        <button type="button" id="autoRoundBtn" class="hud-btn" aria-pressed="false" hidden>Auto-Runde: Aus</button>
+      </div>
+
       <section class="panel shop" id="shopPanel" hidden>
         <h2 id="shopTitle">Zwischen den Runden</h2>
         <p id="shopSummary" class="action-info"></p>
@@ -211,12 +224,6 @@
           <strong id="shopFearValue">0</strong>
         </div>
         <div id="upgradeList" class="upgrade-list"></div>
-        <!-- Both controls answer "when does the next round begin". The toggle only appears
-             once the automation is owned - before that there is nothing for it to switch. -->
-        <div class="shop-controls">
-          <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
-          <button type="button" id="autoRoundBtn" class="hud-btn" aria-pressed="false" hidden>Auto-Runde: Aus</button>
-        </div>
       </section>
 
       <section class="panel log">

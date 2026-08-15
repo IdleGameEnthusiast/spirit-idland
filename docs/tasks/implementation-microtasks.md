@@ -166,6 +166,34 @@ cast instead of the round.
   from the registry, and the migration reset). The card itself was driven by hand in headless
   Edge over the `?vis` fixture — see [08-acceptance-tests.md](../spec/08-acceptance-tests.md).
 
+### Task P3: The round controls move above the shop — *done*
+
+The shop panel stopped hiding itself, and the upgrade catalogue is the tallest thing in the
+rail — the repeatable ladders, the one-offs, the sold-out block, the pool row and its strip of
+denominations, and it only ever grows. The one control that ends the shopping sat underneath
+all of it, so leaving the shop meant scrolling past everything the player had already decided
+not to buy. Starting the next round is not a purchase; it is what shopping ends with.
+Placement only — nothing about *when* a round may start changed.
+
+- **`div.round-controls`** (`index.html`, `app.css`) holds `startNextRoundBtn` and the
+  `autoRoundBtn` toggle, and is a **sibling** of `section.panel.shop` in `.rail` rather than
+  its first child: nothing inside the shop can then ever push it back down, not the catalogue
+  today and not a row added to it later. It carries no panel chrome — both buttons have their
+  own border, and the rail's `gap` is the separation — and both `margin-top` nudges went with
+  the move, since they only ever existed to lift the row off the upgrade list it used to
+  follow. The class was renamed off `shop-controls` because it is not in the shop any more.
+- **No JS change.** Both buttons are looked up by id and patched by `patchPacingControls`
+  every frame, independent of `renderShop`; the toggle stays hidden until owned and the button
+  stays disabled rather than hidden while a round runs, exactly as before.
+- **`shopSignature` dropped `autoStartRoundOwned` and `autoStartRoundOn`.** `renderShop` reads
+  neither — verified, not assumed — so they only ever bought a rebuild of the whole catalogue
+  on every click of the toggle. Ownership still reaches the signature through the upgrade
+  tiers, which is the only part of that purchase the shop draws.
+- No engine change and no state change, so the suite is unmoved at 383 checks and proves
+  nothing about this either way. Driven by hand in headless Edge over the `?vis` and
+  `?vis&ended` fixtures — the row's place in the rail, the button's disabled state in both,
+  and the layout at 1400px, 1100px and 700px.
+
 ---
 
 ## What To Build Next

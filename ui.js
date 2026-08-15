@@ -861,6 +861,10 @@ function patchAbilityBar(state) {
 // without changing anything the owned tiers can see. The best wave joins them because the
 // High-Water Mark's row quotes the next milestone the player is heading for, which moves with
 // their depth rather than with anything else in this list.
+//
+// The round controls are not in this list and must not go back into it: they are not in this
+// panel any more, and renderShop never read them. Whether auto_start_round is owned still
+// reaches the catalogue through tiers, which is the only part of it this panel draws.
 function shopSignature(state) {
   const tiers = UPGRADE_IDS.map((id) => `${id}:${upgradeTier(state, id)}:${activeUpgradeTier(state, id)}`).join(",");
   return [
@@ -874,8 +878,6 @@ function shopSignature(state) {
     state.meta.bestWaveReached,
     formatFear(state.meta.fear),
     formatFear(state.round.fearEarned),
-    autoStartRoundOwned(state),
-    autoStartRoundOn(state),
     tiers
   ].join("|");
 }

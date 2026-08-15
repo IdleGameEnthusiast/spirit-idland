@@ -157,7 +157,26 @@ island board, and the between-round shop.
   damage, Dahan defence, net, rate, ETA), invader counts with partial-HP hints, Dahan,
   Blight taken here, and its neighbours
 
-4. Between-round shop (visible only while `round.status` is `ended`)
+4. The round controls — a bare row in the rail, above the shop panel
+- The two controls that answer *when does the next round begin*: **a clear "Start Next Round"
+  control, always available regardless of remaining Fear**, and the **auto-round toggle**
+  beside it
+- **Above the shop panel, and a sibling of it rather than its first child.** The upgrade
+  catalogue is the tallest thing in the rail — repeatable ladders, one-offs, a sold-out block
+  and a pool row with its strip of denominations — and it only ever grows. The control that
+  ends the shopping must not sit behind everything the player has already decided not to buy,
+  and nothing added inside the panel may push it back down there. A section whose primary
+  action sat above its own heading would also have a heading that no longer headed anything
+- **No panel chrome.** It is a row of two buttons, not a section of the page: both buttons
+  carry their own border and fill, and the rail's own gap is the separation
+- **Disabled while a round runs, never hidden**, the same choice the wave call button makes
+  one level down. A row that vanished at every round boundary would jump the shop panel and
+  the log up and down the rail
+- The toggle sits beside the button it automates and travels with it, the same rule that puts
+  the auto-wave toggle beside the wave countdown. It is drawn on ownership, so the row is a
+  single centred button until the automation is bought
+
+5. Between-round shop (visible only while `round.status` is `ended`)
 - The round just lost: its number and the Fear it earned
 - The upgrade catalogue: each entry's effect, its current tier if repeatable, and its cost
 - **A row whose per-tier gain is not constant describes its next rung, not its whole shape.**
@@ -189,9 +208,8 @@ island board, and the between-round shop.
   finish the catalogue, so hiding it would hide the goal. The row wears the lock instead of the
   "takes effect next round" note — a locked row cannot have been bought, so the two never
   collide
-- A clear "Start Next Round" control, always available regardless of remaining Fear
 
-5. Log and utility controls
+6. Log and utility controls
 - Event log
 - Manual save button
 - Export and import buttons, and the status line they answer on
@@ -334,6 +352,11 @@ Two clarifications the implementation forced:
   **ticked** is patched per frame like every other value: folding it into the signature would
   rebuild the whole bar on every click of the box and destroy the running cooldown sweep, which
   is the exact failure the render/patch split exists to prevent.
+- The round controls are patched every frame with the rest of the pacing controls, and the
+  shop's rebuild signature does not carry them. It is not the panel they live in, and the
+  catalogue reads nothing about them: whether the toggle is owned or on has no bearing on a
+  single row of it. Ownership still reaches the signature through the upgrade tiers, which is
+  the only part of that purchase the shop actually draws.
 
 ## Terrain Colour Rules
 
@@ -403,9 +426,10 @@ Implemented as a twelve-column grid over three regions:
 - **HUD**, laid over the board: five tiles (Blight, next wave with its controls, Dahan
   strike, Fear, round).
 - **Board**, eight columns: map hint, island, land detail panel.
-- **Rail**, four columns: ability bar, then the shop when a round has ended, then the log.
-  A single flex column, so the shop appearing pushes the log down rather than displacing
-  the board.
+- **Rail**, four columns: ability bar, then the round controls, then the shop when a round
+  has ended, then the log. A single flex column, so the shop appearing pushes the log down
+  rather than displacing the board — and so the round controls keep their place whatever the
+  catalogue below them grows to.
 - **Footer**, full width: the save controls, and under them the redeem bar. Nothing in the
   round is played through either, which is what puts them below everything that is.
 

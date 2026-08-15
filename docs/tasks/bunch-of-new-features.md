@@ -33,7 +33,22 @@ what carries between them. **Whoever finishes a feature ticks its box here befor
 - [x] Feature 1 — Auto-cast toggle (3 commits: engine, UI, docs). Suite at **383/383**, up from
       the 374 baseline: six new checks in `tests/automation.test.js` and three in
       `tests/save.test.js`. `README.md:43` and `08-acceptance-tests.md` now both say 383.
-- [ ] Feature 2 — Round controls above the shop (1 commit)
+- [x] Feature 2 — Round controls above the shop (1 commit). Suite unmoved at **383/383**, as
+      expected: no engine change, no state change, no check count edited in `README.md` or
+      `08-acceptance-tests.md`. `renderShop` was read and does **not** use
+      `autoStartRoundOwned` / `autoStartRoundOn`, so both lines left `shopSignature` as the
+      spec allowed. `02-core-loop.md` needed no edit, also as predicted — it says when a round
+      may start and never where. Verified by hand with headless Edge `--dump-dom`:
+      `div.round-controls` is a sibling of `section.panel.shop` inside `.rail` and sits between
+      the abilities panel and the shop panel; `?vis&ended` renders the button live and `?vis`
+      renders it disabled, with the row in the same place in both. Screenshots at 1400px,
+      1100px and 700px: the two buttons are equal height with no margin, and below 1180px the
+      row widens with the full-width rail. The `?vis` fixture does not own `auto_start_round`,
+      so the two-button form was checked under a temporary local edit to `vis.js` that was
+      reverted and **not** committed. The known wrinkle in `06-ui-contract.md` — the shop
+      "visible only while `round.status` is `ended`" at `:15` and on the shop's heading — is
+      still there and still pre-existing; the heading was renumbered 4 → 5 by this move and its
+      wording deliberately left alone.
 - [ ] Feature 3 — Dahan strike bar on the chip (1 commit)
 - [ ] Feature 4 — Older save files keep working (1 commit)
 - [ ] Delete this file, in the last commit of the last feature
