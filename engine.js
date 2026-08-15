@@ -1073,6 +1073,7 @@ const I18N = {
     rungRepeated: "{text} (jetzt +{bonus})",
 
     dahanAttackLabel: "Dahan-Angriff",
+    dahanStrikeBarLabel: "Dahan schlagen zu, wenn der Balken voll ist",
     buildWord: "Bauen",
     discoverWord: "Entdecken",
     invaderNone: "-",
@@ -1351,6 +1352,7 @@ const I18N = {
     rungRepeated: "{text} (now +{bonus})",
 
     dahanAttackLabel: "Dahan attack",
+    dahanStrikeBarLabel: "The Dahan strike when this bar is full",
     buildWord: "Build",
     discoverWord: "Discover",
     invaderNone: "-",

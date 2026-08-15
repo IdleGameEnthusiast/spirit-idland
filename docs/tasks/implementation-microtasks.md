@@ -194,6 +194,53 @@ Placement only — nothing about *when* a round may start changed.
   `?vis&ended` fixtures — the row's place in the rail, the button's disabled state in both,
   and the layout at 1400px, 1100px and 700px.
 
+### Task P4: The Dahan strike bar on the chip — *done*
+
+The strike clock existed on screen in exactly one place: a number of seconds in the board HUD
+strip, among two other numbers of seconds, above the island. The eye is on the board, so asking
+when the Dahan next swing meant leaving the thing being watched, finding the right one of three
+countdowns, and coming back. It is also the only clock on the board that is *good news*, and
+the only one with no representation where the units it belongs to are standing.
+
+- **`chipStrikeMarkup`** (`ui.js`) draws a row under the allies count holding a new `si-axe`
+  glyph (`index.html`, the fifth symbol in the defs and the first that is not a unit) and a
+  track. Drawn only where `dahan > 0` **and** the land holds invaders — exactly the land
+  `resolveDahanAttack` would not skip, so a bar means *these Dahan hit here when it fills*
+  rather than *somewhere on the island someone swings*. A bar on a land the strike passes by
+  would fill to full and then do nothing, which is the one thing a gauge must never do.
+- **One clock, drawn several times.** `resolveDahanAttack` swings every land on a single
+  `round.dahanAttackRemaining`, so every bar on the board shows the same fraction and they are
+  all full at the same instant. `patchLandMeters` computes it **once above its loop** rather
+  than once per land per frame. There is no per-land timer and none was added.
+- **Normalized against `roundDahanAttackInterval`**, never `DAHAN_ATTACK_INTERVAL_SECONDS`:
+  `dahan_remember` halves the interval, and a bar measured against the base constant would top
+  out near half-mast exactly for the player who paid 10000 Fear to make the strike matter. That
+  function reads the round's frozen snapshot — the number `tick` itself divides by — so the bar
+  cannot disagree with the clock it draws and a mid-round purchase does not re-scale a bar
+  already moving. A round that is not running reads 0%.
+- **It fills rather than drains**, opposite to the wave bar and matching the Blight bar beside
+  it: health drains, an attack gathers. The wave bar is the invaders' and answers *how long do
+  I still have*; this one is the player's and answers *how much have my people gathered*.
+- **A third branch in `patchLandMeters`, ahead of the health-ring fallback.** That function had
+  exactly two shapes — `blight` is a width and everything else falls through to the ring — so a
+  third kind without its own branch would have been handed `--health-lost` and sat invisible at
+  `opacity: 0`.
+- **Subordinate by weight, not by count** (`app.css`). 3px against the Blight bar's 5px, in
+  `--dahan-ink` rather than pressure red, and in **its own row** — dropped into `.chip-meters`
+  it would have split the width with Blight and produced the two equal bars that block's own
+  comment forbids. The comment above `.chip-meters` was rewritten accordingly: one *threat* bar
+  and rings, plus a lighter bar in the player's colour that is not a threat at all.
+- **No engine change, no export, no state change** — every number already existed and was
+  already exported (`round.dahanAttackRemaining`, `roundDahanAttackInterval`,
+  `invaderCountInLand`). `03-state-contract.md` was checked and needs nothing. **No signature
+  change either**: presence depends on the land's Dahan count and invader counts, and the
+  board's signature already pushes both per land — verified in `mapSignature`, not assumed.
+- Suite unmoved at 383 checks, which prove nothing about this either way. Driven by hand in
+  headless Edge over `?vis`: the bar present on lands holding both, absent on a land with Dahan
+  and no invaders and on a land with invaders and no Dahan, the patch writing 40% against the
+  fixture's `dahanAttackRemaining`, and the row fitting land 4 — the narrowest chip — without
+  wrapping.
+
 ---
 
 ## What To Build Next

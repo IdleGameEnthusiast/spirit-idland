@@ -260,9 +260,16 @@ On the board, for every land, kept deliberately short:
 - Land number and terrain.
 - Invader summary — explorer/town/city glyphs with counts, **nonzero only**.
 - Dahan pips.
-- While the land holds invaders: a Blight bar, a casualty bar if it also holds Dahan, and a
-  line naming the Blight rate and the seconds until the next one. These are the board's
-  primary readout now — the fight never stops, so a land's danger is a speed.
+- While the land holds invaders: a Blight bar, and a line naming the Blight rate and the
+  seconds until the next one. These are the board's primary readout now — the fight never
+  stops, so a land's danger is a speed. The casualty clock is a **ring** on the Dahan count
+  rather than a second bar here; see the health rings in
+  [06-ui-contract.md](./06-ui-contract.md).
+- While the land holds **both Dahan and invaders**: a thin Dahan strike bar with an axe at its
+  left, in its own row under the allies count. It fills as the strike clock runs down and is
+  full when the Dahan swing. Both conditions are required, because they are exactly the land
+  the strike would not skip. One clock drives every bar on the board — see
+  [06-ui-contract.md](./06-ui-contract.md).
 - While the next wave will Build here: a banner naming the unit it will add.
 - While an ability is armed and this land is a legal target: a highlight, per
   [06-ui-contract.md](./06-ui-contract.md).

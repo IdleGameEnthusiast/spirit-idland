@@ -49,7 +49,14 @@ what carries between them. **Whoever finishes a feature ticks its box here befor
       "visible only while `round.status` is `ended`" at `:15` and on the shop's heading — is
       still there and still pre-existing; the heading was renumbered 4 → 5 by this move and its
       wording deliberately left alone.
-- [ ] Feature 3 — Dahan strike bar on the chip (1 commit)
+- [x] Feature 3 — Dahan strike bar on the chip (1 commit). No engine change, so the suite is
+      unmoved at **383/383** and neither check count was touched. Verified by hand in headless
+      Edge over `?vis`: bars on lands 1, 3 and 5 (Dahan **and** invaders), none on 4 or 7
+      (Dahan, no invaders) or on 2, 6 and 8 (invaders, no Dahan); `patchLandMeters` writing
+      `width: 40%` against the fixture's `dahanAttackRemaining`; and the axe-plus-track row
+      fitting land 4, the narrowest chip, on one line. `03-state-contract.md` checked — no
+      change needed. `mapSignature` checked — it already pushes each land's Dahan and invader
+      counts, so presence needs no signature work.
 - [ ] Feature 4 — Older save files keep working (1 commit)
 - [ ] Delete this file, in the last commit of the last feature
 

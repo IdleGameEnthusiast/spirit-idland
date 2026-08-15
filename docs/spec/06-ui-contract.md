@@ -136,8 +136,46 @@ island board, and the between-round shop.
   the player needs at a glance. The behaviour is identical either way — this is a presentation
   decision, not a rules one.
 
-  One bar and rings, rather than a second bar: two bars of equal weight read as two equal
-  threats, and only Blight ends the round.
+  One *threat* bar and rings, rather than a second threat bar: two bars of equal weight read as
+  two equal threats, and only Blight ends the round. The rule is kept by **weight, not by
+  count** — the Dahan strike bar below is a second bar and is deliberately not a threat.
+- On a land holding **both Dahan and invaders**: a **Dahan strike bar**, in its own row under
+  the allies count and above the Blight bar, with a small axe at its left. It **fills** as the
+  strike clock runs down and is full at the instant the Dahan swing. Health drains and an
+  attack gathers, which puts it in the opposite direction from the wave bar in the HUD strip:
+  that one is the invaders' and answers *how long do I still have*, this one is the player's
+  and answers *how much have my people gathered*. On the chip itself the convention is
+  consistent — the Blight bar beside it also fills.
+
+  It is subordinate to the Blight bar by every means except position: thinner (3px against
+  5px), and in `--dahan-ink` rather than pressure red. It is the only thing on a chip that is
+  good news and must not be mistaken at a glance for a fourth way to lose. It is **not** in the
+  Blight bar's row, which is a flex row of equal-weight meters: a second meter dropped in there
+  would split the width with Blight and produce exactly the two equal bars the rule above
+  forbids.
+
+  It is normalized against `roundDahanAttackInterval(state)`, never the base
+  `DAHAN_ATTACK_INTERVAL_SECONDS`. `dahan_remember` halves the interval, and a bar divided by
+  the base constant would top out near half-mast exactly for the player who paid to make the
+  strike matter. That function reads the round's frozen upgrade snapshot, which is the number
+  `tick` itself divides by, so the bar can never disagree with the clock it draws and a
+  mid-round purchase does not re-scale a bar already in motion. A round that is not running
+  reads 0%.
+- **Two conditions, both required, for drawing the strike bar**: Dahan present *and* invaders
+  present — exactly the land `resolveDahanAttack` would skip. So a bar means *these Dahan hit
+  here when it fills*, never *somewhere on the island someone swings*. A land with Dahan and no
+  invaders gets no bar, because the strike passes it by and would leave a gauge sitting full
+  having done nothing, which is the one thing a gauge must never do.
+
+  Note the deliberate contrast with the stopped Dahan ring below: the ring remembers when a
+  land empties and the strike bar does not. They are different kinds of number — the ring's
+  value is that land's own history, and the bar's is a global clock that says nothing whatever
+  about a land the strike will skip.
+- **There is one strike clock for the whole island**, so every strike bar on the board shows
+  the same fraction and they are all full at the same instant. `resolveDahanAttack` walks every
+  land on a single `round.dahanAttackRemaining`; there is no per-land timer and none is to be
+  built. The repetition is the point: the clock goes where the eye already is, rather than
+  telling eight lands eight different things.
 - **Nothing at full health wears a ring.** The rings on screen are exactly the units worth
   looking at. The Dahan ring is fed by `round.dahanProgress`, which is continuous; an invader
   ring is fed by whole points already taken.
@@ -357,6 +395,15 @@ Two clarifications the implementation forced:
   **ticked** is patched per frame like every other value: folding it into the signature would
   rebuild the whole bar on every click of the box and destroy the running cooldown sweep, which
   is the exact failure the render/patch split exists to prevent.
+- The Dahan strike bar's **fill** is patched per frame like the two bars above it, and the
+  fraction is computed **once per frame rather than once per bar** — there is one clock for the
+  whole island, so eight bars asking for it separately would be seven wasted answers. Its
+  **presence** needs no signature work: whether a chip carries it depends on that land's Dahan
+  count and its invader counts, and the board's signature already pushes both per land. The
+  bar therefore appears and disappears as a land gains or loses its last invader without a
+  click, which is the claim worth watching when this is changed.
+- The strike bar carries `data-meter-land` only so the existing per-land patch selector picks
+  it up. Nothing reads the id off it, because there is no per-land strike value to read.
 - The round controls are patched every frame with the rest of the pacing controls, and the
   shop's rebuild signature does not carry them. It is not the panel they live in, and the
   catalogue reads nothing about them: whether the toggle is owned or on has no bearing on a

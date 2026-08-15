@@ -437,6 +437,34 @@ function chipMetersMarkup(state, landId) {
   `;
 }
 
+// The Dahan's strike clock, on the chip instead of only in the HUD strip. There is one clock
+// for the whole island - see resolveDahanAttack - so every bar this draws shows the same
+// fraction as every other, and they are all full at the same instant. It is drawn per land only
+// because the board is where the player is looking, not because the lands are on separate
+// timers: there is no per-land value here to find.
+//
+// Only where the strike will actually land. resolveDahanAttack skips a land holding no
+// invaders, and a bar there would fill to full and then do nothing - the one thing a gauge must
+// never do. Deliberately unlike the Dahan health ring, which is left stopped rather than
+// cleared when a land empties: the ring's value is that land's own history, and this one is a
+// global clock that says nothing whatever about a land the strike will skip.
+//
+// Like the Blight bar, the fill's width is written by patchLandMeters every frame rather than
+// baked in here - a bar rebuilt on every render could never animate.
+function chipStrikeMarkup(state, landId) {
+  if ((state.dahan[landId] || 0) <= 0) return "";
+  if (invaderCountInLand(state.invaders[landId]) <= 0) return "";
+
+  return `
+    <div class="chip-strike" title="${locale(state).dahanStrikeBarLabel}">
+      <svg class="tok" aria-hidden="true" focusable="false"><use href="#si-axe"/></svg>
+      <span class="chip-strike-track">
+        <span class="chip-strike-fill" data-meter-land="${landId}" data-meter-kind="dahan-strike"></span>
+      </span>
+    </div>
+  `;
+}
+
 function renderBoard(state) {
   const t = locale(state);
   const states = landRenderStates(state);
@@ -528,6 +556,7 @@ function renderBoard(state) {
       </div>
       ${invaderBits.length ? `<div class="chip-row invaders">${invaderBits.join("")}</div>` : ""}
       ${allyBits.length ? `<div class="chip-row allies">${allyBits.join("")}</div>` : ""}
+      ${chipStrikeMarkup(state, landId)}
       ${chipMetersMarkup(state, landId)}
       ${chipWaveMarkup(state, landId)}
       ${defeatMarkup}
@@ -542,6 +571,23 @@ function renderBoard(state) {
 // counting down beside them. Nothing here creates or replaces a node, which is what lets the
 // bars fill smoothly instead of restarting on every render.
 function patchLandMeters(state) {
+  // One clock for the whole island, so one number - computed here rather than in the loop,
+  // which would recompute the same fraction once per land on every frame.
+  //
+  // Against the round's interval, not DAHAN_ATTACK_INTERVAL_SECONDS: dahan_remember halves it,
+  // and a bar divided by the base constant would top out near half-mast exactly for the player
+  // who paid to make the strike matter. roundDahanAttackInterval reads the round's frozen
+  // upgrade snapshot, which is the very number tick divides by, so the bar can never disagree
+  // with the clock it draws and a mid-round purchase does not re-scale a bar already moving.
+  //
+  // It fills rather than drains - health drains, an attack gathers - which is the opposite
+  // direction from the wave bar beside it. That one is the invaders' and answers "how long do I
+  // still have"; this one is the player's and answers "how much have my people gathered".
+  const strikeInterval = roundDahanAttackInterval(state);
+  const strikeFill = state.round.status === "running" && strikeInterval > 0
+    ? clamp(1 - state.round.dahanAttackRemaining / strikeInterval, 0, 1)
+    : 0;
+
   for (const el of dom.landChips.querySelectorAll("[data-meter-land]")) {
     const landId = el.getAttribute("data-meter-land");
     const kind = el.getAttribute("data-meter-kind");
@@ -550,6 +596,15 @@ function patchLandMeters(state) {
     // health ring is a conic sweep and drains by the registered property it is drawn from.
     if (kind === "blight") {
       el.style.width = `${clamp(landPressure(state, landId).blightProgress, 0, 1) * 100}%`;
+      continue;
+    }
+
+    // A third kind, and it needs its own branch ahead of the ring fallback below or it would be
+    // handed --health-lost and sit invisible at opacity 0. It carries data-meter-land only so
+    // the selector above picks it up; nothing here reads the id, because there is no per-land
+    // strike value to read.
+    if (kind === "dahan-strike") {
+      el.style.width = `${strikeFill * 100}%`;
       continue;
     }
 

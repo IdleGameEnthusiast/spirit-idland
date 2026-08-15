@@ -1264,9 +1264,15 @@ button.reset {
 .chip-unit .tok { margin-right: -0.02em; }
 
 /* Blight is what ends the round, so it keeps the whole width of the chip as a bar, and it is
-   the only bar here - the Dahan casualty clock is a ring on the Dahan count above. One bar
-   and one ring, rather than two bars: two bars of equal weight read as two equal threats,
-   and only one of them is the loss condition.
+   the only *threat* bar here - the Dahan casualty clock is a ring on the Dahan count above.
+   One threat bar and one ring, rather than two threat bars: two bars of equal weight read as
+   two equal threats, and only one of them is the loss condition.
+   The rule is kept by weight, not by count. The strike bar above (.chip-strike) is a second
+   bar, but it is thinner, it is in the player's own colour, and it is not a threat at all -
+   it is the one thing on a chip that is good news, and it must not be mistaken at a glance
+   for a fourth way to lose. It sits in its own row for the same reason: dropped into the flex
+   row below it would split the width with Blight and produce exactly the two equal bars this
+   paragraph forbids.
    The fill is written by patchLandMeters every frame, which is why the transition is short -
    a long one would lag behind its own value rather than smoothing it. */
 .chip-meters {
@@ -1296,6 +1302,47 @@ button.reset {
 
 .chip-meter.is-blight .chip-meter-fill {
   background: linear-gradient(90deg, rgba(231, 103, 85, 0.75), #ff9d8a);
+}
+
+/* The Dahan strike clock, in its own row under the allies count and above the Blight bar.
+   Thinner than the Blight bar on purpose - see the paragraph above .chip-meters. The axe and
+   the fill share --dahan-ink with the Dahan token itself (.unit-dahan), so the row reads as
+   belonging to the units standing above it.
+
+   Both the glyph and the track carry their own dark backing: a chip sits on painted terrain,
+   and desert is bright enough to swallow an unbacked 9px glyph. */
+.chip-strike {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+  margin-top: 0.16rem;
+  color: var(--dahan-ink);
+}
+
+.chip-strike .tok {
+  width: 0.62rem;
+  height: 0.62rem;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 1.5px rgba(3, 14, 20, 0.95)) drop-shadow(0 0 1px rgba(3, 14, 20, 0.8));
+}
+
+.chip-strike-track {
+  flex: 1 1 auto;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(3, 14, 20, 0.72);
+  border: 1px solid rgba(247, 241, 222, 0.11);
+}
+
+.chip-strike-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(208, 139, 82, 0.7), var(--dahan-ink));
+  transition: width 0.12s linear;
 }
 
 /* The health ring, worn by every unit count on the board - Dahan and invader alike. The token
@@ -1629,6 +1676,7 @@ button.reset {
   .chip-defeat,
   .chip-blight,
   .chip-meter-fill,
+  .chip-strike-fill,
   .chip-ring,
   .meter-fill,
   .ability-sweep { transition: none; animation: none; }
