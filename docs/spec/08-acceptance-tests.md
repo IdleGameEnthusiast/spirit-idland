@@ -349,6 +349,33 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     language beside it, the preference is not carried through — the reset takes every purchase
     with it, so no checkbox would exist to carry one for.
 
+### Older save files keep working
+
+Checks 1-12 above all run a save the current engine wrote. These run one an *earlier build*
+wrote — `tests/fixtures/save-5.0.0-pre-autocast.js`, captured rather than generated, from
+before the auto-cast toggle existed. The rule they enforce is in
+[03-state-contract.md](./03-state-contract.md#older-save-files-keep-working).
+
+13. A save from an earlier build of the current `schemaVersion` loads with `reset: false`. It
+    is not wiped, and it comes back stamped as the current version.
+14. It keeps what the player earned: `meta.fear` and `meta.bestWaveReached` both survive.
+15. It keeps every purchase, including a laddered tier, and the round's frozen `upgradeTiers`
+    snapshot agrees with `upgrades.purchased`.
+16. It keeps the preferences it carries — language, auto-proceed, auto-start-round.
+17. **Every `ui` field added since the file was written loads at its fresh default.** Asserted
+    against `createInitialState()`'s own keys rather than a list, so the check covers the next
+    field the moment that function writes it and needs no editing to do so.
+18. In particular, the five `ui.autoCast` toggles all load **on** for a file that predates them.
+19. The loaded save is **playable**, not merely loadable: it starts a round, resolves a wave,
+    and stays running. A save that comes back in a shape `tick` throws on is not compatible,
+    and check 13 alone would not notice.
+20. It survives the disk path the player actually uses: exported and re-imported, it is still
+    not reset and the Fear is still there.
+21. A save from a **genuinely** older schema still resets, and still names the version it came
+    from. Compatibility is not "never reset" but "reset only when the shape really changed",
+    and a suite proving only the first half would pass on an engine that had stopped resetting
+    anything at all.
+
 ## UI Checks
 
 1. The Blight meter, wave timer, and Dahan strike timer are visible without opening any panel,
@@ -374,7 +401,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 
 ## Current Validation Status
 
-**383 automated checks, all passing.** Coverage by file:
+**392 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -392,7 +419,12 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/fear.test.js` | The three Fear ladders, the locale tables, the gate |
 | `tests/haste.test.js` | The Dahan Remember: the Fear pool and the strike clock |
 | `tests/save.test.js` | Round-trip, no offline credit, migration, normalization, export/import |
+| `tests/compat.test.js` | A save from an earlier build still loads, still plays, still imports |
 | `tests/landstate.test.js` | Land state precedence (06) |
+
+`tests/compat.test.js` is the only suite that reads a fixture rather than building its state
+from the engine. `tests/fixtures/` holds that one file; it is not scanned by either runner, so
+the browser harness loads it by an explicit `<script>` tag ahead of the suite that reads it.
 
 Not automated, and verified by hand instead:
 
@@ -410,6 +442,10 @@ Not automated, and verified by hand instead:
   as specified, the box reads its state from `ui.autoCast` rather than from the markup, a click
   on it writes through to the state, and with `?vis&ended` the cast buttons go disabled while
   the checkboxes stay live.
+- The Dahan strike bar on the chip, for the same reason. Driven in headless Edge over `?vis`:
+  the bar present exactly on the lands holding Dahan **and** invaders and absent on both
+  one-sided cases, the per-frame patch writing the fixture's fraction, and the axe-plus-track
+  row fitting land 4 — the narrowest chip — on one line.
 
 ## Acceptance
 

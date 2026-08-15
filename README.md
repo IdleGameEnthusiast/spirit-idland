@@ -40,9 +40,10 @@ powershell -File tests\headless.ps1          headless Edge or Chrome; exits 1 on
 node tests/run.js [filter]                   if node is installed
 ```
 
-383 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
-the shop, save/migration, the land-state rules, and the playtest tools. The engine takes its
-clock and RNG by injection, so the whole suite is deterministic and finishes instantly.
+392 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
+the shop, save/migration, backward compatibility with older save files, the land-state rules,
+and the playtest tools. The engine takes its clock and RNG by injection, so the whole suite is
+deterministic and finishes instantly.
 
 ## The spec
 
@@ -70,3 +71,11 @@ the two known balance problems up front. What to build next is at the top of
   `ABILITIES`. The raw entry for a tiered ability carries no cooldown and no effect of its own.
 - **Energy is round-local.** It, every unlock bought with it, and every Innate tier are cleared
   by `startRound`. Fear is the only currency that carries.
+- **A save file outlives the build that wrote it.** There is an export button, so saves sit on
+  players' disks and come back several builds later. A field older saves simply lack defaults
+  to whatever costs the player nothing — absent means "predates the field", never "switched it
+  off" — and a map keyed by content ids is rebuilt from the registry rather than merged over.
+  `VERSION` moves only when existing fields change meaning, because a bump is a wipe rather
+  than a translation. `tests/compat.test.js` holds the line against a captured save from an
+  earlier build; the rule is in
+  [docs/spec/03-state-contract.md](docs/spec/03-state-contract.md#older-save-files-keep-working).

@@ -241,6 +241,42 @@ the only one with no representation where the units it belongs to are standing.
   fixture's `dahanAttackRemaining`, and the row fitting land 4 — the narrowest chip — without
   wrapping.
 
+### Task P5: Older save files keep working — *done*
+
+Not a feature — a rule that already half-existed, given teeth and a test that can fail. The
+game grew an export/import button, so save files leave the browser and sit on players' disks,
+where no future change to this project can reach them. The engine's only compatibility
+mechanism is `schemaVersion` and it is all-or-nothing: `migrateSave` returns the save untouched
+on an exact match and **wipes the game** otherwise, carrying four preferences through and
+nothing else. That puts the entire burden on normalization, which is where a new field is
+easiest to get wrong — and until now nothing failed when it was.
+
+- **`tests/fixtures/save-5.0.0-pre-autocast.js`** is a real save dumped out of the build at
+  `ccbb135`, committed before any of the three features above landed so that it genuinely
+  predates them. **Captured, not generated**: rebuilding it from `createFreshGameState` would
+  make it agree with whatever the engine does today, which is the one thing a compatibility
+  fixture must not do. Its header comment says so.
+- **`tests/compat.test.js`**, nine checks, registered by hand in `tests.html` along with the
+  fixture ahead of it. They assert *properties*, not a snapshot — a golden file would fail on
+  every legitimate field addition and be re-blessed without being read. The load is not wiped;
+  Fear, best wave, purchases and the round's frozen snapshot all survive; every `ui` field
+  added since the file was written loads at its fresh default, asserted against
+  `createInitialState()`'s own keys so the next field is covered the moment that function
+  writes it; the five `ui.autoCast` toggles come back on; the save is **playable**, not merely
+  loadable — it starts a round and resolves a wave, which a save loading into a shape `tick`
+  throws on would not; and it survives export and re-import.
+- **The ninth is the one that keeps the other eight honest**: a save from a genuinely older
+  schema must still reset, and still name the version it came from. Compatibility is not "never
+  reset" but "reset only when the shape really changed", and a suite proving only the first
+  half would pass on an engine that had stopped resetting anything at all.
+- **`03-state-contract.md`** gained the section the rule now lives in — `VERSION` does not move
+  for an additive change because a bump is a wipe; a missing field defaults to what costs the
+  player nothing; registry-keyed maps are rebuilt rather than merged. `README.md`'s conventions
+  list and `05-progression.md` point at it rather than restating it. The canonical block still
+  read `schemaVersion: "4.0.0"` against an engine at `5.0.0` and was corrected.
+- Suite at 392 checks, up from 383. The mutation was checked rather than assumed: breaking the
+  `autoCast` default assertion failed exactly one check, so the fixture really is being read.
+
 ---
 
 ## What To Build Next
