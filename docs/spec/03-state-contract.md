@@ -240,11 +240,11 @@ Seven fields the first draft of this contract did not have. Each earns its place
   casts (`AUTO_CAST_UPGRADES` in `engine.js` is the only place that pairing is written down).
   It is in `ui` for exactly the reason `ui.autoProceed` and `ui.autoStartRound` are: it
   outlives every round it is read in. It is a *preference*, not a purchase — whether the
-  checkbox is drawn at all follows `upgradeTier` (`autoCastOwned`), whether the automation
+  switch is drawn at all follows `upgradeTier` (`autoCastOwned`), whether the automation
   casts follows `activeUpgradeTier` **and** this map (`autoCastOn`). Two consequences fall out
-  of that split, both wanted: unticking mid-round bites on the next tick rather than the next
-  round, and buying an automation mid-round still does nothing until the next round takes its
-  snapshot. Unticking stops future casts and nothing else — no cooldown is reset, shortened or
+  of that split, both wanted: switching one off mid-round bites on the next tick rather than the
+  next round, and buying an automation mid-round still does nothing until the next round takes
+  its snapshot. Switching off stops future casts and nothing else — no cooldown is reset, shortened or
   lengthened, no cast is undone, nothing is refunded, and the upgrade is never un-bought.
 - **`ui.playtest`** — whether the playtest code has been redeemed, and with it the only thing
   in the state no rule reads: it widens the speed dial and reveals two buttons that hand out
@@ -378,7 +378,7 @@ mid-turn card hand to a mid-round ability target), migration is a **hard reset**
   first.
 - `ui.autoCast` is **not** among the preferences carried through, and the omission is a
   decision rather than an oversight: the reset takes every purchase with it, so there is no
-  automation left to switch off and no checkbox on any card to carry a preference for. The
+  automation left to switch off and no switch on any card to carry a preference for. The
   fresh state's five defaults are the right answer.
 - The migration logs a one-line notice naming the old version, so a returning player
   understands why their old run is gone rather than assuming data loss is a bug.

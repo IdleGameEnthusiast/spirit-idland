@@ -748,6 +748,13 @@ function abilityBarSignature(state) {
 //
 // The input carries data-auto-cast and the label does not, so a click on the text reaches the
 // bar's handler once, through the click the label synthesizes on the box itself.
+//
+// It is drawn as a sliding switch rather than a tick box - the same shape a phone's settings
+// screen uses - because that is what it is: a setting that stays on until it is turned off,
+// not a choice being confirmed. The input itself is still a checkbox, only hidden behind the
+// track: everything that reads or writes it - the patch pass, the delegated click, the
+// keyboard - keeps working on a plain checkbox, and the label still forwards a click on the
+// text to it. The track sits after the input so `:checked ~` can paint it.
 function abilityAutoCastMarkup(state, abilityId) {
   if (!autoCastOwned(state, abilityId)) return "";
   const t = locale(state);
@@ -755,6 +762,7 @@ function abilityAutoCastMarkup(state, abilityId) {
     <label class="ability-auto" title="${t.autoCastHint}">
       <input type="checkbox" data-auto-cast="${abilityId}">
       <span>${t.autoCastLabel}</span>
+      <span class="ability-switch" aria-hidden="true"></span>
     </label>
   `;
 }
@@ -919,6 +927,10 @@ function patchAbilityBar(state) {
     card.classList.toggle("is-ready", ready && !armed);
     card.classList.toggle("is-cooling", !ready);
     button.disabled = !running || (!ready && !armed);
+    // The whole card takes the cast, not just the cast button, so the card has to know whether
+    // the cast would land - a disabled button refuses its own clicks, but the foot around it
+    // would still be showing a pointer over a cast that goes nowhere.
+    card.classList.toggle("is-castable", !button.disabled);
 
     button.querySelector('[data-role="state"]').textContent = armed
       ? t.abilityArmed
@@ -1551,16 +1563,33 @@ dom.abilityBar.addEventListener("click", (event) => {
   // The new value is read off the box rather than derived from autoCastOn, which is false for
   // an automation bought this round - deriving it would make the first click of a fresh
   // purchase a no-op that appears to un-tick itself.
-  const autoBox = target.closest("[data-auto-cast]");
-  if (autoBox) {
-    setAutoCast(state, autoBox.getAttribute("data-auto-cast") || "", autoBox.checked === true);
-    updateUI(state);
-    persist();
+  //
+  // The whole switch is claimed here, not just the box inside it, because the cast below now
+  // takes everything that falls through: a click on the label's text or on its track arrives
+  // once as itself and once as the click the label synthesizes on the box, and only the second
+  // carries data-auto-cast. Without the label in the way the first would cast the ability.
+  const autoSwitch = target.closest(".ability-auto");
+  if (autoSwitch) {
+    const autoBox = target.closest("[data-auto-cast]");
+    if (autoBox) {
+      setAutoCast(state, autoBox.getAttribute("data-auto-cast") || "", autoBox.checked === true);
+      updateUI(state);
+      persist();
+    }
     return;
   }
 
-  const button = target.closest("[data-ability]");
-  if (!button) return;
+  // The cast surface is the whole card, not only the button carrying the sweep. On a card with
+  // a foot - a tier row, a price, a switch - the strip beneath the cast button was dead space
+  // that looked exactly as pressable as the rest of the tile. Anything in the foot that wants
+  // the click has already taken it above; whatever is left falls through to the cast.
+  //
+  // The fallback goes through the card's own cast button rather than the id alone, so a cast
+  // the button would refuse - cooling down, or a round that is not running - is refused here
+  // too. A locked card has no cast button at all and drops out the same way.
+  const card = target.closest(".ability");
+  const button = target.closest("[data-ability]") || (card && card.querySelector("[data-ability]"));
+  if (!button || button.disabled) return;
   triggerAbility(state, button.getAttribute("data-ability") || "");
   updateUI(state);
 });

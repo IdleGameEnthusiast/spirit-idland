@@ -217,11 +217,11 @@ Fear is a wall. See
   now Energy's job and does not go through the shop at all; this key remains the path for a
   fifth ability from outside the kit. `unlockedAbilityIds()` still reads it, and normalization
   still accepts it, so that fifth ability is content work and not code work.
-All five ability automations below carry a **checkbox on the ability's own card**, drawn from
-the moment the upgrade is bought. Unticking it stops future casts and nothing else: no cooldown
+All five ability automations below carry a **switch on the ability's own card**, drawn from
+the moment the upgrade is bought. Switching it off stops future casts and nothing else: no cooldown
 is reset, shortened or lengthened, no cast is undone, nothing is refunded, and the upgrade is
 never un-bought. Buying an automation is therefore not a one-way door — the ability goes back to
-being played by hand for as long as the box is clear. See `ui.autoCast` in
+being played by hand for as long as the switch is off. See `ui.autoCast` in
 [03-state-contract.md](./03-state-contract.md) and the card shapes in
 [06-ui-contract.md](./06-ui-contract.md#ability-status-rules). `auto_buy_abilities` and
 `auto_start_round` are not in this set: the first automates a purchase rather than a cast, and

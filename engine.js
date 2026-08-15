@@ -2973,8 +2973,8 @@ const AUTO_CAST_UPGRADES = {
 };
 
 // Whether the player owns this ability's automation - which is what decides whether the card
-// draws a checkbox at all. Read off what is owned rather than off the round's snapshot: the
-// purchase is permanent, so the control it comes with never disappears again.
+// draws an auto-cast switch at all. Read off what is owned rather than off the round's
+// snapshot: the purchase is permanent, so the control it comes with never disappears again.
 function autoCastOwned(state, abilityId) {
   const upgradeId = AUTO_CAST_UPGRADES[abilityId];
   return Boolean(upgradeId) && upgradeTier(state, upgradeId) > 0;

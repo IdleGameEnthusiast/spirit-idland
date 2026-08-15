@@ -808,12 +808,19 @@ button.reset {
    styling so the bar still reads as one column of equal things.
 
    An ability whose automation is owned takes the same shape for the same reason: a checkbox
-   cannot live inside a button either. */
+   cannot live inside a button either.
+
+   Both take the cast across the whole card, foot included, so the pointer belongs to the card
+   rather than to the button inside it - but only while the cast would actually land, which is
+   what .is-castable says. */
 .ability.is-tiered,
 .ability.is-automated {
   display: grid;
   cursor: default;
 }
+
+.ability.is-tiered.is-castable,
+.ability.is-automated.is-castable { cursor: pointer; }
 
 .ability-cast {
   position: relative;
@@ -871,15 +878,59 @@ button.reset {
   user-select: none;
 }
 
+/* The input is still a checkbox and still the thing that is clicked, read and focused - it is
+   only moved out of sight behind the track it paints. Hiding it with display:none would take
+   its focus ring with it, so it keeps its box and loses its paint. */
 .ability-auto input {
-  width: 0.8rem;
-  height: 0.8rem;
+  position: absolute;
+  width: 1px;
+  height: 1px;
   margin: 0;
-  accent-color: var(--accent-calm);
-  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.ability-auto input:focus-visible { outline: 2px solid #8ed3e6; outline-offset: 1px; }
+/* A sliding switch rather than a tick box: this is a setting that stays where it is put, not a
+   choice being confirmed. Track and knob are sized off the label's own font so it sits on the
+   footnote line with the tier and the price rather than pushing the foot taller. */
+.ability-switch {
+  position: relative;
+  flex: none;
+  width: 1.7em;
+  height: 1em;
+  border-radius: 999px;
+  background: rgba(247, 241, 222, 0.16);
+  border: 1px solid rgba(247, 241, 222, 0.22);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.ability-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.1em;
+  width: 0.72em;
+  height: 0.72em;
+  border-radius: 50%;
+  background: var(--ink-1);
+  transform: translate(0, -50%);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.ability-auto input:checked ~ .ability-switch {
+  background: rgba(120, 201, 179, 0.55);
+  border-color: var(--accent-calm);
+}
+
+.ability-auto input:checked ~ .ability-switch::after {
+  background: var(--ink-0);
+  transform: translate(0.68em, -50%);
+}
+
+.ability-auto input:focus-visible ~ .ability-switch {
+  outline: 2px solid #8ed3e6;
+  outline-offset: 2px;
+}
 
 /* Same gold promise as a locked card wears when its price comes into reach. */
 .ability.is-tiered.is-affordable {
@@ -1730,6 +1781,10 @@ button.reset {
   .chip-strike .tok,
   .chip-ring,
   .meter-fill,
+  /* The switch still switches - its colour says which way it is set, and colour is not
+     motion. Only the knob's slide goes. */
+  .ability-switch,
+  .ability-switch::after,
   .ability-sweep { transition: none; animation: none; }
 
   /* The payout still has to be readable without the pop, so it holds at full opacity for as

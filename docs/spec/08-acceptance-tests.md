@@ -306,13 +306,13 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 15. **The auto-cast toggle.** Each of the five ability automations can be switched off from its
     ability card without being un-bought (`ui.autoCast`, `autoCastOwned`, `autoCastOn`,
     `setAutoCast`):
-    - Unticked, the automation does not cast even with the ability unlocked, ready, and a legal
-      target on the board: the board is unchanged and the cooldown untouched.
-    - Unticking mid-round does not touch a cooldown already running — it drains by exactly the
-      time that passed — does not undo the cast that already happened, and refunds nothing.
-    - Re-ticking resumes on the next ready cooldown, with no cooldown reset in either
+    - Switched off, the automation does not cast even with the ability unlocked, ready, and a
+      legal target on the board: the board is unchanged and the cooldown untouched.
+    - Switching off mid-round does not touch a cooldown already running — it drains by exactly
+      the time that passed — does not undo the cast that already happened, and refunds nothing.
+    - Switching back on resumes on the next ready cooldown, with no cooldown reset in either
       direction.
-    - Bought mid-round, the automation is owned and its box is ticked, yet nothing casts until
+    - Bought mid-round, the automation is owned and its switch is on, yet nothing casts until
       the next `startRound` takes its snapshot. This is the two predicates meeting, and it is
       the check that breaks first if someone folds them into one.
     - `setAutoCast` on an ability with no automation in `AUTO_CAST_UPGRADES` is a no-op that
@@ -347,7 +347,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     loaded map holds exactly the registry's five ids.
 12. A migration reset leaves the fresh state's five `ui.autoCast` defaults standing. Unlike the
     language beside it, the preference is not carried through — the reset takes every purchase
-    with it, so no checkbox would exist to carry one for.
+    with it, so no switch would exist to carry one for.
 
 ### Older save files keep working
 
@@ -437,11 +437,14 @@ Not automated, and verified by hand instead:
   through the picker, a declined confirm leaving the run untouched, and an edited file and a
   junk file each refused with their own message), but those probes were not kept as standing
   tests; they need a DOM the harness does not currently build.
-- The auto-cast checkbox on the card, for the same reason. Driven in headless Edge over the
+- The auto-cast switch on the card, for the same reason. Driven in headless Edge over the
   `?vis` fixture with two automations owned and one of them off: the three card shapes render
-  as specified, the box reads its state from `ui.autoCast` rather than from the markup, a click
-  on it writes through to the state, and with `?vis&ended` the cast buttons go disabled while
-  the checkboxes stay live.
+  as specified, the switch reads its state from `ui.autoCast` rather than from the markup, a
+  click on it writes through to the state, and with `?vis&ended` the cast buttons go disabled
+  while the switches stay live.
+- The card's own cast surface, for the same reason: a click on the foot of a card with one —
+  the tier row, the empty space beside a price — casts the ability, and the same click on a
+  cooling card, a card in an ended round, or a locked card casts nothing.
 - The Dahan strike bar on the chip, for the same reason. Driven in headless Edge over `?vis`:
   the bar present exactly on the lands holding Dahan **and** invaders and absent on both
   one-sided cases, the per-frame patch writing the fixture's fraction, and the axe-plus-track
