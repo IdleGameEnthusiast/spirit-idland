@@ -303,6 +303,23 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     one Innate rung per tick, never two, and never before the kit is bought. Bought mid-round
     it spends nothing until the next round starts, like every other automation. What it buys
     arrives ready and can be cast by an automation on the same tick.
+15. **The auto-cast toggle.** Each of the five ability automations can be switched off from its
+    ability card without being un-bought (`ui.autoCast`, `autoCastOwned`, `autoCastOn`,
+    `setAutoCast`):
+    - Unticked, the automation does not cast even with the ability unlocked, ready, and a legal
+      target on the board: the board is unchanged and the cooldown untouched.
+    - Unticking mid-round does not touch a cooldown already running — it drains by exactly the
+      time that passed — does not undo the cast that already happened, and refunds nothing.
+    - Re-ticking resumes on the next ready cooldown, with no cooldown reset in either
+      direction.
+    - Bought mid-round, the automation is owned and its box is ticked, yet nothing casts until
+      the next `startRound` takes its snapshot. This is the two predicates meeting, and it is
+      the check that breaks first if someone folds them into one.
+    - `setAutoCast` on an ability with no automation in `AUTO_CAST_UPGRADES` is a no-op that
+      returns `false` and writes nothing into the map.
+    - The map holds exactly the five ability automations: not `auto_buy_abilities`, which
+      automates a purchase rather than a cast, and not `auto_start_round`, which has its own
+      toggle.
 
 ## Save and Migration Checks
 
@@ -323,6 +340,14 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    No refusal alters the run in progress.
 9. A file from an older `schemaVersion` imports as `reset`, naming the version it came from, so
    the UI can ask before starting a fresh game rather than silently doing so.
+10. A save with no `ui.autoCast` at all loads with all five automations **on**. Absent means
+    "this save predates the field", never "the player turned it off".
+11. `ui.autoCast` is rebuilt from the registry rather than merged over it: a key naming an
+    ability the build does not carry is dropped, a `false` for a known id survives, and the
+    loaded map holds exactly the registry's five ids.
+12. A migration reset leaves the fresh state's five `ui.autoCast` defaults standing. Unlike the
+    language beside it, the preference is not carried through — the reset takes every purchase
+    with it, so no checkbox would exist to carry one for.
 
 ## UI Checks
 
@@ -349,7 +374,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 
 ## Current Validation Status
 
-**372 automated checks, all passing.** Coverage by file:
+**383 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -359,7 +384,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/pacing.test.js` | The speed dial and the wave gate (02 Pacing) |
 | `tests/playtest.test.js` | The redeem code and the playtest tools (06 Playtest Tools) |
 | `tests/ladder.test.js` | The difficulty ladder as the waves climb, and the readout the track prints |
-| `tests/automation.test.js` | The bought automations and their target picks |
+| `tests/automation.test.js` | The bought automations, their target picks, and the auto-cast toggle |
 | `tests/combat.test.js` | Blight and casualty rates, concentration, the Dahan strike |
 | `tests/blight.test.js` | Blight accrual, the per-land tally, round end |
 | `tests/ability.test.js` | Cooldowns, arming, cancelling, each ability's effect |
@@ -380,6 +405,11 @@ Not automated, and verified by hand instead:
   through the picker, a declined confirm leaving the run untouched, and an edited file and a
   junk file each refused with their own message), but those probes were not kept as standing
   tests; they need a DOM the harness does not currently build.
+- The auto-cast checkbox on the card, for the same reason. Driven in headless Edge over the
+  `?vis` fixture with two automations owned and one of them off: the three card shapes render
+  as specified, the box reads its state from `ui.autoCast` rather than from the markup, a click
+  on it writes through to the state, and with `?vis&ended` the cast buttons go disabled while
+  the checkboxes stay live.
 
 ## Acceptance
 

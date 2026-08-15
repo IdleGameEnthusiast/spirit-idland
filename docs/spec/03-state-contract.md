@@ -35,6 +35,14 @@ Define the canonical save shape for the round-based redesign.
     "language": "de",
     "gameSpeed": 1,
     "autoProceed": false,
+    "autoStartRound": true,
+    "autoCast": {
+      "boon_of_vigor": true,
+      "rivers_bounty": true,
+      "innate_power": true,
+      "wash_away": true,
+      "flash_floods": true
+    },
     "playtest": false,
     "defeatFx": null,
     "blightFx": null,
@@ -226,6 +234,16 @@ Seven fields the first draft of this contract did not have. Each earns its place
   not a property of the round being played, and it survives a reset for the same reason.
 - **`ui.autoProceed`** — whether a wave is allowed to arrive without being asked for. Also a
   preference, also outside `round`: it outlives every round it is read in.
+- **`ui.autoCast`** — one switch per ability automation, keyed by the **ability** each one
+  casts (`AUTO_CAST_UPGRADES` in `engine.js` is the only place that pairing is written down).
+  It is in `ui` for exactly the reason `ui.autoProceed` and `ui.autoStartRound` are: it
+  outlives every round it is read in. It is a *preference*, not a purchase — whether the
+  checkbox is drawn at all follows `upgradeTier` (`autoCastOwned`), whether the automation
+  casts follows `activeUpgradeTier` **and** this map (`autoCastOn`). Two consequences fall out
+  of that split, both wanted: unticking mid-round bites on the next tick rather than the next
+  round, and buying an automation mid-round still does nothing until the next round takes its
+  snapshot. Unticking stops future casts and nothing else — no cooldown is reset, shortened or
+  lengthened, no cast is undone, nothing is refunded, and the upgrade is never un-bought.
 - **`ui.playtest`** — whether the playtest code has been redeemed, and with it the only thing
   in the state no rule reads: it widens the speed dial and reveals two buttons that hand out
   currency, and nothing else in the engine branches on it. It is in `ui` with the other
@@ -266,6 +284,14 @@ to resume mid-effect beyond "which ability is waiting for a click."
   only if it also carries the redeemed code, and never leaves a player at a speed the dial
   draws no button for.
 - `ui.autoProceed` normalizes to `false` unless it is exactly `true`.
+- `ui.autoStartRound` normalizes to `true` unless it is exactly `false` — the opposite default
+  to auto-proceed, and deliberately so: a save that predates the toggle has no value to read,
+  and the only player it can affect is one who has already bought the automation.
+- `ui.autoCast` is **rebuilt from the registry**, not merged over, the same way
+  `upgrades.purchased` and `abilities` are. Every ability id in `AUTO_CAST_UPGRADES` gets
+  `raw !== false`, and any key the map does not carry is dropped. So a save written before the
+  field existed loads with all five automations still running, and a save cannot smuggle in a
+  toggle for an ability the registry no longer has.
 - `ui.playtest` normalizes to `false` unless it is exactly `true`. Like the language and the
   speed, it survives a migration reset — it is a setting rather than run state.
 - `round.awaitingWave` normalizes to `false` unless it is exactly `true` **and**
@@ -305,6 +331,10 @@ mid-turn card hand to a mid-round ability target), migration is a **hard reset**
   exception: **`ui.language` survives**. It is a display preference, not run state, and
   coming back to a wiped run in the wrong language would read as a second bug on top of the
   first.
+- `ui.autoCast` is **not** among the preferences carried through, and the omission is a
+  decision rather than an oversight: the reset takes every purchase with it, so there is no
+  automation left to switch off and no checkbox on any card to carry a preference for. The
+  fresh state's five defaults are the right answer.
 - The migration logs a one-line notice naming the old version, so a returning player
   understands why their old run is gone rather than assuming data loss is a bug.
 - Anything that is not a current-version save takes this path — an older version, a corrupt

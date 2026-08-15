@@ -133,6 +133,39 @@ round costs; both are spelled out in [02-core-loop.md](../spec/02-core-loop.md#p
 - Covered by `tests/pacing.test.js`; `tests/harness.js` opts its fixture into auto-proceed,
   since every older suite is written against a clock that simply runs.
 
+### Task P2: An ability automation can be switched off — *done*
+
+Buying one was a one-way door. The resolvers run inside `tick` before the fight and fire the
+instant the cooldown clears, so the card never spent a frame in a state the player could
+click: once `auto_wash_away` was bought, 400 Fear had permanently removed an ability from
+active play. The round gate had already answered this one level up — buying the automation and
+wanting it on right now are two different things — and this is that sentence applied to the
+cast instead of the round.
+
+- **`AUTO_CAST_UPGRADES`** (`engine.js`) is the only place the two id spaces are tied together:
+  the resolvers are keyed by upgrade, the ability bar by ability. `autoCastOwned` reads
+  `upgradeTier` and decides whether the card draws a checkbox at all; `autoCastOn` reads
+  `activeUpgradeTier` **and** the toggle and decides whether it casts this tick. Keeping them
+  apart is what makes unticking bite on the next tick while a mid-round purchase still waits
+  for the next round. Each of the five resolvers' first line became `autoCastOn`; nothing else
+  in them moved, and the call order inside `tick` is unchanged.
+- **`ui.autoCast`** (`03-state-contract.md`) is one flag per ability, in `ui` rather than
+  `round` for the same reason `autoProceed` and `autoStartRound` are: it outlives every round
+  it is read in. It is rebuilt from the registry on load rather than merged over, so a save
+  written before the field loads with all five automations still running and cannot smuggle in
+  a toggle for an ability the build no longer has. `VERSION` did not move — a bump is a wipe,
+  and this is additive.
+- **The card grew a container** (`ui.js`, `app.css`). An unlocked ability whose automation is
+  owned takes the shape the tiered card already had — a checkbox cannot live inside a button
+  any more than a price can — so three card shapes exist, not four. Owned-ness joins
+  `abilityBarSignature`; the box's ticked state deliberately does not, and is patched per frame
+  like every other value. The box is the one thing in the bar that stays live between rounds:
+  it spends nothing, and the shop is where the next round gets decided.
+- Covered by `tests/automation.test.js` (six checks: the four toggle behaviours, the unmapped
+  no-op, and the map's contents) and `tests/save.test.js` (three: the absent field, the rebuild
+  from the registry, and the migration reset). The card itself was driven by hand in headless
+  Edge over the `?vis` fixture — see [08-acceptance-tests.md](../spec/08-acceptance-tests.md).
+
 ---
 
 ## What To Build Next

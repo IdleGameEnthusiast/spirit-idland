@@ -147,6 +147,18 @@ timer refills. With it off:
   anything itself: the next tick finds the timer at 0 and runs the wave down the same path
   every automatic wave takes.
 
+**The auto-cast toggles** (`ui.autoCast`, all on by default) are the third preference of this
+kind, and the same shape as the speed dial and the wave gate: they change what the player has
+to press, never what the rules are. One checkbox per ability automation, on the ability's own
+card, saying whether that automation still casts. Unticking one stops future casts and nothing
+else — no cooldown is reset, shortened or lengthened, no cast is undone, nothing is refunded,
+and the upgrade is never un-bought. It bites on the next tick rather than the next round,
+because it is a setting and not a power the round runs on. What does wait for the next round is
+*ownership*: an automation bought mid-round is idle until `startRound` takes its snapshot, so
+the checkbox appears at once and ticked, and what it governs starts next round. See
+`ui.autoCast` in [03-state-contract.md](./03-state-contract.md) and
+[07-content-registry.md](./07-content-registry.md).
+
 ## Wave Resolution
 
 A wave is the automatic unit of invader *reinforcement*. It deals no damage at all — damage

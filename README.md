@@ -40,7 +40,7 @@ powershell -File tests\headless.ps1          headless Edge or Chrome; exits 1 on
 node tests/run.js [filter]                   if node is installed
 ```
 
-301 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
+383 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
 the shop, save/migration, the land-state rules, and the playtest tools. The engine takes its
 clock and RNG by injection, so the whole suite is deterministic and finishes instantly.
 

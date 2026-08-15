@@ -30,7 +30,9 @@ what carries between them. **Whoever finishes a feature ticks its box here befor
 
 ## Progress
 
-- [ ] Feature 1 — Auto-cast toggle (3 commits: engine, UI, docs)
+- [x] Feature 1 — Auto-cast toggle (3 commits: engine, UI, docs). Suite at **383/383**, up from
+      the 374 baseline: six new checks in `tests/automation.test.js` and three in
+      `tests/save.test.js`. `README.md:43` and `08-acceptance-tests.md` now both say 383.
 - [ ] Feature 2 — Round controls above the shop (1 commit)
 - [ ] Feature 3 — Dahan strike bar on the chip (1 commit)
 - [ ] Feature 4 — Older save files keep working (1 commit)

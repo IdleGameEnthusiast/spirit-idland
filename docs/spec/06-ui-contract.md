@@ -234,6 +234,26 @@ from the dev tools, and still is.
   inside a button is not markup. The card becomes a container holding two: the cast surface,
   and the tier row beneath it. It keeps the same card styling either way, so the bar still
   reads as one column of equal things.
+- **An ability whose automation is owned carries a checkbox in its card**, which is what says
+  whether that automation still casts. It sits inside the card, beside the cast button it
+  automates — the same rule that puts the auto-wave toggle beside the wave countdown and the
+  auto-round toggle beside the round button. Not in the shop row where the upgrade was bought,
+  and not collected into a settings panel. It is drawn on ownership (`autoCastOwned`), so it
+  appears the instant the upgrade is bought — already ticked, because a player who just paid
+  for an automation should not have to click a second time to get it — and never disappears
+  again. All five ability automations get one, including the two whose abilities need no
+  target: a control that appears on three cards and not the other two is a rule with an
+  exception the player has to discover.
+- **Three card shapes, not four.** A checkbox cannot live inside a button any more than a
+  price button can, so the box forces the same container shape the tiered card already uses.
+
+  | Ability state | Shape |
+  | --- | --- |
+  | Locked | card container, dimmed, with its price button |
+  | Unlocked, automation unowned | a single button |
+  | Unlocked, automation owned | container + cast button + a foot holding the checkbox |
+  | Tiered (`innate_power`) | as above; the checkbox joins the foot the tier and its price share |
+
 - **Under the Energy purse: where Energy comes from.** It is the one currency the player earns
   by fighting rather than by surviving, and the purse only ever shows a total. The note names
   the income (1/2/3 per Explorer/Town/City, plus Boon of Vigor) and — the part nothing else on
@@ -249,6 +269,14 @@ from the dev tools, and still is.
 - If an ability is armed and the clicked land is a legal target, the click also resolves
   that ability's effect.
 - Lands are focusable and activate on Enter and Space. No drag, no hover-only affordance.
+- Everything pressable in the ability bar goes dead while the round is not running — the
+  Energy, the unlocks, the tiers and the casts are all bought and spent inside a round. The
+  **auto-cast checkbox is the one exception and stays live**: it spends nothing, and the shop
+  between rounds is exactly where a player decides how the next round should play.
+- The checkbox wins the bar's delegated click outright, ahead of the cast surface, the same way
+  the two price buttons do. Its new value is read off the box itself rather than derived from
+  `autoCastOn`, which is `false` for an automation bought this round — deriving it would make
+  the first click of a fresh purchase a no-op that appeared to un-tick itself.
 
 ## Land State Rules
 
@@ -300,6 +328,12 @@ Two clarifications the implementation forced:
   are repainted.
 - Rebuilding the board on a per-second cadence would destroy in-progress hover/focus state
   and any cooldown sweep animation.
+- The two halves of the auto-cast checkbox split across that line, and must stay split.
+  Whether an automation is **owned** changes a card's *shape*, so it belongs in the ability
+  bar's rebuild signature or a purchase leaves the bar without its checkbox. Whether the box is
+  **ticked** is patched per frame like every other value: folding it into the signature would
+  rebuild the whole bar on every click of the box and destroy the running cooldown sweep, which
+  is the exact failure the render/patch split exists to prevent.
 
 ## Terrain Colour Rules
 
