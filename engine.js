@@ -874,7 +874,10 @@ const I18N = {
     // nur noch, was geschaltet wird, und nicht mehr An und Aus dazu.
     autoWaveLabel: "Auto",
     autoWaveHint: "Nächste Welle läuft von selbst an. Aus: am Ende der Leiste hält die Zeit an, bis du die Welle startest.",
-    autoRoundLabel: "Auto-Runde",
+    // Zweizeilig: neben dem größten Knopf der Leiste steht der Schalter selbst größer, und die
+    // Beschriftung wächst mit ihm in die Höhe statt in die Breite. Wo das Wort umbricht, weiß
+    // nur die Sprache selbst - deshalb steht der Umbruch hier und nicht im Layout.
+    autoRoundLabel: "Auto-\nRunde",
     autoRoundHint: "Die nächste Runde startet von selbst. Aus: der Laden bleibt offen, bis du sie startest.",
     // Auf der Fähigkeitskarte selbst, neben Stufe und Preis - dort, wo der Knopf sitzt, den
     // die Automatik drückt.
@@ -1159,7 +1162,7 @@ const I18N = {
     startNextWaveBtn: "Start wave",
     autoWaveLabel: "Auto",
     autoWaveHint: "Let the next wave start by itself. Off: time stops at the end of the bar until you start the wave.",
-    autoRoundLabel: "Auto round",
+    autoRoundLabel: "Auto\nround",
     autoRoundHint: "Let the next round start by itself. Off: the shop stays open until you start it.",
     autoCastLabel: "Auto",
     autoCastHint: "Let this ability cast itself. Off: the automation stays bought and the ability goes back to being cast by hand. Nothing is refunded and no cooldown changes.",

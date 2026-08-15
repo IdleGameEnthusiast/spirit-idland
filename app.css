@@ -452,11 +452,18 @@ h3 {
  * ------------------------------------------------------------------ */
 
 .auto-switch {
+  /* The three sizes of the switch are these three numbers and nothing else, so a home that
+     needs a bigger one sets them rather than redrawing the switch. The knob's travel is
+     derived from them below and never written by hand. */
+  --track-w: 1.6rem;
+  --track-h: 0.9rem;
+  --knob: 0.6rem;
+  --knob-inset: 0.1rem;
   position: relative;
   flex: none;
   display: inline-block;
-  width: 1.6rem;
-  height: 0.9rem;
+  width: var(--track-w);
+  height: var(--track-h);
   border-radius: 999px;
   background: rgba(247, 241, 222, 0.16);
   border: 1px solid rgba(247, 241, 222, 0.22);
@@ -467,9 +474,9 @@ h3 {
   content: "";
   position: absolute;
   top: 50%;
-  left: 0.1rem;
-  width: 0.6rem;
-  height: 0.6rem;
+  left: var(--knob-inset);
+  width: var(--knob);
+  height: var(--knob);
   border-radius: 50%;
   background: var(--ink-1);
   transform: translate(0, -50%);
@@ -482,10 +489,12 @@ h3 {
   border-color: var(--accent-calm);
 }
 
+/* Across the padding box, less the knob and its inset at each end. The 2px is the track's own
+   border, which the knob is positioned inside of. */
 .ability-auto input:checked ~ .auto-switch::after,
 .hud-btn.is-on .auto-switch::after {
   background: var(--ink-0);
-  transform: translate(0.78rem, -50%);
+  transform: translate(calc(var(--track-w) - var(--knob) - 2 * var(--knob-inset) - 2px), -50%);
 }
 
 /* The gate is the one moment the game is waiting on the player rather than the other way
@@ -1175,6 +1184,27 @@ button.reset {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+/* The one switch that does not sit on a tight line. Its neighbour is the biggest control in
+   the rail, and beside it a slider cut for the HUD strip reads as a speck - so this one is
+   drawn at half again the size, and its label stacks onto two lines so the pill grows with the
+   switch instead of sprawling sideways. Where the label breaks is the locale's own business:
+   "Auto-Runde" and "Auto round" do not break in the same place. */
+.round-controls .auto-toggle {
+  padding: 0.34rem 0.55rem;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  white-space: pre-line;
+  text-align: left;
+}
+
+.round-controls .auto-switch {
+  --track-w: 2.3rem;
+  --track-h: 1.3rem;
+  --knob: 0.92rem;
+  --knob-inset: 0.14rem;
 }
 
 .round-controls .primary-btn { flex: 1; }

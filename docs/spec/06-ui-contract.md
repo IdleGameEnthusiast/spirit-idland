@@ -241,9 +241,10 @@ island board, and the between-round shop.
   the auto-wave toggle beside the wave countdown. It is drawn on ownership, so the row is a
   single centred button until the automation is bought
 - It is the same switch the ability cards carry (see
-  [Ability Status Rules](#ability-status-rules)), and it keeps its own height rather than
-  stretching to the primary button's: a slider stretched to twice its height is a slider lost
-  in a field of its own background
+  [Ability Status Rules](#ability-status-rules)), drawn at the larger of its two sizes with its
+  label stacked onto two lines. It keeps its own height rather than stretching to the primary
+  button's — a slider stretched to twice its height is a slider lost in a field of its own
+  background — but at that size the two controls stand level anyway
 
 5. The shop (always in the rail; its summary is what changes with `round.status`)
 - The round just lost: its number and the Fear it earned
@@ -338,11 +339,22 @@ from the dev tools, and still is.
   that reads or writes `checked` keep working on a plain checkbox. Hiding it must leave its
   box in the layout (not `display: none`), or the focus ring goes with it.
 - **One switch, worn by all three automations the player can switch**: the wave, the round, and
-  each ability's auto-cast. Same track, same size, same colours, sized in `rem` rather than off
+  each ability's auto-cast. Same track, same colours, same shape, sized in `rem` rather than off
   whichever line it landed on — the wave toggle and the auto-cast toggle are the same object
   and must not be two objects that merely rhyme. What drives it differs by home and the shape
   does not: on a card it is the hidden checkbox behind the track, in the HUD it is the button
   around it wearing `.is-on`.
+- **Two sizes, and the second one is a scale rather than a redraw.** The switch takes its size
+  from its neighbours: the small one on the HUD strip and in the card's foot, where it shares a
+  line with footnote text, and a half-again larger one beside the round button, which is the
+  biggest control in the rail and next to which the small one reads as a speck. Track, knob and
+  inset are three custom properties on `.auto-switch` and the knob's travel is derived from
+  them, so a home that needs another size sets the numbers and never redraws the switch.
+- **The round toggle's label stacks onto two lines**, which is what lets the pill grow with the
+  switch instead of sprawling sideways, and lands it at the round button's own height. Where
+  the label breaks is the **locale's** business, not the layout's: `Auto-Runde` and `Auto round`
+  do not break in the same place, so the break lives in the string and the CSS only agrees to
+  honour it (`white-space: pre-line`).
 - **The label says what is switched, never whether it is on.** That reading belongs to the
   slider; a word repeating it is a second answer to look at. So the two HUD toggles read "Auto"
   and "Auto round" at all times, and being on takes nothing but the switch and brighter ink —

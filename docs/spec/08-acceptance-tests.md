@@ -445,8 +445,10 @@ Not automated, and verified by hand instead:
 - The card's own cast surface, for the same reason: a click on the foot of a card with one —
   the tier row, the empty space beside a price — casts the ability, and the same click on a
   cooling card, a card in an ended round, or a locked card casts nothing.
-- The three auto switches rendering as one control, for the same reason: wave, round and
-  auto-cast tracks measure the same and paint the same in both settings. Checked by paint
+- The three auto switches rendering as one control, for the same reason: the wave and
+  auto-cast tracks measure the same, the round one measures half again as much and stands at
+  the round button's own height, and all three paint the same in both settings — in both
+  languages, since the round label's line break comes out of the locale. Checked by paint
   rather than by computed style — a headless run advances no frame clock, so a transitioned
   property read after a click still reports the value it is transitioning *from*, and both
   colour and knob position on this switch are transitioned.
