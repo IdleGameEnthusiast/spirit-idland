@@ -139,20 +139,26 @@ island board, and the between-round shop.
   One *threat* bar and rings, rather than a second threat bar: two bars of equal weight read as
   two equal threats, and only Blight ends the round. The rule is kept by **weight, not by
   count** — the Dahan strike bar below is a second bar and is deliberately not a threat.
-- On a land holding **both Dahan and invaders**: a **Dahan strike bar**, in its own row under
-  the allies count and above the Blight bar, with a small axe at its left. It **fills** as the
-  strike clock runs down and is full at the instant the Dahan swing. Health drains and an
+- On a land holding **both Dahan and invaders**: a **Dahan strike bar**, sitting in the allies
+  row immediately **right of the Dahan count**, with a small axe past its right-hand end. It
+  **fills** as the strike clock runs down and is full at the instant the Dahan swing. Health
+  drains and an
   attack gathers, which puts it in the opposite direction from the wave bar in the HUD strip:
   that one is the invaders' and answers *how long do I still have*, this one is the player's
   and answers *how much have my people gathered*. On the chip itself the convention is
   consistent — the Blight bar beside it also fills.
 
-  It is subordinate to the Blight bar by every means except position: thinner (3px against
-  5px), and in `--dahan-ink` rather than pressure red. It is the only thing on a chip that is
-  good news and must not be mistaken at a glance for a fourth way to lose. It is **not** in the
-  Blight bar's row, which is a flex row of equal-weight meters: a second meter dropped in there
-  would split the width with Blight and produce exactly the two equal bars the rule above
-  forbids.
+  It is subordinate to the Blight bar by every means available: thinner (3px against 5px), far
+  shorter (a fixed stub against the chip's full width), and in `--dahan-ink` rather than
+  pressure red. It is the only thing on a chip that is good news and must not be mistaken at a
+  glance for a fourth way to lose. It is **not** in the Blight bar's row, which is a flex row of
+  equal-weight meters: a second meter dropped in there would split the width with Blight and
+  produce exactly the two equal bars the rule above forbids.
+
+  Where it *is* — tucked against the Dahan count — is doing work no label could. It is that
+  count's clock and no other land reading, and standing beside the count says so with no ink
+  spent. The axe goes past the far end of the track rather than in front of it, so a filling bar
+  runs toward the blade and reaches it as the Dahan swing.
 
   It is normalized against `roundDahanAttackInterval(state)`, never the base
   `DAHAN_ATTACK_INTERVAL_SECONDS`. `dahan_remember` halves the interval, and a bar divided by

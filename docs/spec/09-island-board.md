@@ -265,9 +265,9 @@ On the board, for every land, kept deliberately short:
   stops, so a land's danger is a speed. The casualty clock is a **ring** on the Dahan count
   rather than a second bar here; see the health rings in
   [06-ui-contract.md](./06-ui-contract.md).
-- While the land holds **both Dahan and invaders**: a thin Dahan strike bar with an axe at its
-  left, in its own row under the allies count. It fills as the strike clock runs down and is
-  full when the Dahan swing. Both conditions are required, because they are exactly the land
+- While the land holds **both Dahan and invaders**: a short, thin Dahan strike bar with an axe
+  past its right-hand end, sitting in the allies row right of the Dahan count. It fills as the
+  strike clock runs down and is full when the Dahan swing. Both conditions are required, because they are exactly the land
   the strike would not skip. One clock drives every bar on the board — see
   [06-ui-contract.md](./06-ui-contract.md).
 - While the next wave will Build here: a banner naming the unit it will add.

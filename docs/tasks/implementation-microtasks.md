@@ -202,12 +202,14 @@ when the Dahan next swing meant leaving the thing being watched, finding the rig
 countdowns, and coming back. It is also the only clock on the board that is *good news*, and
 the only one with no representation where the units it belongs to are standing.
 
-- **`chipStrikeMarkup`** (`ui.js`) draws a row under the allies count holding a new `si-axe`
-  glyph (`index.html`, the fifth symbol in the defs and the first that is not a unit) and a
-  track. Drawn only where `dahan > 0` **and** the land holds invaders — exactly the land
-  `resolveDahanAttack` would not skip, so a bar means *these Dahan hit here when it fills*
-  rather than *somewhere on the island someone swings*. A bar on a land the strike passes by
-  would fill to full and then do nothing, which is the one thing a gauge must never do.
+- **`chipStrikeMarkup`** (`ui.js`) draws a short track followed by a new `si-axe` glyph
+  (`index.html`, the fifth symbol in the defs and the first that is not a unit), emitted into
+  the allies row immediately right of the Dahan count — it is that count's clock and nothing
+  else's, and standing beside it says so with no ink spent. Drawn only where `dahan > 0` **and**
+  the land holds invaders — exactly the land `resolveDahanAttack` would not skip, so a bar means
+  *these Dahan hit here when it fills* rather than *somewhere on the island someone swings*. A
+  bar on a land the strike passes by would fill to full and then do nothing, which is the one
+  thing a gauge must never do.
 - **One clock, drawn several times.** `resolveDahanAttack` swings every land on a single
   `round.dahanAttackRemaining`, so every bar on the board shows the same fraction and they are
   all full at the same instant. `patchLandMeters` computes it **once above its loop** rather

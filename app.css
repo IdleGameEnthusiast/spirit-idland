@@ -1268,11 +1268,12 @@ button.reset {
    One threat bar and one ring, rather than two threat bars: two bars of equal weight read as
    two equal threats, and only one of them is the loss condition.
    The rule is kept by weight, not by count. The strike bar above (.chip-strike) is a second
-   bar, but it is thinner, it is in the player's own colour, and it is not a threat at all -
-   it is the one thing on a chip that is good news, and it must not be mistaken at a glance
-   for a fourth way to lose. It sits in its own row for the same reason: dropped into the flex
-   row below it would split the width with Blight and produce exactly the two equal bars this
-   paragraph forbids.
+   bar, but it is thinner, it is far shorter, it is in the player's own colour, and it is not a
+   threat at all - it is the one thing on a chip that is good news, and it must not be mistaken
+   at a glance for a fourth way to lose. Which is why it must never be dropped in beside Blight
+   here: sharing this row it would take half the chip's width and become exactly the second
+   equal threat bar this paragraph forbids. Tucked against the Dahan count instead, it is
+   plainly that count's clock rather than a second reading of the land.
    The fill is written by patchLandMeters every frame, which is why the transition is short -
    a long one would lag behind its own value rather than smoothing it. */
 .chip-meters {
@@ -1304,19 +1305,21 @@ button.reset {
   background: linear-gradient(90deg, rgba(231, 103, 85, 0.75), #ff9d8a);
 }
 
-/* The Dahan strike clock, in its own row under the allies count and above the Blight bar.
-   Thinner than the Blight bar on purpose - see the paragraph above .chip-meters. The axe and
-   the fill share --dahan-ink with the Dahan token itself (.unit-dahan), so the row reads as
-   belonging to the units standing above it.
+/* The Dahan strike clock, sitting in the allies row immediately right of the Dahan count, with
+   the axe past the far end of the track. Shorter and thinner than the Blight bar on purpose -
+   see the paragraph above .chip-meters. The axe and the fill share --dahan-ink with the Dahan
+   token itself (.unit-dahan), so the whole group reads as one thing: that count and its clock.
+
+   The track is a fixed width rather than a flexed one. Beside the count it has no row to fill,
+   and a bar that stretched to the chip's edge would be making the Blight bar's claim on the
+   chip at a moment when it is the one piece of good news on it.
 
    Both the glyph and the track carry their own dark backing: a chip sits on painted terrain,
    and desert is bright enough to swallow an unbacked 9px glyph. */
 .chip-strike {
-  width: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.22rem;
-  margin-top: 0.16rem;
+  gap: 0.18rem;
   color: var(--dahan-ink);
 }
 
@@ -1328,7 +1331,8 @@ button.reset {
 }
 
 .chip-strike-track {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  width: 1.35rem;
   height: 3px;
   border-radius: 999px;
   overflow: hidden;

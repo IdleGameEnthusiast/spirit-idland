@@ -451,17 +451,24 @@ function chipMetersMarkup(state, landId) {
 //
 // Like the Blight bar, the fill's width is written by patchLandMeters every frame rather than
 // baked in here - a bar rebuilt on every render could never animate.
+//
+// It rides inside the allies row, immediately right of the Dahan count, rather than in a row of
+// its own: it is that count's clock and nothing else's, and sitting against it says so with no
+// ink at all. That is also why it is short and fixed-width - a bar spanning the chip would be
+// making the claim the Blight bar makes, and the caller only ever emits this beside a Dahan
+// count, so the two conditions below cannot fire on a chip with no allies row to sit in.
+// The axe goes at the far end, past the fill, where a full bar reaches it as the Dahan swing.
 function chipStrikeMarkup(state, landId) {
   if ((state.dahan[landId] || 0) <= 0) return "";
   if (invaderCountInLand(state.invaders[landId]) <= 0) return "";
 
   return `
-    <div class="chip-strike" title="${locale(state).dahanStrikeBarLabel}">
-      <svg class="tok" aria-hidden="true" focusable="false"><use href="#si-axe"/></svg>
+    <span class="chip-strike" title="${locale(state).dahanStrikeBarLabel}">
       <span class="chip-strike-track">
         <span class="chip-strike-fill" data-meter-land="${landId}" data-meter-kind="dahan-strike"></span>
       </span>
-    </div>
+      <svg class="tok" aria-hidden="true" focusable="false"><use href="#si-axe"/></svg>
+    </span>
   `;
 }
 
@@ -555,8 +562,7 @@ function renderBoard(state) {
         ${blightHere > 0 ? `<span class="chip-blight-count" title="${t.landBlightLabel}">${blightHere}</span>` : ""}
       </div>
       ${invaderBits.length ? `<div class="chip-row invaders">${invaderBits.join("")}</div>` : ""}
-      ${allyBits.length ? `<div class="chip-row allies">${allyBits.join("")}</div>` : ""}
-      ${chipStrikeMarkup(state, landId)}
+      ${allyBits.length ? `<div class="chip-row allies">${allyBits.join("")}${chipStrikeMarkup(state, landId)}</div>` : ""}
       ${chipMetersMarkup(state, landId)}
       ${chipWaveMarkup(state, landId)}
       ${defeatMarkup}
