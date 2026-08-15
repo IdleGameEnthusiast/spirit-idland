@@ -335,6 +335,17 @@ const LAND_STATE_STYLE = {
   "explore-active": { fill: 0.42, ring: "#f2c45a", opacity: 1, chip: 1 }
 };
 
+// How full the strike bar has to be before it lights up - see the .chip-strike.is-imminent
+// paragraph in app.css for what lighting up looks like.
+//
+// A share of the swing rather than a count of seconds. The alternative was "light up for the
+// last two seconds", and it is the wrong shape: dahan_remember halves the interval, so a fixed
+// two seconds would be a quarter of the cycle for a player who has not bought it and half the
+// cycle for one who has - the more Fear you sink into the strike, the more of the time the
+// board would sit shouting. A fifth is a fifth, and the cue lands at the same point in the
+// rhythm however hard the clock has been hastened.
+const STRIKE_IMMINENT_AT = 0.8;
+
 // Sprite ids from index.html. Shapes follow the printed game: stick figure, two buildings,
 // three buildings. Colour is set per type in CSS, and the sprite paints with currentColor.
 const UNIT_GLYPH = {
@@ -609,8 +620,15 @@ function patchLandMeters(state) {
     // handed --health-lost and sit invisible at opacity 0. It carries data-meter-land only so
     // the selector above picks it up; nothing here reads the id, because there is no per-land
     // strike value to read.
+    //
+    // The class goes on the group rather than on the fill because the whole group lights up -
+    // track, fill and axe together - and CSS cannot reach up from the fill to its siblings.
+    // It is the same one clock driving all of them, so every lit bar on the board lights at the
+    // same instant, which is what makes the moment read as the island's and not one land's.
     if (kind === "dahan-strike") {
       el.style.width = `${strikeFill * 100}%`;
+      const group = el.closest(".chip-strike");
+      if (group) group.classList.toggle("is-imminent", strikeFill >= STRIKE_IMMINENT_AT);
       continue;
     }
 

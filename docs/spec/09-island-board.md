@@ -267,7 +267,8 @@ On the board, for every land, kept deliberately short:
   [06-ui-contract.md](./06-ui-contract.md).
 - While the land holds **both Dahan and invaders**: a short, thin Dahan strike bar with an axe
   past its right-hand end, sitting in the allies row right of the Dahan count. It fills as the
-  strike clock runs down and is full when the Dahan swing. Both conditions are required, because they are exactly the land
+  strike clock runs down, lights pale gold for the last fifth of it, and is full when the Dahan
+  swing. Both conditions are required, because they are exactly the land
   the strike would not skip. One clock drives every bar on the board — see
   [06-ui-contract.md](./06-ui-contract.md).
 - While the next wave will Build here: a banner naming the unit it will add.

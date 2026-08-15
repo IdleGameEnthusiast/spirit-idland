@@ -142,14 +142,14 @@ island board, and the between-round shop.
 - On a land holding **both Dahan and invaders**: a **Dahan strike bar**, sitting in the allies
   row immediately **right of the Dahan count**, with a small axe past its right-hand end. It
   **fills** as the strike clock runs down and is full at the instant the Dahan swing. Health
-  drains and an
-  attack gathers, which puts it in the opposite direction from the wave bar in the HUD strip:
+  drains and an attack gathers, which puts it in the opposite direction from the wave bar in the
+  HUD strip:
   that one is the invaders' and answers *how long do I still have*, this one is the player's
   and answers *how much have my people gathered*. On the chip itself the convention is
   consistent — the Blight bar beside it also fills.
 
-  It is subordinate to the Blight bar by every means available: thinner (3px against 5px), far
-  shorter (a fixed stub against the chip's full width), and in `--dahan-ink` rather than
+  It is subordinate to the Blight bar by every means available: thinner (3px against 5px),
+  shorter (a fixed track against the chip's full width), and in `--dahan-ink` rather than
   pressure red. It is the only thing on a chip that is good news and must not be mistaken at a
   glance for a fourth way to lose. It is **not** in the Blight bar's row, which is a flex row of
   equal-weight meters: a second meter dropped in there would split the width with Blight and
@@ -159,6 +159,21 @@ island board, and the between-round shop.
   count's clock and no other land reading, and standing beside the count says so with no ink
   spent. The axe goes past the far end of the track rather than in front of it, so a filling bar
   runs toward the blade and reaches it as the Dahan swing.
+- **The last fifth of the swing lights the whole group up** — fill, track and axe together, in
+  pale gold, with the axe breathing. The threshold is `STRIKE_IMMINENT_AT` in `ui.js` and is a
+  **share of the clock, not a count of seconds**: `dahan_remember` halves the interval, so a
+  fixed two seconds would be a quarter of the cycle unbought and half of it bought — the more
+  Fear sunk into the strike, the longer the board would sit shouting. A fifth is a fifth at any
+  haste.
+
+  Pale gold rather than red, by the same rule that governs the bar's weight. Red on a chip means
+  Blight and wounds; the strike landing is the good news, and flashing it in the threat colour
+  would make it read as a fourth way to lose. The cue exists because a 3px bar in a mid-warm
+  brown states its fraction honestly and announces nothing — a player watching the invaders
+  never catches the one instant worth catching.
+
+  One clock drives every lit bar, so they all light at the same instant. That is the point: the
+  moment belongs to the island, not to a land.
 
   It is normalized against `roundDahanAttackInterval(state)`, never the base
   `DAHAN_ATTACK_INTERVAL_SECONDS`. `dahan_remember` halves the interval, and a bar divided by

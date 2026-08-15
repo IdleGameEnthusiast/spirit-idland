@@ -227,11 +227,18 @@ the only one with no representation where the units it belongs to are standing.
   exactly two shapes — `blight` is a width and everything else falls through to the ring — so a
   third kind without its own branch would have been handed `--health-lost` and sat invisible at
   `opacity: 0`.
-- **Subordinate by weight, not by count** (`app.css`). 3px against the Blight bar's 5px, in
-  `--dahan-ink` rather than pressure red, and in **its own row** — dropped into `.chip-meters`
-  it would have split the width with Blight and produced the two equal bars that block's own
-  comment forbids. The comment above `.chip-meters` was rewritten accordingly: one *threat* bar
-  and rings, plus a lighter bar in the player's colour that is not a threat at all.
+- **Subordinate by weight, not by count** (`app.css`). 3px against the Blight bar's 5px, a fixed
+  track against Blight's full chip width, and in `--dahan-ink` rather than pressure red — and
+  **out of `.chip-meters`**, where it would have split the width with Blight and produced the
+  two equal bars that block's own comment forbids. The comment above `.chip-meters` was
+  rewritten accordingly: one *threat* bar and rings, plus a lighter bar in the player's colour
+  that is not a threat at all.
+- **The last fifth lights up** (`STRIKE_IMMINENT_AT`, `.chip-strike.is-imminent`). A bar that
+  states its fraction honestly still announces nothing, and the instant worth catching is the
+  one a player watching the invaders misses. Fill, track and axe all light — hence the class on
+  the group rather than on the fill, which CSS cannot reach up from. Pale gold, not red: red on
+  a chip means Blight and wounds, and this is the good news. The threshold is a share of the
+  clock rather than a count of seconds, so haste cannot stretch the shouting to half the cycle.
 - **No engine change, no export, no state change** — every number already existed and was
   already exported (`round.dahanAttackRemaining`, `roundDahanAttackInterval`,
   `invaderCountInLand`). `03-state-contract.md` was checked and needs nothing. **No signature

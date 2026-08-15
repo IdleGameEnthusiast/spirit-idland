@@ -1312,7 +1312,9 @@ button.reset {
 
    The track is a fixed width rather than a flexed one. Beside the count it has no row to fill,
    and a bar that stretched to the chip's edge would be making the Blight bar's claim on the
-   chip at a moment when it is the one piece of good news on it.
+   chip at a moment when it is the one piece of good news on it. It is wide enough to show a
+   fraction rather than a dot - at half the width the difference between a third and two thirds
+   was a couple of pixels - and still well short of the chip, which is the whole point.
 
    Both the glyph and the track carry their own dark backing: a chip sits on painted terrain,
    and desert is bright enough to swallow an unbacked 9px glyph. */
@@ -1328,16 +1330,18 @@ button.reset {
   height: 0.62rem;
   flex: 0 0 auto;
   filter: drop-shadow(0 0 1.5px rgba(3, 14, 20, 0.95)) drop-shadow(0 0 1px rgba(3, 14, 20, 0.8));
+  transition: color 0.18s ease-out, filter 0.18s ease-out;
 }
 
 .chip-strike-track {
   flex: 0 0 auto;
-  width: 1.35rem;
+  width: 2.7rem;
   height: 3px;
   border-radius: 999px;
   overflow: hidden;
   background: rgba(3, 14, 20, 0.72);
   border: 1px solid rgba(247, 241, 222, 0.11);
+  transition: box-shadow 0.18s ease-out, border-color 0.18s ease-out;
 }
 
 .chip-strike-fill {
@@ -1346,7 +1350,46 @@ button.reset {
   width: 0;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(208, 139, 82, 0.7), var(--dahan-ink));
-  transition: width 0.12s linear;
+  transition: width 0.12s linear, background 0.18s ease-out;
+}
+
+/* The last fifth of the swing, written on by patchLandMeters - see STRIKE_IMMINENT_AT in ui.js
+   for why it is a share of the clock rather than a count of seconds.
+
+   The problem this solves: a 3px bar in a mid-warm brown, on a chip sitting on painted terrain,
+   states the fraction honestly and announces nothing. A player watching the invaders never
+   catches the one instant that is worth catching.
+
+   So the whole group lights rather than the fill alone. The fill goes hot and pale, the track
+   throws a halo the same colour, and the axe brightens with it - three cues arriving together
+   over 0.18s, which is enough to catch peripheral vision on a chip the eye is not on.
+
+   Pale gold, not red. Red on this board means Blight and wounds, and this is the one moment on
+   a chip that is good news; a red flash here would read as a fourth way to lose, which is the
+   rule the .chip-meters paragraph above exists to keep. Pale reads as heat and as arrival
+   without borrowing the threat colour.
+
+   The pulse is deliberately slow and shallow. It has to survive being repeated on every land at
+   once, several times a round, for as long as the player keeps Dahan alive. */
+.chip-strike.is-imminent .chip-strike-fill {
+  background: linear-gradient(90deg, var(--dahan-ink), #ffd9a0);
+  box-shadow: 0 0 4px rgba(255, 217, 160, 0.9);
+}
+
+.chip-strike.is-imminent .chip-strike-track {
+  border-color: rgba(255, 217, 160, 0.5);
+  box-shadow: 0 0 5px rgba(255, 200, 130, 0.55);
+}
+
+.chip-strike.is-imminent .tok {
+  color: #ffd9a0;
+  filter: drop-shadow(0 0 1.5px rgba(3, 14, 20, 0.95)) drop-shadow(0 0 3px rgba(255, 200, 130, 0.8));
+  animation: strike-ready 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes strike-ready {
+  from { transform: scale(1); }
+  to { transform: scale(1.18); }
 }
 
 /* The health ring, worn by every unit count on the board - Dahan and invader alike. The token
@@ -1681,6 +1724,10 @@ button.reset {
   .chip-blight,
   .chip-meter-fill,
   .chip-strike-fill,
+  .chip-strike-track,
+  /* The lit strike still lights - colour and halo are the cue, and they are not motion. Only
+     the axe's breathing goes, which is the one part of it that moves. */
+  .chip-strike .tok,
   .chip-ring,
   .meter-fill,
   .ability-sweep { transition: none; animation: none; }
