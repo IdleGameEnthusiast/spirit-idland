@@ -47,6 +47,8 @@
     assert(engine.INVADER_TERRAINS.includes(state.invader.explore[0]), "a new explore terrain is drawn");
   });
 
+  // Only below the free-draw rung. From wave 60 an overlap is the rule rather than a fault,
+  // which the ladder suite covers - eight waves is nowhere near it.
   test("wave: a drawn explore terrain never duplicates build", () => {
     const ctx = newGame();
     for (let i = 0; i < 8; i += 1) {

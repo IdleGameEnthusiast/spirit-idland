@@ -137,7 +137,7 @@ const DAHAN_HASTE_MAX = 1;
  *   30  A Town appears each wave in some land that has none
  *   40  Discover seeds two Explorers per land instead of one
  *   50  Discover takes one extra land, off-terrain
- *   60  Discover draws two terrains instead of one
+ *   60  Discover draws two terrains instead of one, and stops avoiding Build
  *   70  Build runs twice
  *   80  Discover draws three terrains
  *   90  Discover draws every terrain
@@ -154,6 +154,14 @@ const DAHAN_HASTE_MAX = 1;
  * Because the track slides forward (see shiftInvaderTrack), every rung that widens Discover
  * widens Build one wave later - the terrains discovered this wave are the ones built next.
  * That coupling is the point: the player watches a terrain thicken before it does.
+ *
+ * Wave 60 carries a second rule on the same rung, and for the same reason. Below it, Discover
+ * steers around whatever is in the Build slot, so a land being reinforced this wave is never
+ * also being seeded: pressure spreads out, and the board always offers somewhere quieter to
+ * stand. From 60 the draw is free - a terrain may sit in both slots at once, and when it does
+ * that terrain's two lands take a Build and a Discover in the same wave and then inherit that
+ * Build again on the next. That is the point of the rung: the wave stops guaranteeing the
+ * player a fresh front and starts letting the same one compound.
  */
 const EXPLORE_UNRESTRICTED_FROM_WAVE = 10;
 const EXPLORE_SECOND_EXPLORER_FROM_WAVE = 20;
@@ -161,6 +169,9 @@ const BONUS_TOWN_FROM_WAVE = 30;
 const EXPLORE_DOUBLE_SEED_FROM_WAVE = 40;
 const EXPLORE_EXTRA_LAND_FROM_WAVE = 50;
 const EXPLORE_TWO_TERRAINS_FROM_WAVE = 60;
+// Deliberately the same wave rather than its own number: the free draw is the second half of
+// the two-terrain rung, so it moves wherever that rung moves and can never drift off it.
+const EXPLORE_FREE_DRAW_FROM_WAVE = EXPLORE_TWO_TERRAINS_FROM_WAVE;
 const BUILD_TWICE_FROM_WAVE = 70;
 const EXPLORE_THREE_TERRAINS_FROM_WAVE = 80;
 const EXPLORE_ALL_TERRAINS_FROM_WAVE = 90;
@@ -1067,7 +1078,7 @@ const I18N = {
     rungBonusTown: "Ein Dorf erhebt sich, wo keines steht",
     rungDoubleSeed: "Zwei Entdecker in jedem Gebiet",
     rungExtraLand: "Ein zusätzliches Gebiet abseits der Leiste",
-    rungTwoTerrains: "Entdecken zieht zwei Geländearten",
+    rungTwoTerrains: "Entdecken zieht zwei Geländearten, auch die vom Bauen",
     rungBuildTwice: "Bauen läuft zweimal",
     rungThreeTerrains: "Entdecken zieht drei Geländearten",
     rungAllTerrains: "Entdecken zieht jede Geländeart",
@@ -1344,7 +1355,7 @@ const I18N = {
     rungBonusTown: "A Town rises where there is none",
     rungDoubleSeed: "Two Explorers in every land",
     rungExtraLand: "One extra land, off the track",
-    rungTwoTerrains: "Discover draws two terrains",
+    rungTwoTerrains: "Discover draws two terrains, Build included",
     rungBuildTwice: "Build runs twice",
     rungThreeTerrains: "Discover draws three terrains",
     rungAllTerrains: "Discover draws every terrain",
@@ -1772,7 +1783,9 @@ function drawOpeningTerrains(state) {
 // `count` distinct terrains, avoiding `excludedTerrains` where there is room to. The
 // exclusion is a preference and not a rule, because past three terrains a wave there is no
 // longer room to honour it - and a Discover that had to shrink to keep "not what we just
-// built" would be the ladder undoing itself.
+// built" would be the ladder undoing itself. From the free-draw rung the wave phase stops
+// passing an exclusion at all (see exploreAvoidsBuild), which is a caller's decision rather
+// than one this function makes: it draws whatever it is asked to avoid, or nothing.
 function drawInvaderTerrains(count, excludedTerrains) {
   const wanted = clamp(Math.floor(Number(count) || 1), 1, INVADER_TERRAINS.length);
   if (wanted >= INVADER_TERRAINS.length) return INVADER_TERRAINS.slice();
@@ -1798,6 +1811,14 @@ function exploreTerrainCount(state) {
   return 1;
 }
 
+// Whether Discover still keeps off the Build slot. Below the free-draw rung it does, and the
+// early board is legible because of it: the terrain being reinforced is never also the one
+// being seeded. From the rung on it does not, and the draw is a plain draw over every terrain.
+function exploreAvoidsBuild(state) {
+  const wave = state && state.round ? state.round.wavesResolved : 0;
+  return wave < EXPLORE_FREE_DRAW_FROM_WAVE;
+}
+
 // Two slots, not three. Ravaging is no longer a phase that picks a terrain - invaders damage
 // the land they stand in, continuously, everywhere at once (02-core-loop.md#the-fight).
 function normalizeInvaderPhases(invader, state) {
@@ -1809,13 +1830,19 @@ function normalizeInvaderPhases(invader, state) {
   // rather than patched - the count and the contents always agree afterwards.
   const wanted = state ? exploreTerrainCount(state) : Math.max(1, explore.length);
 
-  // Build and Discover still never name the same thing while there is room for them not to.
-  // Once Discover takes every terrain there is no room, and the clash stops being one.
-  const clashes = wanted < INVADER_TERRAINS.length
+  // Below the free-draw rung, Build and Discover still never name the same thing while there
+  // is room for them not to - and once Discover takes every terrain there is no room, so the
+  // clash stops being one. From the rung on, naming the same terrain is the rule rather than a
+  // fault, so a save that holds an overlap is left exactly as it was written.
+  const avoidsBuild = state ? exploreAvoidsBuild(state) : true;
+  const clashes = avoidsBuild
+    && wanted < INVADER_TERRAINS.length
     && explore.length > 0
     && explore.every((terrain) => build.includes(terrain));
 
-  if (explore.length !== wanted || clashes) explore = drawInvaderTerrains(wanted, build);
+  if (explore.length !== wanted || clashes) {
+    explore = drawInvaderTerrains(wanted, avoidsBuild ? build : []);
+  }
 
   return { build, explore };
 }
@@ -4257,12 +4284,19 @@ function resolveExplorePhase(state) {
 // player can see a terrain thicken one wave before it does. That promise is why the two slots
 // widen together: every rung that gives Discover another terrain gives Build the same terrain
 // one wave later, and the track never shows less than what is coming.
+//
+// The new Discover only steers around the terrain that just slid into Build while the round is
+// below the free-draw rung. Above it the two slots can name the same terrain, and a terrain
+// that does holds its lands for two waves running.
 function shiftInvaderTrack(state) {
   state.invader = normalizeInvaderPhases(state.invader, state);
 
   const shiftedToBuild = exploreTerrains(state);
   state.invader.build = shiftedToBuild;
-  state.invader.explore = drawInvaderTerrains(exploreTerrainCount(state), shiftedToBuild);
+  state.invader.explore = drawInvaderTerrains(
+    exploreTerrainCount(state),
+    exploreAvoidsBuild(state) ? shiftedToBuild : []
+  );
 
   const t = locale(state);
   addLog(state, template(t.waveIncoming, {
@@ -5184,6 +5218,7 @@ const ENGINE_EXPORTS = {
   EXPLORE_SECOND_EXPLORER_FROM_WAVE,
   EXPLORE_DOUBLE_SEED_FROM_WAVE,
   EXPLORE_EXTRA_LAND_FROM_WAVE,
+  EXPLORE_FREE_DRAW_FROM_WAVE,
   BONUS_TOWN_FROM_WAVE,
   BUILD_TWICE_FROM_WAVE,
   INVADER_DAMAGE_RUNG_FROM_WAVE,
@@ -5329,6 +5364,7 @@ const ENGINE_EXPORTS = {
   drawOpeningTerrains,
   drawInvaderTerrains,
   exploreTerrainCount,
+  exploreAvoidsBuild,
   terrainList,
   landsOfTerrains,
   buildTerrains,

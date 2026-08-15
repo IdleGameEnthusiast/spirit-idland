@@ -158,6 +158,32 @@
     assertEqual(new Set(state.invader.explore).size, 3, "and no duplicates among them");
   });
 
+  // The second half of the wave 60 rung: the Discover draw stops avoiding the Build slot.
+  // Both halves are counted over a run of shifts rather than one, because the draw is random
+  // and a single shift proves nothing either way - below the rung the run must be clean, and
+  // from the rung the run must contain an overlap the old rule would have forbidden.
+  function overlapsOverShifts(wave, shifts) {
+    const state = boardAt(wave, { build: ["mountains"], explore: ["wetlands"] });
+    let overlaps = 0;
+    for (let i = 0; i < shifts; i += 1) {
+      engine.shiftInvaderTrack(state);
+      if (state.invader.explore.some((terrain) => state.invader.build.includes(terrain))) {
+        overlaps += 1;
+      }
+    }
+    return overlaps;
+  }
+
+  test("ladder: below wave 60 Discover never draws what just slid into Build", () => {
+    assert(engine.exploreAvoidsBuild(boardAt(59, { build: [], explore: [] })), "the rung is off");
+    assertEqual(overlapsOverShifts(59, 60), 0, "not once in sixty shifts");
+  });
+
+  test("ladder: from wave 60 Discover draws freely, Build slot and all", () => {
+    assert(!engine.exploreAvoidsBuild(boardAt(60, { build: [], explore: [] })), "the rung is on");
+    assert(overlapsOverShifts(60, 60) > 0, "some wave puts a terrain in both slots");
+  });
+
   test("ladder: at wave 90 Discover holds every terrain, and Build inherits it next wave", () => {
     const state = boardAt(90, { build: [], explore: ["wetlands"] });
     engine.shiftInvaderTrack(state);
