@@ -876,6 +876,10 @@ const I18N = {
     autoRoundOnBtn: "Auto-Runde: An",
     autoRoundOffBtn: "Auto-Runde: Aus",
     autoRoundHint: "Die nächste Runde startet von selbst. Aus: der Laden bleibt offen, bis du sie startest.",
+    // Auf der Fähigkeitskarte selbst, neben Stufe und Preis - dort, wo der Knopf sitzt, den
+    // die Automatik drückt.
+    autoCastLabel: "Auto",
+    autoCastHint: "Diese Fähigkeit wirkt sich selbst. Aus: die Automatik bleibt gekauft, die Fähigkeit wird wieder von Hand gewirkt. Nichts wird zurückerstattet, keine Abklingzeit ändert sich.",
     speedLabel: "Tempo",
     speedOptionTitle: "Spieltempo {speed}x",
     speedPausedTitle: "Pause - die Zeit steht still",
@@ -1158,6 +1162,8 @@ const I18N = {
     autoRoundOnBtn: "Auto round: on",
     autoRoundOffBtn: "Auto round: off",
     autoRoundHint: "Let the next round start by itself. Off: the shop stays open until you start it.",
+    autoCastLabel: "Auto",
+    autoCastHint: "Let this ability cast itself. Off: the automation stays bought and the ability goes back to being cast by hand. Nothing is refunded and no cooldown changes.",
     speedLabel: "Speed",
     speedOptionTitle: "Game speed {speed}x",
     speedPausedTitle: "Paused - time stands still",

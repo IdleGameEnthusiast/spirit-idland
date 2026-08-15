@@ -805,8 +805,12 @@ button.reset {
 /* A tiered ability is castable and buyable at once, so its card cannot be the single button
    the others are - a button inside a button is not markup. It is a div holding two: the cast
    surface on top, the tier and its price along the bottom. The card keeps the .ability
-   styling so the bar still reads as one column of equal things. */
-.ability.is-tiered {
+   styling so the bar still reads as one column of equal things.
+
+   An ability whose automation is owned takes the same shape for the same reason: a checkbox
+   cannot live inside a button either. */
+.ability.is-tiered,
+.ability.is-automated {
   display: grid;
   cursor: default;
 }
@@ -846,6 +850,36 @@ button.reset {
 
 /* The upgrade price sits on the bottom row, so it needs no top margin of its own. */
 .ability-foot .ability-unlock { margin: 0; }
+
+/* The auto-cast switch: the one control on a card that is otherwise all state and price, so
+   it is drawn quiet - footnote weight, the card's own ink, no fill and no border of its own.
+   Pushed to the far end of the foot so it reads as one thing wherever it lands: opposite the
+   tier row on the Innate's card, and alone on the right of every other. */
+.ability-foot .ability-auto { margin-left: auto; }
+
+.ability-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  /* Its own pointer, rather than the default the cast surface above it hands down. */
+  cursor: pointer;
+  user-select: none;
+}
+
+.ability-auto input {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin: 0;
+  accent-color: var(--accent-calm);
+  cursor: pointer;
+}
+
+.ability-auto input:focus-visible { outline: 2px solid #8ed3e6; outline-offset: 1px; }
 
 /* Same gold promise as a locked card wears when its price comes into reach. */
 .ability.is-tiered.is-affordable {

@@ -645,24 +645,49 @@ function renderLandDetail(state) {
  * second, which is the whole reason for the split.                      *
  * ------------------------------------------------------------------ */
 
-// What changes the bar's shape: which abilities are unlocked, and what tier the tiered ones
-// stand at - a tier swaps the card's whole text and price, so it has to force a rebuild.
-// Affordability is patched per frame rather than rebuilt.
+// What changes the bar's shape: which abilities are unlocked, what tier the tiered ones stand
+// at - a tier swaps the card's whole text and price - and whether each ability's automation is
+// owned, because owning one changes the card from a bare button into a container with a foot.
+// Affordability is patched per frame rather than rebuilt, and so is the checkbox's own ticked
+// state: folding that in would rebuild the whole bar on every click of the box and take the
+// running cooldown sweep with it.
 function abilityBarSignature(state) {
   const tiers = spiritAbilityIds(state)
     .filter(abilityIsTiered)
     .map((id) => `${id}:${abilityTier(state, id)}`)
     .join(",");
-  return [currentLang(state), unlockedAbilityIds(state).join(","), tiers].join("|");
+  const automations = spiritAbilityIds(state)
+    .map((id) => `${id}:${autoCastOwned(state, id) ? 1 : 0}`)
+    .join(",");
+  return [currentLang(state), unlockedAbilityIds(state).join(","), tiers, automations].join("|");
+}
+
+// The switch that says whether this ability's automation casts. Drawn only once the automation
+// is owned, and drawn from then on forever: autoCastOwned reads the purchase rather than the
+// round's snapshot, so the box appears the instant it is bought - already ticked, because a
+// player who just paid for it should not have to click a second time - and never disappears.
+//
+// The input carries data-auto-cast and the label does not, so a click on the text reaches the
+// bar's handler once, through the click the label synthesizes on the box itself.
+function abilityAutoCastMarkup(state, abilityId) {
+  if (!autoCastOwned(state, abilityId)) return "";
+  const t = locale(state);
+  return `
+    <label class="ability-auto" title="${t.autoCastHint}">
+      <input type="checkbox" data-auto-cast="${abilityId}">
+      <span>${t.autoCastLabel}</span>
+    </label>
+  `;
 }
 
 // One unlocked ability: the pressable card, with the cooldown sweep behind its text.
+//
+// Two shapes, and which one it takes is the automation. Without one it stays the single button
+// it has always been. With one it becomes the container the tiered card already is - a checkbox
+// cannot live inside a button, which is the same wall renderTieredAbility hit - so the cast
+// surface moves into a button of its own and the box sits in a foot beneath it.
 function renderUnlockedAbility(state, abilityId) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "ability";
-  button.setAttribute("data-ability", abilityId);
-  button.innerHTML = `
+  const face = `
     <span class="ability-sweep" data-role="sweep"></span>
     <span class="ability-body">
       <span class="ability-head">
@@ -672,7 +697,24 @@ function renderUnlockedAbility(state, abilityId) {
       <span class="ability-text">${abilityText(state, abilityId)}</span>
     </span>
   `;
-  return button;
+
+  const auto = abilityAutoCastMarkup(state, abilityId);
+  if (!auto) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ability";
+    button.setAttribute("data-ability", abilityId);
+    button.innerHTML = face;
+    return button;
+  }
+
+  const card = document.createElement("div");
+  card.className = "ability is-automated";
+  card.innerHTML = `
+    <button type="button" class="ability-cast" data-ability="${abilityId}">${face}</button>
+    <span class="ability-foot">${auto}</span>
+  `;
+  return card;
 }
 
 // One locked ability: the same card, dimmed, with a price where its state would be. It is a
@@ -729,6 +771,7 @@ function renderTieredAbility(state, abilityId) {
     <span class="ability-foot">
       <span class="ability-tier">${template(t.abilityTierLabel, { tier: abilityTier(state, abilityId) + 1 })}</span>
       ${upgrade}
+      ${abilityAutoCastMarkup(state, abilityId)}
     </span>
   `;
   return card;
@@ -768,6 +811,16 @@ function patchAbilityBar(state) {
     const affordable = running && state.resources.energy >= cost;
     button.disabled = !affordable;
     button.closest(".ability").classList.toggle("is-affordable", affordable);
+  }
+
+  // The one exception to the rule above: the checkbox stays live while the round is not
+  // running. It spends nothing - no Energy, no cooldown, no Fear - and the shop between rounds
+  // is exactly where a player decides how the next round should play, so deadening it would
+  // take the setting away at the moment it is most wanted.
+  //
+  // Ticked-ness is patched here rather than rebuilt, like every other per-frame value.
+  for (const box of dom.abilityBar.querySelectorAll("[data-auto-cast]")) {
+    box.checked = state.ui.autoCast[box.getAttribute("data-auto-cast")] !== false;
   }
 
   for (const button of dom.abilityBar.querySelectorAll("[data-ability]")) {
@@ -1406,6 +1459,20 @@ dom.abilityBar.addEventListener("click", (event) => {
   const upgrade = target.closest("[data-upgrade-ability]");
   if (upgrade) {
     upgradeAbility(state, upgrade.getAttribute("data-upgrade-ability") || "");
+    updateUI(state);
+    persist();
+    return;
+  }
+
+  // Ahead of the cast path too, and for the same reason: the box sits in the card's foot, and
+  // the click that lands on it is not a click on the ability.
+  //
+  // The new value is read off the box rather than derived from autoCastOn, which is false for
+  // an automation bought this round - deriving it would make the first click of a fresh
+  // purchase a no-op that appears to un-tick itself.
+  const autoBox = target.closest("[data-auto-cast]");
+  if (autoBox) {
+    setAutoCast(state, autoBox.getAttribute("data-auto-cast") || "", autoBox.checked === true);
     updateUI(state);
     persist();
     return;
