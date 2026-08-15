@@ -2944,12 +2944,60 @@ function resolveAutoBuyAbilities(state) {
   }
 }
 
+/* ---------- Auto-cast: owned, and switched on ----------
+ *
+ * The same two-question split the round gate already makes (see autoStartRoundOwned below):
+ * the upgrade is permanent and the toggle is a preference. Buying an automation used to be a
+ * one-way door - the resolver runs inside tick before the fight and fires the instant the
+ * cooldown clears, so the card never spends a frame in a state a player could click, and 400
+ * Fear permanently removed an ability from active play.
+ */
+
+// The five ability automations, by the ability each one casts. It is the only place the two
+// id spaces are tied together: the resolvers below are keyed by upgrade, the ability bar is
+// keyed by ability, and one map beats a second copy of the pairing in ui.js.
+const AUTO_CAST_UPGRADES = {
+  boon_of_vigor: "auto_boon",
+  rivers_bounty: "auto_bounty",
+  innate_power: "auto_innate",
+  wash_away: "auto_wash_away",
+  flash_floods: "auto_flash_floods"
+};
+
+// Whether the player owns this ability's automation - which is what decides whether the card
+// draws a checkbox at all. Read off what is owned rather than off the round's snapshot: the
+// purchase is permanent, so the control it comes with never disappears again.
+function autoCastOwned(state, abilityId) {
+  const upgradeId = AUTO_CAST_UPGRADES[abilityId];
+  return Boolean(upgradeId) && upgradeTier(state, upgradeId) > 0;
+}
+
+// Whether it should actually cast this tick. Ownership through the round's snapshot, so a
+// mid-round purchase still waits for the next round; the toggle live, so unticking it stops
+// the next cast rather than the next round's casts.
+//
+// `!== false` rather than `=== true`: absent means on, which is what makes a save written
+// before this feature load with its automations still running.
+function autoCastOn(state, abilityId) {
+  const upgradeId = AUTO_CAST_UPGRADES[abilityId];
+  if (!upgradeId || activeUpgradeTier(state, upgradeId) <= 0) return false;
+  return state.ui.autoCast[abilityId] !== false;
+}
+
+// Unticking stops future casts and nothing else: no cooldown is reset, shortened or
+// lengthened, no cast is undone, nothing is refunded, and the upgrade is never un-bought.
+function setAutoCast(state, abilityId, on) {
+  if (!AUTO_CAST_UPGRADES[abilityId]) return false;
+  state.ui.autoCast[abilityId] = on === true;
+  return state.ui.autoCast[abilityId];
+}
+
 // The Boon fires itself once `auto_boon` is bought. It goes straight to the effect rather
 // than through triggerAbility: there is no target to arm, no refusal to report, and nothing
 // here should ever surface as a message. The cooldown is the same one a click would spend,
 // so owning it changes who presses the button and not how often it can be pressed.
 function resolveAutoBoon(state) {
-  if (activeUpgradeTier(state, "auto_boon") <= 0) return;
+  if (!autoCastOn(state, "boon_of_vigor")) return;
   if (!abilityIsUnlocked(state, "boon_of_vigor")) return;
   if (!abilityIsReady(state, "boon_of_vigor")) return;
 
@@ -3247,7 +3295,7 @@ function pickInnateAutoTarget(state) {
 // exercise (see pickInnateAutoTarget), so a tick that satisfies no priority leaves the
 // cooldown alone rather than spending it on a land that did not need it.
 function resolveAutoInnate(state) {
-  if (activeUpgradeTier(state, "auto_innate") <= 0) return;
+  if (!autoCastOn(state, "innate_power")) return;
   if (!abilityIsUnlocked(state, "innate_power")) return;
   if (!abilityIsReady(state, "innate_power")) return;
 
@@ -3267,7 +3315,7 @@ function resolveAutoInnate(state) {
 // The Energy unlock is deliberately still owed every round. This buys the clicking, not the
 // ability, and a round that never spent the 5 Energy has nothing to automate.
 function resolveAutoBounty(state) {
-  if (activeUpgradeTier(state, "auto_bounty") <= 0) return;
+  if (!autoCastOn(state, "rivers_bounty")) return;
   if (!abilityIsUnlocked(state, "rivers_bounty")) return;
   if (!abilityIsReady(state, "rivers_bounty")) return;
 
@@ -3377,7 +3425,7 @@ function pickWashAwayAutoTarget(state) {
 }
 
 function resolveAutoWashAway(state) {
-  if (activeUpgradeTier(state, "auto_wash_away") <= 0) return;
+  if (!autoCastOn(state, "wash_away")) return;
   if (!abilityIsUnlocked(state, "wash_away")) return;
   if (!abilityIsReady(state, "wash_away")) return;
 
@@ -3459,7 +3507,7 @@ function pickFlashFloodsAutoTarget(state) {
 }
 
 function resolveAutoFlashFloods(state) {
-  if (activeUpgradeTier(state, "auto_flash_floods") <= 0) return;
+  if (!autoCastOn(state, "flash_floods")) return;
   if (!abilityIsUnlocked(state, "flash_floods")) return;
   if (!abilityIsReady(state, "flash_floods")) return;
 
@@ -4672,6 +4720,19 @@ function createInitialState() {
       // wanting it on right now are two different things - a player who wants to stop and
       // shop should not have to un-buy anything to get the pause back.
       autoStartRound: true,
+      // One switch per ability automation, and the same idea one level down from the round
+      // gate: owning auto_wash_away and wanting it casting right now are two different
+      // questions. It lives in `ui` beside the two above rather than in `round` because it
+      // outlives every round it is read in. Written out here rather than left to normalize,
+      // since the state contract documents literal shapes; normalizeState rebuilds it from
+      // AUTO_CAST_UPGRADES.
+      autoCast: {
+        boon_of_vigor: true,
+        rivers_bounty: true,
+        innate_power: true,
+        wash_away: true,
+        flash_floods: true
+      },
       // The playtest code, once redeemed. It sits with the other settings rather than in meta
       // because it is the same kind of thing: how the game is being read, not what has been
       // earned inside it. Nothing in the rules reads it - see the playtest section.
@@ -4767,6 +4828,16 @@ function normalizeState(raw) {
   // Defaults on rather than off, unlike auto-proceed: a save that predates the toggle has no
   // value to read, and the only player it can affect is one who has bought the automation.
   merged.ui.autoStartRound = merged.ui.autoStartRound !== false;
+  // Rebuilt from the registry rather than merged over it, the same way upgrades.purchased and
+  // abilities are: every id AUTO_CAST_UPGRADES carries gets `raw !== false`, so a save written
+  // before the toggles existed loads with all five still running, and a key the map does not
+  // carry is dropped rather than kept as a preference for an ability nothing can cast.
+  const rawAutoCast = merged.ui.autoCast && typeof merged.ui.autoCast === "object" ? merged.ui.autoCast : {};
+  const autoCast = {};
+  for (const abilityId of Object.keys(AUTO_CAST_UPGRADES)) {
+    autoCast[abilityId] = rawAutoCast[abilityId] !== false;
+  }
+  merged.ui.autoCast = autoCast;
   merged.ui.selectedLand = isLandId(merged.ui.selectedLand) ? merged.ui.selectedLand : null;
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
@@ -4906,6 +4977,10 @@ function migrateSave(raw) {
   // to a wiped run in the wrong language - or at a speed the player did not pick - would read
   // as a second bug. The redeemed code carries for the same reason, and is read before the
   // speed because it is what says whether a playtest speed is still on the dial.
+  //
+  // ui.autoCast is deliberately not in that list. The reset takes every purchase with it, so
+  // there is no automation left to switch off and no checkbox on any card to carry a
+  // preference for - the fresh state's five defaults are the right answer.
   const prefs = (raw && raw.ui) || {};
   if (prefs.language === "en") fresh.ui.language = "en";
   if (prefs.playtest === true) setPlaytest(fresh, true);
@@ -5269,6 +5344,10 @@ const ENGINE_EXPORTS = {
   autoStartRoundOn,
   setAutoStartRound,
   resolveAutoStartRound,
+  AUTO_CAST_UPGRADES,
+  autoCastOwned,
+  autoCastOn,
+  setAutoCast,
   activeUpgradeTier,
   setAutoProceed,
   waveGateHeld,

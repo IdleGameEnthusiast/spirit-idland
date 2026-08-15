@@ -260,6 +260,48 @@
     assertEqual(loaded.essence.jungle, 0, "missing pool defaults");
   });
 
+  // ui.autoCast is keyed by content ids, so it is rebuilt from the registry rather than merged
+  // over: a save that predates it loads with everything the player bought still running, and a
+  // save cannot carry a toggle for an ability the build no longer has.
+  test("normalize: a save with no ui.autoCast loads with all five automations on", () => {
+    newGame();
+    const state = engine.normalizeState({ schemaVersion: engine.VERSION, ui: { language: "en" } });
+
+    for (const abilityId of Object.keys(engine.AUTO_CAST_UPGRADES)) {
+      assertEqual(state.ui.autoCast[abilityId], true, `${abilityId} defaults on`);
+    }
+  });
+
+  test("normalize: ui.autoCast drops an unknown ability id and keeps a deliberate off", () => {
+    newGame();
+    const state = engine.normalizeState({
+      schemaVersion: engine.VERSION,
+      ui: { autoCast: { wash_away: false, summon_kraken: true } }
+    });
+
+    assertEqual(state.ui.autoCast.wash_away, false, "the player's off survives the load");
+    assert(!("summon_kraken" in state.ui.autoCast), "an id the registry does not carry is dropped");
+    assertEqual(state.ui.autoCast.flash_floods, true, "every other id is still on");
+    assertEqual(Object.keys(state.ui.autoCast).length, 5, "and the map is exactly the registry's");
+  });
+
+  test("migration: a reset leaves the five auto-cast defaults standing", () => {
+    newGame();
+    const storage = memoryStorage();
+    storage.setItem(engine.SAVE_KEY, JSON.stringify({
+      schemaVersion: "2.0.0",
+      ui: { language: "en", autoCast: { wash_away: false } }
+    }));
+
+    // The reset takes every purchase with it, so there is no automation left to switch off and
+    // no checkbox on any card to carry a preference for - unlike the language beside it.
+    const loaded = engine.loadState(storage);
+    for (const abilityId of Object.keys(engine.AUTO_CAST_UPGRADES)) {
+      assertEqual(loaded.ui.autoCast[abilityId], true, `${abilityId} back to the fresh default`);
+    }
+    assertEqual(loaded.ui.language, "en", "while the preferences that survive a wipe still do");
+  });
+
   /* Export and import - docs/spec/08-acceptance-tests.md#save-and-migration-checks */
 
   test("export: a file round-trips the board, the upgrades and the log", () => {
