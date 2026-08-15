@@ -870,11 +870,11 @@ const I18N = {
     wavePausedValue: "Pause",
     waveHeldValue: "Wartet",
     startNextWaveBtn: "Welle starten",
-    autoWaveOnBtn: "Auto: An",
-    autoWaveOffBtn: "Auto: Aus",
+    // Beide Schalter tragen ihren Zustand im Schieber, nicht im Wort - deshalb steht hier
+    // nur noch, was geschaltet wird, und nicht mehr An und Aus dazu.
+    autoWaveLabel: "Auto",
     autoWaveHint: "Nächste Welle läuft von selbst an. Aus: am Ende der Leiste hält die Zeit an, bis du die Welle startest.",
-    autoRoundOnBtn: "Auto-Runde: An",
-    autoRoundOffBtn: "Auto-Runde: Aus",
+    autoRoundLabel: "Auto-Runde",
     autoRoundHint: "Die nächste Runde startet von selbst. Aus: der Laden bleibt offen, bis du sie startest.",
     // Auf der Fähigkeitskarte selbst, neben Stufe und Preis - dort, wo der Knopf sitzt, den
     // die Automatik drückt.
@@ -1157,11 +1157,9 @@ const I18N = {
     wavePausedValue: "Paused",
     waveHeldValue: "Waiting",
     startNextWaveBtn: "Start wave",
-    autoWaveOnBtn: "Auto: on",
-    autoWaveOffBtn: "Auto: off",
+    autoWaveLabel: "Auto",
     autoWaveHint: "Let the next wave start by itself. Off: time stops at the end of the bar until you start the wave.",
-    autoRoundOnBtn: "Auto round: on",
-    autoRoundOffBtn: "Auto round: off",
+    autoRoundLabel: "Auto round",
     autoRoundHint: "Let the next round start by itself. Off: the shop stays open until you start it.",
     autoCastLabel: "Auto",
     autoCastHint: "Let this ability cast itself. Off: the automation stays bought and the ability goes back to being cast by hand. Nothing is refunded and no cooldown changes.",

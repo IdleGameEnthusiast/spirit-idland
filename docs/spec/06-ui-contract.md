@@ -39,7 +39,8 @@ island board, and the between-round shop.
   countdown on the page — the Dahan strike, every ability cooldown — converts the same way,
   or two clocks that run together stop reading as one
 - Wave controls, in the wave tile because they answer the question the bar above them asks:
-  the **auto-proceed toggle**, and the **call button** that opens a held gate. They are the
+  the **auto-proceed toggle** — the same sliding switch the ability cards carry, labelled
+  "Auto" whichever way it is set — and the **call button** that opens a held gate. They are the
   only part of the strip that takes pointer events; the row around them stays inert, so the
   island keeps every pixel it is not actually covering. The call button stays on the strip
   while it is dead rather than being hidden — it is the one control the manual mode is played
@@ -239,6 +240,10 @@ island board, and the between-round shop.
 - The toggle sits beside the button it automates and travels with it, the same rule that puts
   the auto-wave toggle beside the wave countdown. It is drawn on ownership, so the row is a
   single centred button until the automation is bought
+- It is the same switch the ability cards carry (see
+  [Ability Status Rules](#ability-status-rules)), and it keeps its own height rather than
+  stretching to the primary button's: a slider stretched to twice its height is a slider lost
+  in a field of its own background
 
 5. The shop (always in the rail; its summary is what changes with `round.status`)
 - The round just lost: its number and the Fear it earned
@@ -332,6 +337,17 @@ from the dev tools, and still is.
   behind the track it paints, so the keyboard, the label's click forwarding, and everything
   that reads or writes `checked` keep working on a plain checkbox. Hiding it must leave its
   box in the layout (not `display: none`), or the focus ring goes with it.
+- **One switch, worn by all three automations the player can switch**: the wave, the round, and
+  each ability's auto-cast. Same track, same size, same colours, sized in `rem` rather than off
+  whichever line it landed on — the wave toggle and the auto-cast toggle are the same object
+  and must not be two objects that merely rhyme. What drives it differs by home and the shape
+  does not: on a card it is the hidden checkbox behind the track, in the HUD it is the button
+  around it wearing `.is-on`.
+- **The label says what is switched, never whether it is on.** That reading belongs to the
+  slider; a word repeating it is a second answer to look at. So the two HUD toggles read "Auto"
+  and "Auto round" at all times, and being on takes nothing but the switch and brighter ink —
+  the teal fill that used to flood the whole button is gone, or the button would be shouting
+  the same thing the slider already says.
 - **Three card shapes, not four.** A checkbox cannot live inside a button any more than a
   price button can, so the switch forces the same container shape the tiered card already uses.
 

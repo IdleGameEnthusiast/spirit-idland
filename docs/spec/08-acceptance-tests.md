@@ -445,6 +445,11 @@ Not automated, and verified by hand instead:
 - The card's own cast surface, for the same reason: a click on the foot of a card with one —
   the tier row, the empty space beside a price — casts the ability, and the same click on a
   cooling card, a card in an ended round, or a locked card casts nothing.
+- The three auto switches rendering as one control, for the same reason: wave, round and
+  auto-cast tracks measure the same and paint the same in both settings. Checked by paint
+  rather than by computed style — a headless run advances no frame clock, so a transitioned
+  property read after a click still reports the value it is transitioning *from*, and both
+  colour and knob position on this switch are transitioned.
 - The Dahan strike bar on the chip, for the same reason. Driven in headless Edge over `?vis`:
   the bar present exactly on the lands holding Dahan **and** invaders and absent on both
   one-sided cases, the per-frame patch writing the fixture's fraction, and the axe-plus-track

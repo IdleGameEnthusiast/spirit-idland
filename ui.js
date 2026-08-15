@@ -13,6 +13,9 @@ const dom = {
   speedGroup: document.getElementById("speedGroup"),
   speedLabel: document.getElementById("speedLabel"),
   autoWaveBtn: document.getElementById("autoWaveBtn"),
+  // The switch inside the button owns the rest of it, so the text is written into a span of
+  // its own rather than over the button's whole content.
+  autoWaveBtnText: document.getElementById("autoWaveBtnText"),
   startNextWaveBtn: document.getElementById("startNextWaveBtn"),
 
   roundLabel: document.getElementById("roundLabel"),
@@ -67,6 +70,7 @@ const dom = {
   upgradeList: document.getElementById("upgradeList"),
   startNextRoundBtn: document.getElementById("startNextRoundBtn"),
   autoRoundBtn: document.getElementById("autoRoundBtn"),
+  autoRoundBtnText: document.getElementById("autoRoundBtnText"),
 
   logTitle: document.getElementById("logTitle"),
   eventLog: document.getElementById("eventLog"),
@@ -762,7 +766,7 @@ function abilityAutoCastMarkup(state, abilityId) {
     <label class="ability-auto" title="${t.autoCastHint}">
       <input type="checkbox" data-auto-cast="${abilityId}">
       <span>${t.autoCastLabel}</span>
-      <span class="ability-switch" aria-hidden="true"></span>
+      <span class="auto-switch" aria-hidden="true"></span>
     </label>
   `;
 }
@@ -1236,8 +1240,10 @@ function patchPacingControls(state) {
     button.title = value === 0 ? t.speedPausedTitle : template(t.speedOptionTitle, { speed: value });
   }
 
+  // The label says what is switched and never whether it is on: that reading belongs to the
+  // slider beside it, and a word repeating it would be a second answer to look at.
   const auto = autoProceedOn(state);
-  dom.autoWaveBtn.textContent = auto ? t.autoWaveOnBtn : t.autoWaveOffBtn;
+  dom.autoWaveBtnText.textContent = t.autoWaveLabel;
   dom.autoWaveBtn.setAttribute("aria-pressed", String(auto));
   dom.autoWaveBtn.classList.toggle("is-on", auto);
   dom.autoWaveBtn.title = t.autoWaveHint;
@@ -1257,7 +1263,7 @@ function patchPacingControls(state) {
   dom.autoRoundBtn.hidden = !owned;
   if (owned) {
     const autoRound = autoStartRoundOn(state);
-    dom.autoRoundBtn.textContent = autoRound ? t.autoRoundOnBtn : t.autoRoundOffBtn;
+    dom.autoRoundBtnText.textContent = t.autoRoundLabel;
     dom.autoRoundBtn.setAttribute("aria-pressed", String(autoRound));
     dom.autoRoundBtn.classList.toggle("is-on", autoRound);
     dom.autoRoundBtn.title = t.autoRoundHint;

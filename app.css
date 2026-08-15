@@ -427,10 +427,65 @@ h3 {
   cursor: default;
 }
 
-.hud-btn.is-on {
-  color: var(--ink-0);
-  border-color: rgba(120, 201, 179, 0.6);
-  background: rgba(120, 201, 179, 0.18);
+/* An auto toggle carries its state in the slider, not in a fill behind the whole button - the
+   same reading the ability cards give. All it takes from being on is brighter ink. */
+.hud-btn.is-on { color: var(--ink-0); }
+
+.hud-btn.auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+/* ------------------------------------------------------------------ *
+ * The auto switch                                                      *
+ *                                                                      *
+ * One control, worn by all three automations the player can switch:    *
+ * the wave, the round, and each ability's auto-cast. Every one of them  *
+ * is a setting that stays where it is put, so every one of them is a    *
+ * slider rather than a tick box or a lit-up button.                     *
+ *                                                                      *
+ * What drives it differs by home and the shape does not: on a card it   *
+ * is a hidden checkbox behind the track, in the HUD it is the button    *
+ * around it wearing .is-on.                                             *
+ * ------------------------------------------------------------------ */
+
+.auto-switch {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: 1.6rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  background: rgba(247, 241, 222, 0.16);
+  border: 1px solid rgba(247, 241, 222, 0.22);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.auto-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.1rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--ink-1);
+  transform: translate(0, -50%);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.ability-auto input:checked ~ .auto-switch,
+.hud-btn.is-on .auto-switch {
+  background: rgba(120, 201, 179, 0.55);
+  border-color: var(--accent-calm);
+}
+
+.ability-auto input:checked ~ .auto-switch::after,
+.hud-btn.is-on .auto-switch::after {
+  background: var(--ink-0);
+  transform: translate(0.78rem, -50%);
 }
 
 /* The gate is the one moment the game is waiting on the player rather than the other way
@@ -890,44 +945,11 @@ button.reset {
   pointer-events: none;
 }
 
-/* A sliding switch rather than a tick box: this is a setting that stays where it is put, not a
-   choice being confirmed. Track and knob are sized off the label's own font so it sits on the
-   footnote line with the tier and the price rather than pushing the foot taller. */
-.ability-switch {
-  position: relative;
-  flex: none;
-  width: 1.7em;
-  height: 1em;
-  border-radius: 999px;
-  background: rgba(247, 241, 222, 0.16);
-  border: 1px solid rgba(247, 241, 222, 0.22);
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.ability-switch::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 0.1em;
-  width: 0.72em;
-  height: 0.72em;
-  border-radius: 50%;
-  background: var(--ink-1);
-  transform: translate(0, -50%);
-  transition: transform 0.15s ease, background 0.15s ease;
-}
-
-.ability-auto input:checked ~ .ability-switch {
-  background: rgba(120, 201, 179, 0.55);
-  border-color: var(--accent-calm);
-}
-
-.ability-auto input:checked ~ .ability-switch::after {
-  background: var(--ink-0);
-  transform: translate(0.68em, -50%);
-}
-
-.ability-auto input:focus-visible ~ .ability-switch {
+/* The slider itself is the shared .auto-switch, sized in rem rather than off this label's own
+   0.62rem font - the switch is the same object here as it is in the HUD, and one that shrank
+   to fit whichever line it landed on would not be. Only the focus ring is the card's own: here
+   it is a hidden checkbox that takes the focus and the track that has to show it. */
+.ability-auto input:focus-visible ~ .auto-switch {
   outline: 2px solid #8ed3e6;
   outline-offset: 2px;
 }
@@ -1146,9 +1168,12 @@ button.reset {
    neither button carries a margin of its own: the nudge only ever existed to lift the row
    off the upgrade list it used to follow, and with it gone align-items: stretch gives the
    two equal height. */
+/* The toggle beside the round button is a switch, and a switch stretched to the height of a
+   primary button is a slider lost in a field of its own background - so it keeps its own
+   height and sits centred against it. */
 .round-controls {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 0.4rem;
 }
 
@@ -1783,8 +1808,8 @@ button.reset {
   .meter-fill,
   /* The switch still switches - its colour says which way it is set, and colour is not
      motion. Only the knob's slide goes. */
-  .ability-switch,
-  .ability-switch::after,
+  .auto-switch,
+  .auto-switch::after,
   .ability-sweep { transition: none; animation: none; }
 
   /* The payout still has to be readable without the pop, so it holds at full opacity for as

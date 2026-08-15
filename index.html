@@ -135,7 +135,12 @@
                wave arrives on its own, and when. -->
           <div class="board-hud-tile hud-wave-controls">
             <div class="wave-controls">
-              <button type="button" id="autoWaveBtn" class="hud-btn" aria-pressed="false">Auto: Aus</button>
+              <!-- The same switch the ability cards carry: what is being switched stands in
+                   the text, whether it is on stands in the slider, and no word repeats it. -->
+              <button type="button" id="autoWaveBtn" class="hud-btn auto-toggle" aria-pressed="false">
+                <span id="autoWaveBtnText">Auto</span>
+                <span class="auto-switch" aria-hidden="true"></span>
+              </button>
               <button type="button" id="startNextWaveBtn" class="hud-btn is-call">Welle starten</button>
             </div>
           </div>
@@ -229,7 +234,10 @@
            the rail's gap is the separation. -->
       <div class="round-controls">
         <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
-        <button type="button" id="autoRoundBtn" class="hud-btn" aria-pressed="false" hidden>Auto-Runde: Aus</button>
+        <button type="button" id="autoRoundBtn" class="hud-btn auto-toggle" aria-pressed="false" hidden>
+          <span id="autoRoundBtnText">Auto-Runde</span>
+          <span class="auto-switch" aria-hidden="true"></span>
+        </button>
       </div>
 
       <section class="panel shop" id="shopPanel" hidden>
