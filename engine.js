@@ -137,7 +137,7 @@ const DAHAN_HASTE_MAX = 1;
  *   30  A Town appears each wave in some land that has none
  *   40  Discover seeds two Explorers per land instead of one
  *   50  Discover takes one extra land, off-terrain
- *   60  Discover draws two terrains instead of one
+ *   60  Discover draws two terrains instead of one, and stops avoiding Build
  *   70  Build runs twice
  *   80  Discover draws three terrains
  *   90  Discover draws every terrain
@@ -154,6 +154,14 @@ const DAHAN_HASTE_MAX = 1;
  * Because the track slides forward (see shiftInvaderTrack), every rung that widens Discover
  * widens Build one wave later - the terrains discovered this wave are the ones built next.
  * That coupling is the point: the player watches a terrain thicken before it does.
+ *
+ * Wave 60 carries a second rule on the same rung, and for the same reason. Below it, Discover
+ * steers around whatever is in the Build slot, so a land being reinforced this wave is never
+ * also being seeded: pressure spreads out, and the board always offers somewhere quieter to
+ * stand. From 60 the draw is free - a terrain may sit in both slots at once, and when it does
+ * that terrain's two lands take a Build and a Discover in the same wave and then inherit that
+ * Build again on the next. That is the point of the rung: the wave stops guaranteeing the
+ * player a fresh front and starts letting the same one compound.
  */
 const EXPLORE_UNRESTRICTED_FROM_WAVE = 10;
 const EXPLORE_SECOND_EXPLORER_FROM_WAVE = 20;
@@ -161,6 +169,9 @@ const BONUS_TOWN_FROM_WAVE = 30;
 const EXPLORE_DOUBLE_SEED_FROM_WAVE = 40;
 const EXPLORE_EXTRA_LAND_FROM_WAVE = 50;
 const EXPLORE_TWO_TERRAINS_FROM_WAVE = 60;
+// Deliberately the same wave rather than its own number: the free draw is the second half of
+// the two-terrain rung, so it moves wherever that rung moves and can never drift off it.
+const EXPLORE_FREE_DRAW_FROM_WAVE = EXPLORE_TWO_TERRAINS_FROM_WAVE;
 const BUILD_TWICE_FROM_WAVE = 70;
 const EXPLORE_THREE_TERRAINS_FROM_WAVE = 80;
 const EXPLORE_ALL_TERRAINS_FROM_WAVE = 90;
@@ -870,12 +881,19 @@ const I18N = {
     wavePausedValue: "Pause",
     waveHeldValue: "Wartet",
     startNextWaveBtn: "Welle starten",
-    autoWaveOnBtn: "Auto: An",
-    autoWaveOffBtn: "Auto: Aus",
+    // Beide Schalter tragen ihren Zustand im Schieber, nicht im Wort - deshalb steht hier
+    // nur noch, was geschaltet wird, und nicht mehr An und Aus dazu.
+    autoWaveLabel: "Auto",
     autoWaveHint: "Nächste Welle läuft von selbst an. Aus: am Ende der Leiste hält die Zeit an, bis du die Welle startest.",
-    autoRoundOnBtn: "Auto-Runde: An",
-    autoRoundOffBtn: "Auto-Runde: Aus",
+    // Zweizeilig: neben dem größten Knopf der Leiste steht der Schalter selbst größer, und die
+    // Beschriftung wächst mit ihm in die Höhe statt in die Breite. Wo das Wort umbricht, weiß
+    // nur die Sprache selbst - deshalb steht der Umbruch hier und nicht im Layout.
+    autoRoundLabel: "Auto-\nRunde",
     autoRoundHint: "Die nächste Runde startet von selbst. Aus: der Laden bleibt offen, bis du sie startest.",
+    // Auf der Fähigkeitskarte selbst, neben Stufe und Preis - dort, wo der Knopf sitzt, den
+    // die Automatik drückt.
+    autoCastLabel: "Auto",
+    autoCastHint: "Diese Fähigkeit wirkt sich selbst. Aus: die Automatik bleibt gekauft, die Fähigkeit wird wieder von Hand gewirkt. Nichts wird zurückerstattet, keine Abklingzeit ändert sich.",
     speedLabel: "Tempo",
     speedOptionTitle: "Spieltempo {speed}x",
     speedPausedTitle: "Pause - die Zeit steht still",
@@ -1060,7 +1078,7 @@ const I18N = {
     rungBonusTown: "Ein Dorf erhebt sich, wo keines steht",
     rungDoubleSeed: "Zwei Entdecker in jedem Gebiet",
     rungExtraLand: "Ein zusätzliches Gebiet abseits der Leiste",
-    rungTwoTerrains: "Entdecken zieht zwei Geländearten",
+    rungTwoTerrains: "Entdecken zieht zwei Geländearten, auch die vom Bauen",
     rungBuildTwice: "Bauen läuft zweimal",
     rungThreeTerrains: "Entdecken zieht drei Geländearten",
     rungAllTerrains: "Entdecken zieht jede Geländeart",
@@ -1069,6 +1087,7 @@ const I18N = {
     rungRepeated: "{text} (jetzt +{bonus})",
 
     dahanAttackLabel: "Dahan-Angriff",
+    dahanStrikeBarLabel: "Dahan schlagen zu, wenn der Balken voll ist",
     buildWord: "Bauen",
     discoverWord: "Entdecken",
     invaderNone: "-",
@@ -1152,12 +1171,12 @@ const I18N = {
     wavePausedValue: "Paused",
     waveHeldValue: "Waiting",
     startNextWaveBtn: "Start wave",
-    autoWaveOnBtn: "Auto: on",
-    autoWaveOffBtn: "Auto: off",
+    autoWaveLabel: "Auto",
     autoWaveHint: "Let the next wave start by itself. Off: time stops at the end of the bar until you start the wave.",
-    autoRoundOnBtn: "Auto round: on",
-    autoRoundOffBtn: "Auto round: off",
+    autoRoundLabel: "Auto\nround",
     autoRoundHint: "Let the next round start by itself. Off: the shop stays open until you start it.",
+    autoCastLabel: "Auto",
+    autoCastHint: "Let this ability cast itself. Off: the automation stays bought and the ability goes back to being cast by hand. Nothing is refunded and no cooldown changes.",
     speedLabel: "Speed",
     speedOptionTitle: "Game speed {speed}x",
     speedPausedTitle: "Paused - time stands still",
@@ -1336,7 +1355,7 @@ const I18N = {
     rungBonusTown: "A Town rises where there is none",
     rungDoubleSeed: "Two Explorers in every land",
     rungExtraLand: "One extra land, off the track",
-    rungTwoTerrains: "Discover draws two terrains",
+    rungTwoTerrains: "Discover draws two terrains, Build included",
     rungBuildTwice: "Build runs twice",
     rungThreeTerrains: "Discover draws three terrains",
     rungAllTerrains: "Discover draws every terrain",
@@ -1345,6 +1364,7 @@ const I18N = {
     rungRepeated: "{text} (now +{bonus})",
 
     dahanAttackLabel: "Dahan attack",
+    dahanStrikeBarLabel: "The Dahan strike when this bar is full",
     buildWord: "Build",
     discoverWord: "Discover",
     invaderNone: "-",
@@ -1763,7 +1783,9 @@ function drawOpeningTerrains(state) {
 // `count` distinct terrains, avoiding `excludedTerrains` where there is room to. The
 // exclusion is a preference and not a rule, because past three terrains a wave there is no
 // longer room to honour it - and a Discover that had to shrink to keep "not what we just
-// built" would be the ladder undoing itself.
+// built" would be the ladder undoing itself. From the free-draw rung the wave phase stops
+// passing an exclusion at all (see exploreAvoidsBuild), which is a caller's decision rather
+// than one this function makes: it draws whatever it is asked to avoid, or nothing.
 function drawInvaderTerrains(count, excludedTerrains) {
   const wanted = clamp(Math.floor(Number(count) || 1), 1, INVADER_TERRAINS.length);
   if (wanted >= INVADER_TERRAINS.length) return INVADER_TERRAINS.slice();
@@ -1789,6 +1811,14 @@ function exploreTerrainCount(state) {
   return 1;
 }
 
+// Whether Discover still keeps off the Build slot. Below the free-draw rung it does, and the
+// early board is legible because of it: the terrain being reinforced is never also the one
+// being seeded. From the rung on it does not, and the draw is a plain draw over every terrain.
+function exploreAvoidsBuild(state) {
+  const wave = state && state.round ? state.round.wavesResolved : 0;
+  return wave < EXPLORE_FREE_DRAW_FROM_WAVE;
+}
+
 // Two slots, not three. Ravaging is no longer a phase that picks a terrain - invaders damage
 // the land they stand in, continuously, everywhere at once (02-core-loop.md#the-fight).
 function normalizeInvaderPhases(invader, state) {
@@ -1800,13 +1830,19 @@ function normalizeInvaderPhases(invader, state) {
   // rather than patched - the count and the contents always agree afterwards.
   const wanted = state ? exploreTerrainCount(state) : Math.max(1, explore.length);
 
-  // Build and Discover still never name the same thing while there is room for them not to.
-  // Once Discover takes every terrain there is no room, and the clash stops being one.
-  const clashes = wanted < INVADER_TERRAINS.length
+  // Below the free-draw rung, Build and Discover still never name the same thing while there
+  // is room for them not to - and once Discover takes every terrain there is no room, so the
+  // clash stops being one. From the rung on, naming the same terrain is the rule rather than a
+  // fault, so a save that holds an overlap is left exactly as it was written.
+  const avoidsBuild = state ? exploreAvoidsBuild(state) : true;
+  const clashes = avoidsBuild
+    && wanted < INVADER_TERRAINS.length
     && explore.length > 0
     && explore.every((terrain) => build.includes(terrain));
 
-  if (explore.length !== wanted || clashes) explore = drawInvaderTerrains(wanted, build);
+  if (explore.length !== wanted || clashes) {
+    explore = drawInvaderTerrains(wanted, avoidsBuild ? build : []);
+  }
 
   return { build, explore };
 }
@@ -2944,12 +2980,60 @@ function resolveAutoBuyAbilities(state) {
   }
 }
 
+/* ---------- Auto-cast: owned, and switched on ----------
+ *
+ * The same two-question split the round gate already makes (see autoStartRoundOwned below):
+ * the upgrade is permanent and the toggle is a preference. Buying an automation used to be a
+ * one-way door - the resolver runs inside tick before the fight and fires the instant the
+ * cooldown clears, so the card never spends a frame in a state a player could click, and 400
+ * Fear permanently removed an ability from active play.
+ */
+
+// The five ability automations, by the ability each one casts. It is the only place the two
+// id spaces are tied together: the resolvers below are keyed by upgrade, the ability bar is
+// keyed by ability, and one map beats a second copy of the pairing in ui.js.
+const AUTO_CAST_UPGRADES = {
+  boon_of_vigor: "auto_boon",
+  rivers_bounty: "auto_bounty",
+  innate_power: "auto_innate",
+  wash_away: "auto_wash_away",
+  flash_floods: "auto_flash_floods"
+};
+
+// Whether the player owns this ability's automation - which is what decides whether the card
+// draws an auto-cast switch at all. Read off what is owned rather than off the round's
+// snapshot: the purchase is permanent, so the control it comes with never disappears again.
+function autoCastOwned(state, abilityId) {
+  const upgradeId = AUTO_CAST_UPGRADES[abilityId];
+  return Boolean(upgradeId) && upgradeTier(state, upgradeId) > 0;
+}
+
+// Whether it should actually cast this tick. Ownership through the round's snapshot, so a
+// mid-round purchase still waits for the next round; the toggle live, so unticking it stops
+// the next cast rather than the next round's casts.
+//
+// `!== false` rather than `=== true`: absent means on, which is what makes a save written
+// before this feature load with its automations still running.
+function autoCastOn(state, abilityId) {
+  const upgradeId = AUTO_CAST_UPGRADES[abilityId];
+  if (!upgradeId || activeUpgradeTier(state, upgradeId) <= 0) return false;
+  return state.ui.autoCast[abilityId] !== false;
+}
+
+// Unticking stops future casts and nothing else: no cooldown is reset, shortened or
+// lengthened, no cast is undone, nothing is refunded, and the upgrade is never un-bought.
+function setAutoCast(state, abilityId, on) {
+  if (!AUTO_CAST_UPGRADES[abilityId]) return false;
+  state.ui.autoCast[abilityId] = on === true;
+  return state.ui.autoCast[abilityId];
+}
+
 // The Boon fires itself once `auto_boon` is bought. It goes straight to the effect rather
 // than through triggerAbility: there is no target to arm, no refusal to report, and nothing
 // here should ever surface as a message. The cooldown is the same one a click would spend,
 // so owning it changes who presses the button and not how often it can be pressed.
 function resolveAutoBoon(state) {
-  if (activeUpgradeTier(state, "auto_boon") <= 0) return;
+  if (!autoCastOn(state, "boon_of_vigor")) return;
   if (!abilityIsUnlocked(state, "boon_of_vigor")) return;
   if (!abilityIsReady(state, "boon_of_vigor")) return;
 
@@ -3247,7 +3331,7 @@ function pickInnateAutoTarget(state) {
 // exercise (see pickInnateAutoTarget), so a tick that satisfies no priority leaves the
 // cooldown alone rather than spending it on a land that did not need it.
 function resolveAutoInnate(state) {
-  if (activeUpgradeTier(state, "auto_innate") <= 0) return;
+  if (!autoCastOn(state, "innate_power")) return;
   if (!abilityIsUnlocked(state, "innate_power")) return;
   if (!abilityIsReady(state, "innate_power")) return;
 
@@ -3267,7 +3351,7 @@ function resolveAutoInnate(state) {
 // The Energy unlock is deliberately still owed every round. This buys the clicking, not the
 // ability, and a round that never spent the 5 Energy has nothing to automate.
 function resolveAutoBounty(state) {
-  if (activeUpgradeTier(state, "auto_bounty") <= 0) return;
+  if (!autoCastOn(state, "rivers_bounty")) return;
   if (!abilityIsUnlocked(state, "rivers_bounty")) return;
   if (!abilityIsReady(state, "rivers_bounty")) return;
 
@@ -3377,7 +3461,7 @@ function pickWashAwayAutoTarget(state) {
 }
 
 function resolveAutoWashAway(state) {
-  if (activeUpgradeTier(state, "auto_wash_away") <= 0) return;
+  if (!autoCastOn(state, "wash_away")) return;
   if (!abilityIsUnlocked(state, "wash_away")) return;
   if (!abilityIsReady(state, "wash_away")) return;
 
@@ -3459,7 +3543,7 @@ function pickFlashFloodsAutoTarget(state) {
 }
 
 function resolveAutoFlashFloods(state) {
-  if (activeUpgradeTier(state, "auto_flash_floods") <= 0) return;
+  if (!autoCastOn(state, "flash_floods")) return;
   if (!abilityIsUnlocked(state, "flash_floods")) return;
   if (!abilityIsReady(state, "flash_floods")) return;
 
@@ -4200,12 +4284,19 @@ function resolveExplorePhase(state) {
 // player can see a terrain thicken one wave before it does. That promise is why the two slots
 // widen together: every rung that gives Discover another terrain gives Build the same terrain
 // one wave later, and the track never shows less than what is coming.
+//
+// The new Discover only steers around the terrain that just slid into Build while the round is
+// below the free-draw rung. Above it the two slots can name the same terrain, and a terrain
+// that does holds its lands for two waves running.
 function shiftInvaderTrack(state) {
   state.invader = normalizeInvaderPhases(state.invader, state);
 
   const shiftedToBuild = exploreTerrains(state);
   state.invader.build = shiftedToBuild;
-  state.invader.explore = drawInvaderTerrains(exploreTerrainCount(state), shiftedToBuild);
+  state.invader.explore = drawInvaderTerrains(
+    exploreTerrainCount(state),
+    exploreAvoidsBuild(state) ? shiftedToBuild : []
+  );
 
   const t = locale(state);
   addLog(state, template(t.waveIncoming, {
@@ -4672,6 +4763,19 @@ function createInitialState() {
       // wanting it on right now are two different things - a player who wants to stop and
       // shop should not have to un-buy anything to get the pause back.
       autoStartRound: true,
+      // One switch per ability automation, and the same idea one level down from the round
+      // gate: owning auto_wash_away and wanting it casting right now are two different
+      // questions. It lives in `ui` beside the two above rather than in `round` because it
+      // outlives every round it is read in. Written out here rather than left to normalize,
+      // since the state contract documents literal shapes; normalizeState rebuilds it from
+      // AUTO_CAST_UPGRADES.
+      autoCast: {
+        boon_of_vigor: true,
+        rivers_bounty: true,
+        innate_power: true,
+        wash_away: true,
+        flash_floods: true
+      },
       // The playtest code, once redeemed. It sits with the other settings rather than in meta
       // because it is the same kind of thing: how the game is being read, not what has been
       // earned inside it. Nothing in the rules reads it - see the playtest section.
@@ -4767,6 +4871,16 @@ function normalizeState(raw) {
   // Defaults on rather than off, unlike auto-proceed: a save that predates the toggle has no
   // value to read, and the only player it can affect is one who has bought the automation.
   merged.ui.autoStartRound = merged.ui.autoStartRound !== false;
+  // Rebuilt from the registry rather than merged over it, the same way upgrades.purchased and
+  // abilities are: every id AUTO_CAST_UPGRADES carries gets `raw !== false`, so a save written
+  // before the toggles existed loads with all five still running, and a key the map does not
+  // carry is dropped rather than kept as a preference for an ability nothing can cast.
+  const rawAutoCast = merged.ui.autoCast && typeof merged.ui.autoCast === "object" ? merged.ui.autoCast : {};
+  const autoCast = {};
+  for (const abilityId of Object.keys(AUTO_CAST_UPGRADES)) {
+    autoCast[abilityId] = rawAutoCast[abilityId] !== false;
+  }
+  merged.ui.autoCast = autoCast;
   merged.ui.selectedLand = isLandId(merged.ui.selectedLand) ? merged.ui.selectedLand : null;
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
@@ -4906,6 +5020,10 @@ function migrateSave(raw) {
   // to a wiped run in the wrong language - or at a speed the player did not pick - would read
   // as a second bug. The redeemed code carries for the same reason, and is read before the
   // speed because it is what says whether a playtest speed is still on the dial.
+  //
+  // ui.autoCast is deliberately not in that list. The reset takes every purchase with it, so
+  // there is no automation left to switch off and no checkbox on any card to carry a
+  // preference for - the fresh state's five defaults are the right answer.
   const prefs = (raw && raw.ui) || {};
   if (prefs.language === "en") fresh.ui.language = "en";
   if (prefs.playtest === true) setPlaytest(fresh, true);
@@ -5100,6 +5218,7 @@ const ENGINE_EXPORTS = {
   EXPLORE_SECOND_EXPLORER_FROM_WAVE,
   EXPLORE_DOUBLE_SEED_FROM_WAVE,
   EXPLORE_EXTRA_LAND_FROM_WAVE,
+  EXPLORE_FREE_DRAW_FROM_WAVE,
   BONUS_TOWN_FROM_WAVE,
   BUILD_TWICE_FROM_WAVE,
   INVADER_DAMAGE_RUNG_FROM_WAVE,
@@ -5245,6 +5364,7 @@ const ENGINE_EXPORTS = {
   drawOpeningTerrains,
   drawInvaderTerrains,
   exploreTerrainCount,
+  exploreAvoidsBuild,
   terrainList,
   landsOfTerrains,
   buildTerrains,
@@ -5269,6 +5389,10 @@ const ENGINE_EXPORTS = {
   autoStartRoundOn,
   setAutoStartRound,
   resolveAutoStartRound,
+  AUTO_CAST_UPGRADES,
+  autoCastOwned,
+  autoCastOn,
+  setAutoCast,
   activeUpgradeTier,
   setAutoProceed,
   waveGateHeld,

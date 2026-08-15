@@ -427,10 +427,74 @@ h3 {
   cursor: default;
 }
 
-.hud-btn.is-on {
-  color: var(--ink-0);
-  border-color: rgba(120, 201, 179, 0.6);
-  background: rgba(120, 201, 179, 0.18);
+/* An auto toggle carries its state in the slider, not in a fill behind the whole button - the
+   same reading the ability cards give. All it takes from being on is brighter ink. */
+.hud-btn.is-on { color: var(--ink-0); }
+
+.hud-btn.auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+/* ------------------------------------------------------------------ *
+ * The auto switch                                                      *
+ *                                                                      *
+ * One control, worn by all three automations the player can switch:    *
+ * the wave, the round, and each ability's auto-cast. Every one of them  *
+ * is a setting that stays where it is put, so every one of them is a    *
+ * slider rather than a tick box or a lit-up button.                     *
+ *                                                                      *
+ * What drives it differs by home and the shape does not: on a card it   *
+ * is a hidden checkbox behind the track, in the HUD it is the button    *
+ * around it wearing .is-on.                                             *
+ * ------------------------------------------------------------------ */
+
+.auto-switch {
+  /* The three sizes of the switch are these three numbers and nothing else, so a home that
+     needs a bigger one sets them rather than redrawing the switch. The knob's travel is
+     derived from them below and never written by hand. */
+  --track-w: 1.6rem;
+  --track-h: 0.9rem;
+  --knob: 0.6rem;
+  --knob-inset: 0.1rem;
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: var(--track-w);
+  height: var(--track-h);
+  border-radius: 999px;
+  background: rgba(247, 241, 222, 0.16);
+  border: 1px solid rgba(247, 241, 222, 0.22);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.auto-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: var(--knob-inset);
+  width: var(--knob);
+  height: var(--knob);
+  border-radius: 50%;
+  background: var(--ink-1);
+  transform: translate(0, -50%);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.ability-auto input:checked ~ .auto-switch,
+.hud-btn.is-on .auto-switch {
+  background: rgba(120, 201, 179, 0.55);
+  border-color: var(--accent-calm);
+}
+
+/* Across the padding box, less the knob and its inset at each end. The 2px is the track's own
+   border, which the knob is positioned inside of. */
+.ability-auto input:checked ~ .auto-switch::after,
+.hud-btn.is-on .auto-switch::after {
+  background: var(--ink-0);
+  transform: translate(calc(var(--track-w) - var(--knob) - 2 * var(--knob-inset) - 2px), -50%);
 }
 
 /* The gate is the one moment the game is waiting on the player rather than the other way
@@ -805,11 +869,22 @@ button.reset {
 /* A tiered ability is castable and buyable at once, so its card cannot be the single button
    the others are - a button inside a button is not markup. It is a div holding two: the cast
    surface on top, the tier and its price along the bottom. The card keeps the .ability
-   styling so the bar still reads as one column of equal things. */
-.ability.is-tiered {
+   styling so the bar still reads as one column of equal things.
+
+   An ability whose automation is owned takes the same shape for the same reason: a checkbox
+   cannot live inside a button either.
+
+   Both take the cast across the whole card, foot included, so the pointer belongs to the card
+   rather than to the button inside it - but only while the cast would actually land, which is
+   what .is-castable says. */
+.ability.is-tiered,
+.ability.is-automated {
   display: grid;
   cursor: default;
 }
+
+.ability.is-tiered.is-castable,
+.ability.is-automated.is-castable { cursor: pointer; }
 
 .ability-cast {
   position: relative;
@@ -846,6 +921,47 @@ button.reset {
 
 /* The upgrade price sits on the bottom row, so it needs no top margin of its own. */
 .ability-foot .ability-unlock { margin: 0; }
+
+/* The auto-cast switch: the one control on a card that is otherwise all state and price, so
+   it is drawn quiet - footnote weight, the card's own ink, no fill and no border of its own.
+   Pushed to the far end of the foot so it reads as one thing wherever it lands: opposite the
+   tier row on the Innate's card, and alone on the right of every other. */
+.ability-foot .ability-auto { margin-left: auto; }
+
+.ability-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  /* Its own pointer, rather than the default the cast surface above it hands down. */
+  cursor: pointer;
+  user-select: none;
+}
+
+/* The input is still a checkbox and still the thing that is clicked, read and focused - it is
+   only moved out of sight behind the track it paints. Hiding it with display:none would take
+   its focus ring with it, so it keeps its box and loses its paint. */
+.ability-auto input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The slider itself is the shared .auto-switch, sized in rem rather than off this label's own
+   0.62rem font - the switch is the same object here as it is in the HUD, and one that shrank
+   to fit whichever line it landed on would not be. Only the focus ring is the card's own: here
+   it is a hidden checkbox that takes the focus and the track that has to show it. */
+.ability-auto input:focus-visible ~ .auto-switch {
+  outline: 2px solid #8ed3e6;
+  outline-offset: 2px;
+}
 
 /* Same gold promise as a locked card wears when its price comes into reach. */
 .ability.is-tiered.is-affordable {
@@ -1055,20 +1171,47 @@ button.reset {
 
 /* The two answers to "when does the next round begin", side by side the way the wave strip
    pairs its own two. The toggle only shows up once it has been bought, so the row is a
-   single centred button until then. */
-.shop-controls {
+   single centred button until then. Its own row in the rail, above the shop panel rather
+   than inside it - no chrome, because two buttons are not a section of the page, and the
+   rail's own gap already holds them off the panels either side. That gap is also why
+   neither button carries a margin of its own: the nudge only ever existed to lift the row
+   off the upgrade list it used to follow, and with it gone align-items: stretch gives the
+   two equal height. */
+/* The toggle beside the round button is a switch, and a switch stretched to the height of a
+   primary button is a slider lost in a field of its own background - so it keeps its own
+   height and sits centred against it. */
+.round-controls {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 0.4rem;
 }
 
-.shop-controls .primary-btn { flex: 1; }
-.shop-controls .hud-btn { margin-top: 0.7rem; }
+/* The one switch that does not sit on a tight line. Its neighbour is the biggest control in
+   the rail, and beside it a slider cut for the HUD strip reads as a speck - so this one is
+   drawn at half again the size, and its label stacks onto two lines so the pill grows with the
+   switch instead of sprawling sideways. Where the label breaks is the locale's own business:
+   "Auto-Runde" and "Auto round" do not break in the same place. */
+.round-controls .auto-toggle {
+  padding: 0.34rem 0.55rem;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  white-space: pre-line;
+  text-align: left;
+}
+
+.round-controls .auto-switch {
+  --track-w: 2.3rem;
+  --track-h: 1.3rem;
+  --knob: 0.92rem;
+  --knob-inset: 0.14rem;
+}
+
+.round-controls .primary-btn { flex: 1; }
 
 /* Always available, whatever is left in the purse: the shop must never hold a round
    hostage to spending. */
 .primary-btn {
-  margin-top: 0.7rem;
   text-align: center;
   border-color: rgba(120, 201, 179, 0.55);
   background: linear-gradient(150deg, rgba(31, 84, 80, 0.95), rgba(23, 55, 60, 0.95));
@@ -1227,9 +1370,16 @@ button.reset {
 .chip-unit .tok { margin-right: -0.02em; }
 
 /* Blight is what ends the round, so it keeps the whole width of the chip as a bar, and it is
-   the only bar here - the Dahan casualty clock is a ring on the Dahan count above. One bar
-   and one ring, rather than two bars: two bars of equal weight read as two equal threats,
-   and only one of them is the loss condition.
+   the only *threat* bar here - the Dahan casualty clock is a ring on the Dahan count above.
+   One threat bar and one ring, rather than two threat bars: two bars of equal weight read as
+   two equal threats, and only one of them is the loss condition.
+   The rule is kept by weight, not by count. The strike bar above (.chip-strike) is a second
+   bar, but it is thinner, it is far shorter, it is in the player's own colour, and it is not a
+   threat at all - it is the one thing on a chip that is good news, and it must not be mistaken
+   at a glance for a fourth way to lose. Which is why it must never be dropped in beside Blight
+   here: sharing this row it would take half the chip's width and become exactly the second
+   equal threat bar this paragraph forbids. Tucked against the Dahan count instead, it is
+   plainly that count's clock rather than a second reading of the land.
    The fill is written by patchLandMeters every frame, which is why the transition is short -
    a long one would lag behind its own value rather than smoothing it. */
 .chip-meters {
@@ -1259,6 +1409,93 @@ button.reset {
 
 .chip-meter.is-blight .chip-meter-fill {
   background: linear-gradient(90deg, rgba(231, 103, 85, 0.75), #ff9d8a);
+}
+
+/* The Dahan strike clock, sitting in the allies row immediately right of the Dahan count, with
+   the axe past the far end of the track. Shorter and thinner than the Blight bar on purpose -
+   see the paragraph above .chip-meters. The axe and the fill share --dahan-ink with the Dahan
+   token itself (.unit-dahan), so the whole group reads as one thing: that count and its clock.
+
+   The track is a fixed width rather than a flexed one. Beside the count it has no row to fill,
+   and a bar that stretched to the chip's edge would be making the Blight bar's claim on the
+   chip at a moment when it is the one piece of good news on it. It is wide enough to show a
+   fraction rather than a dot - at half the width the difference between a third and two thirds
+   was a couple of pixels - and still well short of the chip, which is the whole point.
+
+   Both the glyph and the track carry their own dark backing: a chip sits on painted terrain,
+   and desert is bright enough to swallow an unbacked 9px glyph. */
+.chip-strike {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  color: var(--dahan-ink);
+}
+
+.chip-strike .tok {
+  width: 0.62rem;
+  height: 0.62rem;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 1.5px rgba(3, 14, 20, 0.95)) drop-shadow(0 0 1px rgba(3, 14, 20, 0.8));
+  transition: color 0.18s ease-out, filter 0.18s ease-out;
+}
+
+.chip-strike-track {
+  flex: 0 0 auto;
+  width: 2.7rem;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(3, 14, 20, 0.72);
+  border: 1px solid rgba(247, 241, 222, 0.11);
+  transition: box-shadow 0.18s ease-out, border-color 0.18s ease-out;
+}
+
+.chip-strike-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(208, 139, 82, 0.7), var(--dahan-ink));
+  transition: width 0.12s linear, background 0.18s ease-out;
+}
+
+/* The last fifth of the swing, written on by patchLandMeters - see STRIKE_IMMINENT_AT in ui.js
+   for why it is a share of the clock rather than a count of seconds.
+
+   The problem this solves: a 3px bar in a mid-warm brown, on a chip sitting on painted terrain,
+   states the fraction honestly and announces nothing. A player watching the invaders never
+   catches the one instant that is worth catching.
+
+   So the whole group lights rather than the fill alone. The fill goes hot and pale, the track
+   throws a halo the same colour, and the axe brightens with it - three cues arriving together
+   over 0.18s, which is enough to catch peripheral vision on a chip the eye is not on.
+
+   Pale gold, not red. Red on this board means Blight and wounds, and this is the one moment on
+   a chip that is good news; a red flash here would read as a fourth way to lose, which is the
+   rule the .chip-meters paragraph above exists to keep. Pale reads as heat and as arrival
+   without borrowing the threat colour.
+
+   The pulse is deliberately slow and shallow. It has to survive being repeated on every land at
+   once, several times a round, for as long as the player keeps Dahan alive. */
+.chip-strike.is-imminent .chip-strike-fill {
+  background: linear-gradient(90deg, var(--dahan-ink), #ffd9a0);
+  box-shadow: 0 0 4px rgba(255, 217, 160, 0.9);
+}
+
+.chip-strike.is-imminent .chip-strike-track {
+  border-color: rgba(255, 217, 160, 0.5);
+  box-shadow: 0 0 5px rgba(255, 200, 130, 0.55);
+}
+
+.chip-strike.is-imminent .tok {
+  color: #ffd9a0;
+  filter: drop-shadow(0 0 1.5px rgba(3, 14, 20, 0.95)) drop-shadow(0 0 3px rgba(255, 200, 130, 0.8));
+  animation: strike-ready 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes strike-ready {
+  from { transform: scale(1); }
+  to { transform: scale(1.18); }
 }
 
 /* The health ring, worn by every unit count on the board - Dahan and invader alike. The token
@@ -1592,8 +1829,17 @@ button.reset {
   .chip-defeat,
   .chip-blight,
   .chip-meter-fill,
+  .chip-strike-fill,
+  .chip-strike-track,
+  /* The lit strike still lights - colour and halo are the cue, and they are not motion. Only
+     the axe's breathing goes, which is the one part of it that moves. */
+  .chip-strike .tok,
   .chip-ring,
   .meter-fill,
+  /* The switch still switches - its colour says which way it is set, and colour is not
+     motion. Only the knob's slide goes. */
+  .auto-switch,
+  .auto-switch::after,
   .ability-sweep { transition: none; animation: none; }
 
   /* The payout still has to be readable without the pop, so it holds at full opacity for as

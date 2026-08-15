@@ -13,6 +13,9 @@ const dom = {
   speedGroup: document.getElementById("speedGroup"),
   speedLabel: document.getElementById("speedLabel"),
   autoWaveBtn: document.getElementById("autoWaveBtn"),
+  // The switch inside the button owns the rest of it, so the text is written into a span of
+  // its own rather than over the button's whole content.
+  autoWaveBtnText: document.getElementById("autoWaveBtnText"),
   startNextWaveBtn: document.getElementById("startNextWaveBtn"),
 
   roundLabel: document.getElementById("roundLabel"),
@@ -67,6 +70,7 @@ const dom = {
   upgradeList: document.getElementById("upgradeList"),
   startNextRoundBtn: document.getElementById("startNextRoundBtn"),
   autoRoundBtn: document.getElementById("autoRoundBtn"),
+  autoRoundBtnText: document.getElementById("autoRoundBtnText"),
 
   logTitle: document.getElementById("logTitle"),
   eventLog: document.getElementById("eventLog"),
@@ -335,6 +339,17 @@ const LAND_STATE_STYLE = {
   "explore-active": { fill: 0.42, ring: "#f2c45a", opacity: 1, chip: 1 }
 };
 
+// How full the strike bar has to be before it lights up - see the .chip-strike.is-imminent
+// paragraph in app.css for what lighting up looks like.
+//
+// A share of the swing rather than a count of seconds. The alternative was "light up for the
+// last two seconds", and it is the wrong shape: dahan_remember halves the interval, so a fixed
+// two seconds would be a quarter of the cycle for a player who has not bought it and half the
+// cycle for one who has - the more Fear you sink into the strike, the more of the time the
+// board would sit shouting. A fifth is a fifth, and the cue lands at the same point in the
+// rhythm however hard the clock has been hastened.
+const STRIKE_IMMINENT_AT = 0.8;
+
 // Sprite ids from index.html. Shapes follow the printed game: stick figure, two buildings,
 // three buildings. Colour is set per type in CSS, and the sprite paints with currentColor.
 const UNIT_GLYPH = {
@@ -437,6 +452,41 @@ function chipMetersMarkup(state, landId) {
   `;
 }
 
+// The Dahan's strike clock, on the chip instead of only in the HUD strip. There is one clock
+// for the whole island - see resolveDahanAttack - so every bar this draws shows the same
+// fraction as every other, and they are all full at the same instant. It is drawn per land only
+// because the board is where the player is looking, not because the lands are on separate
+// timers: there is no per-land value here to find.
+//
+// Only where the strike will actually land. resolveDahanAttack skips a land holding no
+// invaders, and a bar there would fill to full and then do nothing - the one thing a gauge must
+// never do. Deliberately unlike the Dahan health ring, which is left stopped rather than
+// cleared when a land empties: the ring's value is that land's own history, and this one is a
+// global clock that says nothing whatever about a land the strike will skip.
+//
+// Like the Blight bar, the fill's width is written by patchLandMeters every frame rather than
+// baked in here - a bar rebuilt on every render could never animate.
+//
+// It rides inside the allies row, immediately right of the Dahan count, rather than in a row of
+// its own: it is that count's clock and nothing else's, and sitting against it says so with no
+// ink at all. That is also why it is short and fixed-width - a bar spanning the chip would be
+// making the claim the Blight bar makes, and the caller only ever emits this beside a Dahan
+// count, so the two conditions below cannot fire on a chip with no allies row to sit in.
+// The axe goes at the far end, past the fill, where a full bar reaches it as the Dahan swing.
+function chipStrikeMarkup(state, landId) {
+  if ((state.dahan[landId] || 0) <= 0) return "";
+  if (invaderCountInLand(state.invaders[landId]) <= 0) return "";
+
+  return `
+    <span class="chip-strike" title="${locale(state).dahanStrikeBarLabel}">
+      <span class="chip-strike-track">
+        <span class="chip-strike-fill" data-meter-land="${landId}" data-meter-kind="dahan-strike"></span>
+      </span>
+      <svg class="tok" aria-hidden="true" focusable="false"><use href="#si-axe"/></svg>
+    </span>
+  `;
+}
+
 function renderBoard(state) {
   const t = locale(state);
   const states = landRenderStates(state);
@@ -527,7 +577,7 @@ function renderBoard(state) {
         ${blightHere > 0 ? `<span class="chip-blight-count" title="${t.landBlightLabel}">${blightHere}</span>` : ""}
       </div>
       ${invaderBits.length ? `<div class="chip-row invaders">${invaderBits.join("")}</div>` : ""}
-      ${allyBits.length ? `<div class="chip-row allies">${allyBits.join("")}</div>` : ""}
+      ${allyBits.length ? `<div class="chip-row allies">${allyBits.join("")}${chipStrikeMarkup(state, landId)}</div>` : ""}
       ${chipMetersMarkup(state, landId)}
       ${chipWaveMarkup(state, landId)}
       ${defeatMarkup}
@@ -542,6 +592,23 @@ function renderBoard(state) {
 // counting down beside them. Nothing here creates or replaces a node, which is what lets the
 // bars fill smoothly instead of restarting on every render.
 function patchLandMeters(state) {
+  // One clock for the whole island, so one number - computed here rather than in the loop,
+  // which would recompute the same fraction once per land on every frame.
+  //
+  // Against the round's interval, not DAHAN_ATTACK_INTERVAL_SECONDS: dahan_remember halves it,
+  // and a bar divided by the base constant would top out near half-mast exactly for the player
+  // who paid to make the strike matter. roundDahanAttackInterval reads the round's frozen
+  // upgrade snapshot, which is the very number tick divides by, so the bar can never disagree
+  // with the clock it draws and a mid-round purchase does not re-scale a bar already moving.
+  //
+  // It fills rather than drains - health drains, an attack gathers - which is the opposite
+  // direction from the wave bar beside it. That one is the invaders' and answers "how long do I
+  // still have"; this one is the player's and answers "how much have my people gathered".
+  const strikeInterval = roundDahanAttackInterval(state);
+  const strikeFill = state.round.status === "running" && strikeInterval > 0
+    ? clamp(1 - state.round.dahanAttackRemaining / strikeInterval, 0, 1)
+    : 0;
+
   for (const el of dom.landChips.querySelectorAll("[data-meter-land]")) {
     const landId = el.getAttribute("data-meter-land");
     const kind = el.getAttribute("data-meter-kind");
@@ -550,6 +617,22 @@ function patchLandMeters(state) {
     // health ring is a conic sweep and drains by the registered property it is drawn from.
     if (kind === "blight") {
       el.style.width = `${clamp(landPressure(state, landId).blightProgress, 0, 1) * 100}%`;
+      continue;
+    }
+
+    // A third kind, and it needs its own branch ahead of the ring fallback below or it would be
+    // handed --health-lost and sit invisible at opacity 0. It carries data-meter-land only so
+    // the selector above picks it up; nothing here reads the id, because there is no per-land
+    // strike value to read.
+    //
+    // The class goes on the group rather than on the fill because the whole group lights up -
+    // track, fill and axe together - and CSS cannot reach up from the fill to its siblings.
+    // It is the same one clock driving all of them, so every lit bar on the board lights at the
+    // same instant, which is what makes the moment read as the island's and not one land's.
+    if (kind === "dahan-strike") {
+      el.style.width = `${strikeFill * 100}%`;
+      const group = el.closest(".chip-strike");
+      if (group) group.classList.toggle("is-imminent", strikeFill >= STRIKE_IMMINENT_AT);
       continue;
     }
 
@@ -645,24 +728,57 @@ function renderLandDetail(state) {
  * second, which is the whole reason for the split.                      *
  * ------------------------------------------------------------------ */
 
-// What changes the bar's shape: which abilities are unlocked, and what tier the tiered ones
-// stand at - a tier swaps the card's whole text and price, so it has to force a rebuild.
-// Affordability is patched per frame rather than rebuilt.
+// What changes the bar's shape: which abilities are unlocked, what tier the tiered ones stand
+// at - a tier swaps the card's whole text and price - and whether each ability's automation is
+// owned, because owning one changes the card from a bare button into a container with a foot.
+// Affordability is patched per frame rather than rebuilt, and so is the checkbox's own ticked
+// state: folding that in would rebuild the whole bar on every click of the box and take the
+// running cooldown sweep with it.
 function abilityBarSignature(state) {
   const tiers = spiritAbilityIds(state)
     .filter(abilityIsTiered)
     .map((id) => `${id}:${abilityTier(state, id)}`)
     .join(",");
-  return [currentLang(state), unlockedAbilityIds(state).join(","), tiers].join("|");
+  const automations = spiritAbilityIds(state)
+    .map((id) => `${id}:${autoCastOwned(state, id) ? 1 : 0}`)
+    .join(",");
+  return [currentLang(state), unlockedAbilityIds(state).join(","), tiers, automations].join("|");
+}
+
+// The switch that says whether this ability's automation casts. Drawn only once the automation
+// is owned, and drawn from then on forever: autoCastOwned reads the purchase rather than the
+// round's snapshot, so the box appears the instant it is bought - already ticked, because a
+// player who just paid for it should not have to click a second time - and never disappears.
+//
+// The input carries data-auto-cast and the label does not, so a click on the text reaches the
+// bar's handler once, through the click the label synthesizes on the box itself.
+//
+// It is drawn as a sliding switch rather than a tick box - the same shape a phone's settings
+// screen uses - because that is what it is: a setting that stays on until it is turned off,
+// not a choice being confirmed. The input itself is still a checkbox, only hidden behind the
+// track: everything that reads or writes it - the patch pass, the delegated click, the
+// keyboard - keeps working on a plain checkbox, and the label still forwards a click on the
+// text to it. The track sits after the input so `:checked ~` can paint it.
+function abilityAutoCastMarkup(state, abilityId) {
+  if (!autoCastOwned(state, abilityId)) return "";
+  const t = locale(state);
+  return `
+    <label class="ability-auto" title="${t.autoCastHint}">
+      <input type="checkbox" data-auto-cast="${abilityId}">
+      <span>${t.autoCastLabel}</span>
+      <span class="auto-switch" aria-hidden="true"></span>
+    </label>
+  `;
 }
 
 // One unlocked ability: the pressable card, with the cooldown sweep behind its text.
+//
+// Two shapes, and which one it takes is the automation. Without one it stays the single button
+// it has always been. With one it becomes the container the tiered card already is - a checkbox
+// cannot live inside a button, which is the same wall renderTieredAbility hit - so the cast
+// surface moves into a button of its own and the box sits in a foot beneath it.
 function renderUnlockedAbility(state, abilityId) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "ability";
-  button.setAttribute("data-ability", abilityId);
-  button.innerHTML = `
+  const face = `
     <span class="ability-sweep" data-role="sweep"></span>
     <span class="ability-body">
       <span class="ability-head">
@@ -672,7 +788,24 @@ function renderUnlockedAbility(state, abilityId) {
       <span class="ability-text">${abilityText(state, abilityId)}</span>
     </span>
   `;
-  return button;
+
+  const auto = abilityAutoCastMarkup(state, abilityId);
+  if (!auto) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ability";
+    button.setAttribute("data-ability", abilityId);
+    button.innerHTML = face;
+    return button;
+  }
+
+  const card = document.createElement("div");
+  card.className = "ability is-automated";
+  card.innerHTML = `
+    <button type="button" class="ability-cast" data-ability="${abilityId}">${face}</button>
+    <span class="ability-foot">${auto}</span>
+  `;
+  return card;
 }
 
 // One locked ability: the same card, dimmed, with a price where its state would be. It is a
@@ -729,6 +862,7 @@ function renderTieredAbility(state, abilityId) {
     <span class="ability-foot">
       <span class="ability-tier">${template(t.abilityTierLabel, { tier: abilityTier(state, abilityId) + 1 })}</span>
       ${upgrade}
+      ${abilityAutoCastMarkup(state, abilityId)}
     </span>
   `;
   return card;
@@ -770,6 +904,16 @@ function patchAbilityBar(state) {
     button.closest(".ability").classList.toggle("is-affordable", affordable);
   }
 
+  // The one exception to the rule above: the checkbox stays live while the round is not
+  // running. It spends nothing - no Energy, no cooldown, no Fear - and the shop between rounds
+  // is exactly where a player decides how the next round should play, so deadening it would
+  // take the setting away at the moment it is most wanted.
+  //
+  // Ticked-ness is patched here rather than rebuilt, like every other per-frame value.
+  for (const box of dom.abilityBar.querySelectorAll("[data-auto-cast]")) {
+    box.checked = state.ui.autoCast[box.getAttribute("data-auto-cast")] !== false;
+  }
+
   for (const button of dom.abilityBar.querySelectorAll("[data-ability]")) {
     const abilityId = button.getAttribute("data-ability");
     const slot = state.abilities[abilityId];
@@ -787,6 +931,10 @@ function patchAbilityBar(state) {
     card.classList.toggle("is-ready", ready && !armed);
     card.classList.toggle("is-cooling", !ready);
     button.disabled = !running || (!ready && !armed);
+    // The whole card takes the cast, not just the cast button, so the card has to know whether
+    // the cast would land - a disabled button refuses its own clicks, but the foot around it
+    // would still be showing a pointer over a cast that goes nowhere.
+    card.classList.toggle("is-castable", !button.disabled);
 
     button.querySelector('[data-role="state"]').textContent = armed
       ? t.abilityArmed
@@ -808,6 +956,10 @@ function patchAbilityBar(state) {
 // without changing anything the owned tiers can see. The best wave joins them because the
 // High-Water Mark's row quotes the next milestone the player is heading for, which moves with
 // their depth rather than with anything else in this list.
+//
+// The round controls are not in this list and must not go back into it: they are not in this
+// panel any more, and renderShop never read them. Whether auto_start_round is owned still
+// reaches the catalogue through tiers, which is the only part of it this panel draws.
 function shopSignature(state) {
   const tiers = UPGRADE_IDS.map((id) => `${id}:${upgradeTier(state, id)}:${activeUpgradeTier(state, id)}`).join(",");
   return [
@@ -821,8 +973,6 @@ function shopSignature(state) {
     state.meta.bestWaveReached,
     formatFear(state.meta.fear),
     formatFear(state.round.fearEarned),
-    autoStartRoundOwned(state),
-    autoStartRoundOn(state),
     tiers
   ].join("|");
 }
@@ -1090,8 +1240,10 @@ function patchPacingControls(state) {
     button.title = value === 0 ? t.speedPausedTitle : template(t.speedOptionTitle, { speed: value });
   }
 
+  // The label says what is switched and never whether it is on: that reading belongs to the
+  // slider beside it, and a word repeating it would be a second answer to look at.
   const auto = autoProceedOn(state);
-  dom.autoWaveBtn.textContent = auto ? t.autoWaveOnBtn : t.autoWaveOffBtn;
+  dom.autoWaveBtnText.textContent = t.autoWaveLabel;
   dom.autoWaveBtn.setAttribute("aria-pressed", String(auto));
   dom.autoWaveBtn.classList.toggle("is-on", auto);
   dom.autoWaveBtn.title = t.autoWaveHint;
@@ -1111,7 +1263,7 @@ function patchPacingControls(state) {
   dom.autoRoundBtn.hidden = !owned;
   if (owned) {
     const autoRound = autoStartRoundOn(state);
-    dom.autoRoundBtn.textContent = autoRound ? t.autoRoundOnBtn : t.autoRoundOffBtn;
+    dom.autoRoundBtnText.textContent = t.autoRoundLabel;
     dom.autoRoundBtn.setAttribute("aria-pressed", String(autoRound));
     dom.autoRoundBtn.classList.toggle("is-on", autoRound);
     dom.autoRoundBtn.title = t.autoRoundHint;
@@ -1411,8 +1563,39 @@ dom.abilityBar.addEventListener("click", (event) => {
     return;
   }
 
-  const button = target.closest("[data-ability]");
-  if (!button) return;
+  // Ahead of the cast path too, and for the same reason: the box sits in the card's foot, and
+  // the click that lands on it is not a click on the ability.
+  //
+  // The new value is read off the box rather than derived from autoCastOn, which is false for
+  // an automation bought this round - deriving it would make the first click of a fresh
+  // purchase a no-op that appears to un-tick itself.
+  //
+  // The whole switch is claimed here, not just the box inside it, because the cast below now
+  // takes everything that falls through: a click on the label's text or on its track arrives
+  // once as itself and once as the click the label synthesizes on the box, and only the second
+  // carries data-auto-cast. Without the label in the way the first would cast the ability.
+  const autoSwitch = target.closest(".ability-auto");
+  if (autoSwitch) {
+    const autoBox = target.closest("[data-auto-cast]");
+    if (autoBox) {
+      setAutoCast(state, autoBox.getAttribute("data-auto-cast") || "", autoBox.checked === true);
+      updateUI(state);
+      persist();
+    }
+    return;
+  }
+
+  // The cast surface is the whole card, not only the button carrying the sweep. On a card with
+  // a foot - a tier row, a price, a switch - the strip beneath the cast button was dead space
+  // that looked exactly as pressable as the rest of the tile. Anything in the foot that wants
+  // the click has already taken it above; whatever is left falls through to the cast.
+  //
+  // The fallback goes through the card's own cast button rather than the id alone, so a cast
+  // the button would refuse - cooling down, or a round that is not running - is refused here
+  // too. A locked card has no cast button at all and drops out the same way.
+  const card = target.closest(".ability");
+  const button = target.closest("[data-ability]") || (card && card.querySelector("[data-ability]"));
+  if (!button || button.disabled) return;
   triggerAbility(state, button.getAttribute("data-ability") || "");
   updateUI(state);
 });

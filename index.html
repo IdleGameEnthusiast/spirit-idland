@@ -52,6 +52,27 @@
           <rect x="3.7" y="13.2" width="8.6" height="1.8" rx="0.8"/>
         </g>
       </symbol>
+      <!--
+        The first glyph here that is not a unit: it marks the Dahan's strike bar on the chip
+        rather than standing on the board itself. Head and haft, and nothing else - it is drawn
+        smaller than the tokens, and a bit with an eye and a bevel is a smudge at that size.
+
+        What it must not read as is a flag, and a straight wedge hung off an upright pole draws
+        exactly one. Four things buy the difference, none of them costing detail the size cannot
+        carry. The poll does the most work: a stub of head on the far side of the haft, which no
+        pennant has and which is what makes the haft read as passing *through* something. Then
+        the blade is bearded - horns top and bottom, a narrow neck at the haft - so its outline
+        curves where cloth would be straight; the haft stands clear above the head and runs well
+        below it, where a flag carries its cloth at the top of the pole; and the whole thing
+        leans, which no flagpole does.
+      -->
+      <symbol id="si-axe" viewBox="0 0 16 16">
+        <g fill="currentColor" transform="rotate(20 8 8)">
+          <rect x="9.3" y="0.6" width="1.7" height="14.8" rx="0.85"/>
+          <path d="M10 4.2C8 4 6 3.2 4 2C2.6 4.2 2.6 7.4 4 9.6C6 8.4 8 7.7 10 7.5Z"/>
+          <path d="M10 4.2C11.7 4.4 12.6 5 12.6 5.85C12.6 6.7 11.7 7.3 10 7.5Z"/>
+        </g>
+      </symbol>
     </defs>
   </svg>
 
@@ -114,7 +135,12 @@
                wave arrives on its own, and when. -->
           <div class="board-hud-tile hud-wave-controls">
             <div class="wave-controls">
-              <button type="button" id="autoWaveBtn" class="hud-btn" aria-pressed="false">Auto: Aus</button>
+              <!-- The same switch the ability cards carry: what is being switched stands in
+                   the text, whether it is on stands in the slider, and no word repeats it. -->
+              <button type="button" id="autoWaveBtn" class="hud-btn auto-toggle" aria-pressed="false">
+                <span id="autoWaveBtnText">Auto</span>
+                <span class="auto-switch" aria-hidden="true"></span>
+              </button>
               <button type="button" id="startNextWaveBtn" class="hud-btn is-call">Welle starten</button>
             </div>
           </div>
@@ -198,6 +224,22 @@
         <div id="abilityBar" class="ability-bar"></div>
       </section>
 
+      <!-- Both controls answer "when does the next round begin". The toggle only appears
+           once the automation is owned - before that there is nothing for it to switch.
+           Above the shop rather than inside it, and a sibling of the panel rather than its
+           first child: the upgrade catalogue is the tallest thing in the rail and only ever
+           grows, so the control that leaves the shop must not sit behind everything the
+           player has already decided not to buy. Nothing added to the panel can push it
+           down again. No panel chrome of its own - both buttons carry their own border, and
+           the rail's gap is the separation. -->
+      <div class="round-controls">
+        <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
+        <button type="button" id="autoRoundBtn" class="hud-btn auto-toggle" aria-pressed="false" hidden>
+          <span id="autoRoundBtnText">Auto-Runde</span>
+          <span class="auto-switch" aria-hidden="true"></span>
+        </button>
+      </div>
+
       <section class="panel shop" id="shopPanel" hidden>
         <h2 id="shopTitle">Zwischen den Runden</h2>
         <p id="shopSummary" class="action-info"></p>
@@ -211,12 +253,6 @@
           <strong id="shopFearValue">0</strong>
         </div>
         <div id="upgradeList" class="upgrade-list"></div>
-        <!-- Both controls answer "when does the next round begin". The toggle only appears
-             once the automation is owned - before that there is nothing for it to switch. -->
-        <div class="shop-controls">
-          <button id="startNextRoundBtn" class="primary-btn">Naechste Runde starten</button>
-          <button type="button" id="autoRoundBtn" class="hud-btn" aria-pressed="false" hidden>Auto-Runde: Aus</button>
-        </div>
       </section>
 
       <section class="panel log">

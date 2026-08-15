@@ -145,7 +145,10 @@ and normalization accepts them, so adding a fifth ability is content work.
 
 Every progression field is meant to be forward-compatible: `upgrades.purchased` can grow new
 keys without a schema change, and `meta` can grow new tracked totals the same way the
-turn-based build's `progression` object did.
+turn-based build's `progression` object did. What "forward-compatible" obliges an implementer
+to do — and the suite that checks it against a save captured from an earlier build — is in
+[03-state-contract.md](./03-state-contract.md#older-save-files-keep-working). The short of it:
+a schema change is a wipe, so an additive field must not be one.
 
 ## Acceptance
 

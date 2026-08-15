@@ -303,6 +303,23 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     one Innate rung per tick, never two, and never before the kit is bought. Bought mid-round
     it spends nothing until the next round starts, like every other automation. What it buys
     arrives ready and can be cast by an automation on the same tick.
+15. **The auto-cast toggle.** Each of the five ability automations can be switched off from its
+    ability card without being un-bought (`ui.autoCast`, `autoCastOwned`, `autoCastOn`,
+    `setAutoCast`):
+    - Switched off, the automation does not cast even with the ability unlocked, ready, and a
+      legal target on the board: the board is unchanged and the cooldown untouched.
+    - Switching off mid-round does not touch a cooldown already running — it drains by exactly
+      the time that passed — does not undo the cast that already happened, and refunds nothing.
+    - Switching back on resumes on the next ready cooldown, with no cooldown reset in either
+      direction.
+    - Bought mid-round, the automation is owned and its switch is on, yet nothing casts until
+      the next `startRound` takes its snapshot. This is the two predicates meeting, and it is
+      the check that breaks first if someone folds them into one.
+    - `setAutoCast` on an ability with no automation in `AUTO_CAST_UPGRADES` is a no-op that
+      returns `false` and writes nothing into the map.
+    - The map holds exactly the five ability automations: not `auto_buy_abilities`, which
+      automates a purchase rather than a cast, and not `auto_start_round`, which has its own
+      toggle.
 
 ## Save and Migration Checks
 
@@ -323,6 +340,41 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    No refusal alters the run in progress.
 9. A file from an older `schemaVersion` imports as `reset`, naming the version it came from, so
    the UI can ask before starting a fresh game rather than silently doing so.
+10. A save with no `ui.autoCast` at all loads with all five automations **on**. Absent means
+    "this save predates the field", never "the player turned it off".
+11. `ui.autoCast` is rebuilt from the registry rather than merged over it: a key naming an
+    ability the build does not carry is dropped, a `false` for a known id survives, and the
+    loaded map holds exactly the registry's five ids.
+12. A migration reset leaves the fresh state's five `ui.autoCast` defaults standing. Unlike the
+    language beside it, the preference is not carried through — the reset takes every purchase
+    with it, so no switch would exist to carry one for.
+
+### Older save files keep working
+
+Checks 1-12 above all run a save the current engine wrote. These run one an *earlier build*
+wrote — `tests/fixtures/save-5.0.0-pre-autocast.js`, captured rather than generated, from
+before the auto-cast toggle existed. The rule they enforce is in
+[03-state-contract.md](./03-state-contract.md#older-save-files-keep-working).
+
+13. A save from an earlier build of the current `schemaVersion` loads with `reset: false`. It
+    is not wiped, and it comes back stamped as the current version.
+14. It keeps what the player earned: `meta.fear` and `meta.bestWaveReached` both survive.
+15. It keeps every purchase, including a laddered tier, and the round's frozen `upgradeTiers`
+    snapshot agrees with `upgrades.purchased`.
+16. It keeps the preferences it carries — language, auto-proceed, auto-start-round.
+17. **Every `ui` field added since the file was written loads at its fresh default.** Asserted
+    against `createInitialState()`'s own keys rather than a list, so the check covers the next
+    field the moment that function writes it and needs no editing to do so.
+18. In particular, the five `ui.autoCast` toggles all load **on** for a file that predates them.
+19. The loaded save is **playable**, not merely loadable: it starts a round, resolves a wave,
+    and stays running. A save that comes back in a shape `tick` throws on is not compatible,
+    and check 13 alone would not notice.
+20. It survives the disk path the player actually uses: exported and re-imported, it is still
+    not reset and the Fear is still there.
+21. A save from a **genuinely** older schema still resets, and still names the version it came
+    from. Compatibility is not "never reset" but "reset only when the shape really changed",
+    and a suite proving only the first half would pass on an engine that had stopped resetting
+    anything at all.
 
 ## UI Checks
 
@@ -333,8 +385,8 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 2b. The Energy purse is visible in the ability panel, and a locked ability reads as
    affordable or not without the player comparing two numbers by hand.
 3. A land under a legal ability target renders distinctly from a land that isn't.
-4. The shop appears the instant `round.status` becomes `ended`, with no extra
-   acknowledge-the-loss click required.
+4. The shop is on screen throughout, and turns over to the between-round summary the instant
+   `round.status` becomes `ended`, with no extra acknowledge-the-loss click required.
 5. Defeat feedback appears briefly and then disappears.
 6. Values that change every second (wave timer, strike timer, cooldowns, Blight) patch in
    place without rebuilding the board.
@@ -349,7 +401,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 
 ## Current Validation Status
 
-**372 automated checks, all passing.** Coverage by file:
+**392 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -359,7 +411,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/pacing.test.js` | The speed dial and the wave gate (02 Pacing) |
 | `tests/playtest.test.js` | The redeem code and the playtest tools (06 Playtest Tools) |
 | `tests/ladder.test.js` | The difficulty ladder as the waves climb, and the readout the track prints |
-| `tests/automation.test.js` | The bought automations and their target picks |
+| `tests/automation.test.js` | The bought automations, their target picks, and the auto-cast toggle |
 | `tests/combat.test.js` | Blight and casualty rates, concentration, the Dahan strike |
 | `tests/blight.test.js` | Blight accrual, the per-land tally, round end |
 | `tests/ability.test.js` | Cooldowns, arming, cancelling, each ability's effect |
@@ -367,7 +419,12 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 | `tests/fear.test.js` | The three Fear ladders, the locale tables, the gate |
 | `tests/haste.test.js` | The Dahan Remember: the Fear pool and the strike clock |
 | `tests/save.test.js` | Round-trip, no offline credit, migration, normalization, export/import |
+| `tests/compat.test.js` | A save from an earlier build still loads, still plays, still imports |
 | `tests/landstate.test.js` | Land state precedence (06) |
+
+`tests/compat.test.js` is the only suite that reads a fixture rather than building its state
+from the engine. `tests/fixtures/` holds that one file; it is not scanned by either runner, so
+the browser harness loads it by an explicit `<script>` tag ahead of the suite that reads it.
 
 Not automated, and verified by hand instead:
 
@@ -380,6 +437,25 @@ Not automated, and verified by hand instead:
   through the picker, a declined confirm leaving the run untouched, and an edited file and a
   junk file each refused with their own message), but those probes were not kept as standing
   tests; they need a DOM the harness does not currently build.
+- The auto-cast switch on the card, for the same reason. Driven in headless Edge over the
+  `?vis` fixture with two automations owned and one of them off: the three card shapes render
+  as specified, the switch reads its state from `ui.autoCast` rather than from the markup, a
+  click on it writes through to the state, and with `?vis&ended` the cast buttons go disabled
+  while the switches stay live.
+- The card's own cast surface, for the same reason: a click on the foot of a card with one —
+  the tier row, the empty space beside a price — casts the ability, and the same click on a
+  cooling card, a card in an ended round, or a locked card casts nothing.
+- The three auto switches rendering as one control, for the same reason: the wave and
+  auto-cast tracks measure the same, the round one measures half again as much and stands at
+  the round button's own height, and all three paint the same in both settings — in both
+  languages, since the round label's line break comes out of the locale. Checked by paint
+  rather than by computed style — a headless run advances no frame clock, so a transitioned
+  property read after a click still reports the value it is transitioning *from*, and both
+  colour and knob position on this switch are transitioned.
+- The Dahan strike bar on the chip, for the same reason. Driven in headless Edge over `?vis`:
+  the bar present exactly on the lands holding Dahan **and** invaders and absent on both
+  one-sided cases, the per-frame patch writing the fixture's fraction, and the axe-plus-track
+  row fitting land 4 — the narrowest chip — on one line.
 
 ## Acceptance
 

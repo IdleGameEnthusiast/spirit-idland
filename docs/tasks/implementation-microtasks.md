@@ -133,6 +133,159 @@ round costs; both are spelled out in [02-core-loop.md](../spec/02-core-loop.md#p
 - Covered by `tests/pacing.test.js`; `tests/harness.js` opts its fixture into auto-proceed,
   since every older suite is written against a clock that simply runs.
 
+### Task P2: An ability automation can be switched off — *done*
+
+Buying one was a one-way door. The resolvers run inside `tick` before the fight and fire the
+instant the cooldown clears, so the card never spent a frame in a state the player could
+click: once `auto_wash_away` was bought, 400 Fear had permanently removed an ability from
+active play. The round gate had already answered this one level up — buying the automation and
+wanting it on right now are two different things — and this is that sentence applied to the
+cast instead of the round.
+
+- **`AUTO_CAST_UPGRADES`** (`engine.js`) is the only place the two id spaces are tied together:
+  the resolvers are keyed by upgrade, the ability bar by ability. `autoCastOwned` reads
+  `upgradeTier` and decides whether the card draws a checkbox at all; `autoCastOn` reads
+  `activeUpgradeTier` **and** the toggle and decides whether it casts this tick. Keeping them
+  apart is what makes unticking bite on the next tick while a mid-round purchase still waits
+  for the next round. Each of the five resolvers' first line became `autoCastOn`; nothing else
+  in them moved, and the call order inside `tick` is unchanged.
+- **`ui.autoCast`** (`03-state-contract.md`) is one flag per ability, in `ui` rather than
+  `round` for the same reason `autoProceed` and `autoStartRound` are: it outlives every round
+  it is read in. It is rebuilt from the registry on load rather than merged over, so a save
+  written before the field loads with all five automations still running and cannot smuggle in
+  a toggle for an ability the build no longer has. `VERSION` did not move — a bump is a wipe,
+  and this is additive.
+- **The card grew a container** (`ui.js`, `app.css`). An unlocked ability whose automation is
+  owned takes the shape the tiered card already had — a checkbox cannot live inside a button
+  any more than a price can — so three card shapes exist, not four. Owned-ness joins
+  `abilityBarSignature`; the box's ticked state deliberately does not, and is patched per frame
+  like every other value. The box is the one thing in the bar that stays live between rounds:
+  it spends nothing, and the shop is where the next round gets decided.
+- Covered by `tests/automation.test.js` (six checks: the four toggle behaviours, the unmapped
+  no-op, and the map's contents) and `tests/save.test.js` (three: the absent field, the rebuild
+  from the registry, and the migration reset). The card itself was driven by hand in headless
+  Edge over the `?vis` fixture — see [08-acceptance-tests.md](../spec/08-acceptance-tests.md).
+
+### Task P3: The round controls move above the shop — *done*
+
+The shop panel stopped hiding itself, and the upgrade catalogue is the tallest thing in the
+rail — the repeatable ladders, the one-offs, the sold-out block, the pool row and its strip of
+denominations, and it only ever grows. The one control that ends the shopping sat underneath
+all of it, so leaving the shop meant scrolling past everything the player had already decided
+not to buy. Starting the next round is not a purchase; it is what shopping ends with.
+Placement only — nothing about *when* a round may start changed.
+
+- **`div.round-controls`** (`index.html`, `app.css`) holds `startNextRoundBtn` and the
+  `autoRoundBtn` toggle, and is a **sibling** of `section.panel.shop` in `.rail` rather than
+  its first child: nothing inside the shop can then ever push it back down, not the catalogue
+  today and not a row added to it later. It carries no panel chrome — both buttons have their
+  own border, and the rail's `gap` is the separation — and both `margin-top` nudges went with
+  the move, since they only ever existed to lift the row off the upgrade list it used to
+  follow. The class was renamed off `shop-controls` because it is not in the shop any more.
+- **No JS change.** Both buttons are looked up by id and patched by `patchPacingControls`
+  every frame, independent of `renderShop`; the toggle stays hidden until owned and the button
+  stays disabled rather than hidden while a round runs, exactly as before.
+- **`shopSignature` dropped `autoStartRoundOwned` and `autoStartRoundOn`.** `renderShop` reads
+  neither — verified, not assumed — so they only ever bought a rebuild of the whole catalogue
+  on every click of the toggle. Ownership still reaches the signature through the upgrade
+  tiers, which is the only part of that purchase the shop draws.
+- No engine change and no state change, so the suite is unmoved at 383 checks and proves
+  nothing about this either way. Driven by hand in headless Edge over the `?vis` and
+  `?vis&ended` fixtures — the row's place in the rail, the button's disabled state in both,
+  and the layout at 1400px, 1100px and 700px.
+
+### Task P4: The Dahan strike bar on the chip — *done*
+
+The strike clock existed on screen in exactly one place: a number of seconds in the board HUD
+strip, among two other numbers of seconds, above the island. The eye is on the board, so asking
+when the Dahan next swing meant leaving the thing being watched, finding the right one of three
+countdowns, and coming back. It is also the only clock on the board that is *good news*, and
+the only one with no representation where the units it belongs to are standing.
+
+- **`chipStrikeMarkup`** (`ui.js`) draws a short track followed by a new `si-axe` glyph
+  (`index.html`, the fifth symbol in the defs and the first that is not a unit), emitted into
+  the allies row immediately right of the Dahan count — it is that count's clock and nothing
+  else's, and standing beside it says so with no ink spent. Drawn only where `dahan > 0` **and**
+  the land holds invaders — exactly the land `resolveDahanAttack` would not skip, so a bar means
+  *these Dahan hit here when it fills* rather than *somewhere on the island someone swings*. A
+  bar on a land the strike passes by would fill to full and then do nothing, which is the one
+  thing a gauge must never do.
+- **One clock, drawn several times.** `resolveDahanAttack` swings every land on a single
+  `round.dahanAttackRemaining`, so every bar on the board shows the same fraction and they are
+  all full at the same instant. `patchLandMeters` computes it **once above its loop** rather
+  than once per land per frame. There is no per-land timer and none was added.
+- **Normalized against `roundDahanAttackInterval`**, never `DAHAN_ATTACK_INTERVAL_SECONDS`:
+  `dahan_remember` halves the interval, and a bar measured against the base constant would top
+  out near half-mast exactly for the player who paid 10000 Fear to make the strike matter. That
+  function reads the round's frozen snapshot — the number `tick` itself divides by — so the bar
+  cannot disagree with the clock it draws and a mid-round purchase does not re-scale a bar
+  already moving. A round that is not running reads 0%.
+- **It fills rather than drains**, opposite to the wave bar and matching the Blight bar beside
+  it: health drains, an attack gathers. The wave bar is the invaders' and answers *how long do
+  I still have*; this one is the player's and answers *how much have my people gathered*.
+- **A third branch in `patchLandMeters`, ahead of the health-ring fallback.** That function had
+  exactly two shapes — `blight` is a width and everything else falls through to the ring — so a
+  third kind without its own branch would have been handed `--health-lost` and sat invisible at
+  `opacity: 0`.
+- **Subordinate by weight, not by count** (`app.css`). 3px against the Blight bar's 5px, a fixed
+  track against Blight's full chip width, and in `--dahan-ink` rather than pressure red — and
+  **out of `.chip-meters`**, where it would have split the width with Blight and produced the
+  two equal bars that block's own comment forbids. The comment above `.chip-meters` was
+  rewritten accordingly: one *threat* bar and rings, plus a lighter bar in the player's colour
+  that is not a threat at all.
+- **The last fifth lights up** (`STRIKE_IMMINENT_AT`, `.chip-strike.is-imminent`). A bar that
+  states its fraction honestly still announces nothing, and the instant worth catching is the
+  one a player watching the invaders misses. Fill, track and axe all light — hence the class on
+  the group rather than on the fill, which CSS cannot reach up from. Pale gold, not red: red on
+  a chip means Blight and wounds, and this is the good news. The threshold is a share of the
+  clock rather than a count of seconds, so haste cannot stretch the shouting to half the cycle.
+- **No engine change, no export, no state change** — every number already existed and was
+  already exported (`round.dahanAttackRemaining`, `roundDahanAttackInterval`,
+  `invaderCountInLand`). `03-state-contract.md` was checked and needs nothing. **No signature
+  change either**: presence depends on the land's Dahan count and invader counts, and the
+  board's signature already pushes both per land — verified in `mapSignature`, not assumed.
+- Suite unmoved at 383 checks, which prove nothing about this either way. Driven by hand in
+  headless Edge over `?vis`: the bar present on lands holding both, absent on a land with Dahan
+  and no invaders and on a land with invaders and no Dahan, the patch writing 40% against the
+  fixture's `dahanAttackRemaining`, and the row fitting land 4 — the narrowest chip — without
+  wrapping.
+
+### Task P5: Older save files keep working — *done*
+
+Not a feature — a rule that already half-existed, given teeth and a test that can fail. The
+game grew an export/import button, so save files leave the browser and sit on players' disks,
+where no future change to this project can reach them. The engine's only compatibility
+mechanism is `schemaVersion` and it is all-or-nothing: `migrateSave` returns the save untouched
+on an exact match and **wipes the game** otherwise, carrying four preferences through and
+nothing else. That puts the entire burden on normalization, which is where a new field is
+easiest to get wrong — and until now nothing failed when it was.
+
+- **`tests/fixtures/save-5.0.0-pre-autocast.js`** is a real save dumped out of the build at
+  `ccbb135`, committed before any of the three features above landed so that it genuinely
+  predates them. **Captured, not generated**: rebuilding it from `createFreshGameState` would
+  make it agree with whatever the engine does today, which is the one thing a compatibility
+  fixture must not do. Its header comment says so.
+- **`tests/compat.test.js`**, nine checks, registered by hand in `tests.html` along with the
+  fixture ahead of it. They assert *properties*, not a snapshot — a golden file would fail on
+  every legitimate field addition and be re-blessed without being read. The load is not wiped;
+  Fear, best wave, purchases and the round's frozen snapshot all survive; every `ui` field
+  added since the file was written loads at its fresh default, asserted against
+  `createInitialState()`'s own keys so the next field is covered the moment that function
+  writes it; the five `ui.autoCast` toggles come back on; the save is **playable**, not merely
+  loadable — it starts a round and resolves a wave, which a save loading into a shape `tick`
+  throws on would not; and it survives export and re-import.
+- **The ninth is the one that keeps the other eight honest**: a save from a genuinely older
+  schema must still reset, and still name the version it came from. Compatibility is not "never
+  reset" but "reset only when the shape really changed", and a suite proving only the first
+  half would pass on an engine that had stopped resetting anything at all.
+- **`03-state-contract.md`** gained the section the rule now lives in — `VERSION` does not move
+  for an additive change because a bump is a wipe; a missing field defaults to what costs the
+  player nothing; registry-keyed maps are rebuilt rather than merged. `README.md`'s conventions
+  list and `05-progression.md` point at it rather than restating it. The canonical block still
+  read `schemaVersion: "4.0.0"` against an engine at `5.0.0` and was corrected.
+- Suite at 392 checks, up from 383. The mutation was checked rather than assumed: breaking the
+  `autoCast` default assertion failed exactly one check, so the fixture really is being read.
+
 ---
 
 ## What To Build Next

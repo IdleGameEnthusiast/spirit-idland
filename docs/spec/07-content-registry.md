@@ -217,9 +217,20 @@ Fear is a wall. See
   now Energy's job and does not go through the shop at all; this key remains the path for a
   fifth ability from outside the kit. `unlockedAbilityIds()` still reads it, and normalization
   still accepts it, so that fifth ability is content work and not code work.
+All five ability automations below carry a **switch on the ability's own card**, drawn from
+the moment the upgrade is bought. Switching it off stops future casts and nothing else: no cooldown
+is reset, shortened or lengthened, no cast is undone, nothing is refunded, and the upgrade is
+never un-bought. Buying an automation is therefore not a one-way door — the ability goes back to
+being played by hand for as long as the switch is off. See `ui.autoCast` in
+[03-state-contract.md](./03-state-contract.md) and the card shapes in
+[06-ui-contract.md](./06-ui-contract.md#ability-status-rules). `auto_buy_abilities` and
+`auto_start_round` are not in this set: the first automates a purchase rather than a cast, and
+the second already has its own toggle.
+
 - `auto_boon` — one-time, `boon_of_vigor` casts itself once ready, no click needed. `baseCost`
   25 — priced as comfort, roughly one round's income, since the effect it buys back has no
-  target and no decision in it.
+  target and no decision in it. Switchable off from the card without being un-bought, though
+  the Boon has no target and no decision, so unticking it can only make the player slower.
 - `auto_innate` — one-time, `innate_power` casts itself once ready, at whichever tier is
   currently owned; tiering up later never re-arms this. `baseCost` 100 — priced well above
   `auto_boon` because the Innate fires more often at every tier and, unlike the Boon, casting
@@ -236,6 +247,8 @@ Fear is a wall. See
   unit it saved no stack and was the exact mirror of the routing rung above it, so on an
   8-beat clock against the 10-beat Dahan strike it only shuttled the same unit back and forth
   across the same border.
+  Switchable off from the card without being un-bought, and one of the three where that
+  matters: the Innate picks a land, and a player may want that decision back.
 The three ability automations below are ranked by what their ability puts on the board or takes
 off it, not by how much clicking they save: the Bounty reinforces, the Floods kill, and the sea
 removes. Each rung up is a stronger claim on the round than the one under it.
@@ -245,12 +258,15 @@ removes. Each rung up is a stronger claim on the round than the one under it.
   and deliberately under the last rung of the `dahan_reinforcement` ladder (about 268), which
   is what it used to be priced against: the ladder sells one Dahan for a whole round and this
   sells one every 15 beats, so the ladder is the early lever and this is what replaces it.
+  Switchable off from the card without being un-bought, though like the Boon it picks its own
+  land, so unticking it only costs the player clicks.
 - `auto_flash_floods` — one-time, `flash_floods` casts itself and picks its own land.
   `baseCost` 300 — dearer than the Bounty because it kills, and a defeat pays Fear and Energy
   at once where a Dahan only holds ground. Its priority list is read off kills rather than off
   position: a Build threat the flood would empty, then anywhere the cast defeats a unit, then
   the steepest live Blight source; ties go to the land the flood hits hardest, which is a coast
-  before an inland. No priority means no cast and no cooldown.
+  before an inland. No priority means no cast and no cooldown. Switchable off from the card
+  without being un-bought.
 - `auto_wash_away` — one-time, `wash_away` casts itself and picks its own land. `baseCost`
   400 — the dearest of the three, and the only automation whose worth *grows* with the round:
   the sea takes a unit off the island whole, so it pays a defeat's Fear and Energy without
@@ -259,7 +275,9 @@ removes. Each rung up is a stronger claim on the round than the one under it.
   the way the ability is: a Build threat the cast would empty, then the coast the sea empties
   hardest, then an undefended land whose push lands on open ground holding Dahan, then the
   thinnest defended land. The last two require **open ground** — the occupied-neighbour
-  fallback is a trade a player can see the cost of and an automation cannot.
+  fallback is a trade a player can see the cost of and an automation cannot. Switchable off
+  from the card without being un-bought — the reason the toggle exists at all, since 400 Fear
+  used to remove the ability from active play permanently.
 The last two rows are behind a **gate** rather than behind a price (`GATED_UPGRADE_IDS`, read
 through `upgradeIsLocked`). Neither is for sale until every other upgrade in the catalogue is
 finished — every repeatable at its max tier, every one-off bought. Between them they hand over

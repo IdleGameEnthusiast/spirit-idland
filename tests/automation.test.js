@@ -9,7 +9,7 @@
 
 (function () {
   const {
-    engine, test, assert, assertEqual, newGame, advance,
+    engine, test, assert, assertEqual, assertClose, newGame, advance,
     clearBoard, setLand, unlockAllAbilities, grantUpgrade
   } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
@@ -304,6 +304,133 @@
     advance(ctx, engine.ABILITIES.flash_floods.cooldownSeconds);
 
     assertEqual(state.invaders["3"].explorers, 0, "the explorer went without a click");
+  });
+
+  /* ---------------------------------------------------------------- *
+   * The auto-cast toggle                                               *
+   *                                                                    *
+   * Buying an automation used to be a one-way door: the resolver fires *
+   * inside tick the instant the cooldown clears, so the card never     *
+   * spends a frame a player could click. The checkbox on the card      *
+   * splits the purchase from the preference, exactly as the round gate *
+   * already splits autoStartRoundOwned from autoStartRoundOn.          *
+   * ---------------------------------------------------------------- */
+
+  test("auto-cast toggle: unticked, the automation does not cast and spends nothing", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_flash_floods");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    setLand(state, "3", { explorers: 1 }, 0);
+
+    // Unlocked, ready, and a land it would certainly have picked.
+    assert(engine.abilityIsReady(state, "flash_floods"), "ready");
+    assertEqual(engine.pickFlashFloodsAutoTarget(state), "3", "and a legal target it wants");
+
+    engine.setAutoCast(state, "flash_floods", false);
+    engine.resolveAutoFlashFloods(state);
+
+    assertEqual(state.invaders["3"].explorers, 1, "the board is untouched");
+    assertEqual(state.abilities.flash_floods.cooldownRemaining, 0, "and the cooldown is untouched");
+    assert(engine.autoCastOwned(state, "flash_floods"), "the upgrade is still owned");
+  });
+
+  test("auto-cast toggle: unticking mid-round keeps the running cooldown and the cast already made", () => {
+    const ctx = fullKit();
+    const { state } = ctx;
+    grantUpgrade(state, "auto_flash_floods");
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    setLand(state, "3", { explorers: 1 }, 0);
+
+    advance(ctx, 1);
+    assertEqual(state.invaders["3"].explorers, 0, "it cast while the box was still ticked");
+    const cooling = state.abilities.flash_floods.cooldownRemaining;
+    assert(cooling > 0, "and spent a cooldown doing it");
+
+    engine.setAutoCast(state, "flash_floods", false);
+    advance(ctx, 1);
+
+    assertEqual(state.invaders["3"].explorers, 0, "the cast that already happened is not undone");
+    assertClose(
+      state.abilities.flash_floods.cooldownRemaining,
+      cooling - 1,
+      0.0001,
+      "and the cooldown runs on by exactly the second that passed - neither reset nor stretched"
+    );
+    assertEqual(state.upgrades.purchased.auto_flash_floods, 1, "nothing is refunded and nothing un-bought");
+  });
+
+  test("auto-cast toggle: re-ticking resumes on the next ready cooldown, with no reset in between", () => {
+    const { state } = fullKit();
+    grantUpgrade(state, "auto_bounty");
+    const total = () => engine.LAND_IDS.reduce((sum, id) => sum + state.dahan[id], 0);
+
+    engine.resolveAutoBounty(state);
+    const cooling = state.abilities.rivers_bounty.cooldownRemaining;
+    assert(cooling > 0, "the first cast started a cooldown");
+
+    engine.setAutoCast(state, "rivers_bounty", false);
+    assertEqual(state.abilities.rivers_bounty.cooldownRemaining, cooling, "unticking does not shorten it");
+
+    // The cooldown it was already carrying runs out on its own. Off, the ready ability simply
+    // sits there: nothing casts, and nothing spends the cooldown a second time.
+    state.abilities.rivers_bounty.cooldownRemaining = 0;
+    const before = total();
+    engine.resolveAutoBounty(state);
+    assertEqual(total(), before, "no Dahan arrive while it is off");
+    assertEqual(state.abilities.rivers_bounty.cooldownRemaining, 0, "and it is still ready, not re-cooled");
+
+    engine.setAutoCast(state, "rivers_bounty", true);
+    assertEqual(state.abilities.rivers_bounty.cooldownRemaining, 0, "re-ticking resets nothing either");
+
+    engine.resolveAutoBounty(state);
+    assertEqual(total(), before + engine.ABILITIES.rivers_bounty.amount, "it resumes on the next ready cooldown");
+  });
+
+  // The two predicates meeting: owned reads what is bought, on reads the round's snapshot. A
+  // "simplification" that folds them into one is what this check exists to catch.
+  test("auto-cast toggle: bought mid-round the box is there and ticked, and still casts nothing this round", () => {
+    const { state } = fullKit();
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    setLand(state, "3", { explorers: 1 }, 0);
+
+    // The purchase alone, without the round snapshot grantUpgrade also writes.
+    state.upgrades.purchased.auto_flash_floods = 1;
+
+    assert(engine.autoCastOwned(state, "flash_floods"), "the card draws its checkbox at once");
+    assertEqual(state.ui.autoCast.flash_floods, true, "ticked, because nobody unticked it");
+    assert(!engine.autoCastOn(state, "flash_floods"), "but the round it was bought in never sees it");
+
+    engine.resolveAutoFlashFloods(state);
+    assertEqual(state.invaders["3"].explorers, 1, "so nothing casts before the next round");
+
+    engine.startRound(state);
+    assert(engine.autoCastOn(state, "flash_floods"), "the next round's snapshot is what switches it on");
+  });
+
+  test("auto-cast toggle: an ability with no automation cannot be toggled at all", () => {
+    const { state } = newGame();
+
+    assertEqual(engine.setAutoCast(state, "summon_kraken", true), false, "no automation, no toggle");
+    assert(!("summon_kraken" in state.ui.autoCast), "and nothing is written into the map");
+    assert(!engine.autoCastOwned(state, "summon_kraken"), "it is never owned");
+    assert(!engine.autoCastOn(state, "summon_kraken"), "and never on");
+  });
+
+  test("auto-cast toggle: every ability automation in the shop is in the map, and only those", () => {
+    const abilityIds = Object.keys(engine.AUTO_CAST_UPGRADES);
+    assertEqual(abilityIds.length, 5, "five ability automations");
+    for (const abilityId of abilityIds) {
+      assert(engine.ABILITIES[abilityId], `${abilityId} is a real ability`);
+      assert(engine.UPGRADES[engine.AUTO_CAST_UPGRADES[abilityId]], "and its automation is a real upgrade");
+    }
+    // The two automations that are deliberately out of scope: one buys a purchase rather than
+    // a cast, and the other already has its own toggle.
+    const upgradeIds = Object.values(engine.AUTO_CAST_UPGRADES);
+    assert(!upgradeIds.includes("auto_buy_abilities"), "auto_buy_abilities casts nothing");
+    assert(!upgradeIds.includes("auto_start_round"), "auto_start_round has its own toggle");
   });
 
   /* ---------------------------------------------------------------- *

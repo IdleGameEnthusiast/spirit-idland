@@ -12,8 +12,13 @@ island board, and the between-round shop.
   panel.
 - A round in progress must communicate, at a glance and without opening any panel, how close
   Blight is to ending it.
-- The shop appears in the side rail while `round.status` is `ended`; the board stays visible
-  beside it as the frozen result of the round just lost.
+- The shop is always in the side rail, running round or not; the board stays visible beside
+  it, and when the round has ended it is the frozen result of the round just lost. The shop
+  no longer hides itself: Fear is banked at the round boundary rather than spendable the
+  moment it is earned, so shutting the panel is not what keeps a round from buying its own
+  way out — and once rounds can start themselves there would be no moment left to open it.
+  What `round.status` changes is the summary line the panel opens with and which purchases
+  are already in effect, not whether the panel is there.
 - A stopped clock must always say why it stopped. There are two reasons — the speed dial at
   `0x`, and a wave gate waiting to be called — and the wave tile names whichever holds, with
   the gate named first because it is the one with a button waiting to be pressed.
@@ -34,7 +39,8 @@ island board, and the between-round shop.
   countdown on the page — the Dahan strike, every ability cooldown — converts the same way,
   or two clocks that run together stop reading as one
 - Wave controls, in the wave tile because they answer the question the bar above them asks:
-  the **auto-proceed toggle**, and the **call button** that opens a held gate. They are the
+  the **auto-proceed toggle** — the same sliding switch the ability cards carry, labelled
+  "Auto" whichever way it is set — and the **call button** that opens a held gate. They are the
   only part of the strip that takes pointer events; the row around them stays inert, so the
   island keeps every pixel it is not actually covering. The call button stays on the strip
   while it is dead rather than being hidden — it is the one control the manual mode is played
@@ -131,8 +137,67 @@ island board, and the between-round shop.
   the player needs at a glance. The behaviour is identical either way — this is a presentation
   decision, not a rules one.
 
-  One bar and rings, rather than a second bar: two bars of equal weight read as two equal
-  threats, and only Blight ends the round.
+  One *threat* bar and rings, rather than a second threat bar: two bars of equal weight read as
+  two equal threats, and only Blight ends the round. The rule is kept by **weight, not by
+  count** — the Dahan strike bar below is a second bar and is deliberately not a threat.
+- On a land holding **both Dahan and invaders**: a **Dahan strike bar**, sitting in the allies
+  row immediately **right of the Dahan count**, with a small axe past its right-hand end. It
+  **fills** as the strike clock runs down and is full at the instant the Dahan swing. Health
+  drains and an attack gathers, which puts it in the opposite direction from the wave bar in the
+  HUD strip:
+  that one is the invaders' and answers *how long do I still have*, this one is the player's
+  and answers *how much have my people gathered*. On the chip itself the convention is
+  consistent — the Blight bar beside it also fills.
+
+  It is subordinate to the Blight bar by every means available: thinner (3px against 5px),
+  shorter (a fixed track against the chip's full width), and in `--dahan-ink` rather than
+  pressure red. It is the only thing on a chip that is good news and must not be mistaken at a
+  glance for a fourth way to lose. It is **not** in the Blight bar's row, which is a flex row of
+  equal-weight meters: a second meter dropped in there would split the width with Blight and
+  produce exactly the two equal bars the rule above forbids.
+
+  Where it *is* — tucked against the Dahan count — is doing work no label could. It is that
+  count's clock and no other land reading, and standing beside the count says so with no ink
+  spent. The axe goes past the far end of the track rather than in front of it, so a filling bar
+  runs toward the blade and reaches it as the Dahan swing.
+- **The last fifth of the swing lights the whole group up** — fill, track and axe together, in
+  pale gold, with the axe breathing. The threshold is `STRIKE_IMMINENT_AT` in `ui.js` and is a
+  **share of the clock, not a count of seconds**: `dahan_remember` halves the interval, so a
+  fixed two seconds would be a quarter of the cycle unbought and half of it bought — the more
+  Fear sunk into the strike, the longer the board would sit shouting. A fifth is a fifth at any
+  haste.
+
+  Pale gold rather than red, by the same rule that governs the bar's weight. Red on a chip means
+  Blight and wounds; the strike landing is the good news, and flashing it in the threat colour
+  would make it read as a fourth way to lose. The cue exists because a 3px bar in a mid-warm
+  brown states its fraction honestly and announces nothing — a player watching the invaders
+  never catches the one instant worth catching.
+
+  One clock drives every lit bar, so they all light at the same instant. That is the point: the
+  moment belongs to the island, not to a land.
+
+  It is normalized against `roundDahanAttackInterval(state)`, never the base
+  `DAHAN_ATTACK_INTERVAL_SECONDS`. `dahan_remember` halves the interval, and a bar divided by
+  the base constant would top out near half-mast exactly for the player who paid to make the
+  strike matter. That function reads the round's frozen upgrade snapshot, which is the number
+  `tick` itself divides by, so the bar can never disagree with the clock it draws and a
+  mid-round purchase does not re-scale a bar already in motion. A round that is not running
+  reads 0%.
+- **Two conditions, both required, for drawing the strike bar**: Dahan present *and* invaders
+  present — exactly the land `resolveDahanAttack` would skip. So a bar means *these Dahan hit
+  here when it fills*, never *somewhere on the island someone swings*. A land with Dahan and no
+  invaders gets no bar, because the strike passes it by and would leave a gauge sitting full
+  having done nothing, which is the one thing a gauge must never do.
+
+  Note the deliberate contrast with the stopped Dahan ring below: the ring remembers when a
+  land empties and the strike bar does not. They are different kinds of number — the ring's
+  value is that land's own history, and the bar's is a global clock that says nothing whatever
+  about a land the strike will skip.
+- **There is one strike clock for the whole island**, so every strike bar on the board shows
+  the same fraction and they are all full at the same instant. `resolveDahanAttack` walks every
+  land on a single `round.dahanAttackRemaining`; there is no per-land timer and none is to be
+  built. The repetition is the point: the clock goes where the eye already is, rather than
+  telling eight lands eight different things.
 - **Nothing at full health wears a ring.** The rings on screen are exactly the units worth
   looking at. The Dahan ring is fed by `round.dahanProgress`, which is continuous; an invader
   ring is fed by whole points already taken.
@@ -157,7 +222,31 @@ island board, and the between-round shop.
   damage, Dahan defence, net, rate, ETA), invader counts with partial-HP hints, Dahan,
   Blight taken here, and its neighbours
 
-4. Between-round shop (visible only while `round.status` is `ended`)
+4. The round controls — a bare row in the rail, above the shop panel
+- The two controls that answer *when does the next round begin*: **a clear "Start Next Round"
+  control, always available regardless of remaining Fear**, and the **auto-round toggle**
+  beside it
+- **Above the shop panel, and a sibling of it rather than its first child.** The upgrade
+  catalogue is the tallest thing in the rail — repeatable ladders, one-offs, a sold-out block
+  and a pool row with its strip of denominations — and it only ever grows. The control that
+  ends the shopping must not sit behind everything the player has already decided not to buy,
+  and nothing added inside the panel may push it back down there. A section whose primary
+  action sat above its own heading would also have a heading that no longer headed anything
+- **No panel chrome.** It is a row of two buttons, not a section of the page: both buttons
+  carry their own border and fill, and the rail's own gap is the separation
+- **Disabled while a round runs, never hidden**, the same choice the wave call button makes
+  one level down. A row that vanished at every round boundary would jump the shop panel and
+  the log up and down the rail
+- The toggle sits beside the button it automates and travels with it, the same rule that puts
+  the auto-wave toggle beside the wave countdown. It is drawn on ownership, so the row is a
+  single centred button until the automation is bought
+- It is the same switch the ability cards carry (see
+  [Ability Status Rules](#ability-status-rules)), drawn at the larger of its two sizes with its
+  label stacked onto two lines. It keeps its own height rather than stretching to the primary
+  button's — a slider stretched to twice its height is a slider lost in a field of its own
+  background — but at that size the two controls stand level anyway
+
+5. The shop (always in the rail; its summary is what changes with `round.status`)
 - The round just lost: its number and the Fear it earned
 - The upgrade catalogue: each entry's effect, its current tier if repeatable, and its cost
 - **A row whose per-tier gain is not constant describes its next rung, not its whole shape.**
@@ -189,9 +278,8 @@ island board, and the between-round shop.
   finish the catalogue, so hiding it would hide the goal. The row wears the lock instead of the
   "takes effect next round" note — a locked row cannot have been bought, so the two never
   collide
-- A clear "Start Next Round" control, always available regardless of remaining Fear
 
-5. Log and utility controls
+6. Log and utility controls
 - Event log
 - Manual save button
 - Export and import buttons, and the status line they answer on
@@ -234,6 +322,54 @@ from the dev tools, and still is.
   inside a button is not markup. The card becomes a container holding two: the cast surface,
   and the tier row beneath it. It keeps the same card styling either way, so the bar still
   reads as one column of equal things.
+- **An ability whose automation is owned carries a switch in its card**, which is what says
+  whether that automation still casts. It sits inside the card, beside the cast button it
+  automates — the same rule that puts the auto-wave toggle beside the wave countdown and the
+  auto-round toggle beside the round button. Not in the shop row where the upgrade was bought,
+  and not collected into a settings panel. It is drawn on ownership (`autoCastOwned`), so it
+  appears the instant the upgrade is bought — already on, because a player who just paid
+  for an automation should not have to click a second time to get it — and never disappears
+  again. All five ability automations get one, including the two whose abilities need no
+  target: a control that appears on three cards and not the other two is a rule with an
+  exception the player has to discover.
+- **It is drawn as a sliding switch, not a tick box.** What it governs is a setting that stays
+  where it is put until it is put back, which is the shape a phone's settings screen uses and
+  not the shape of a choice being confirmed. Underneath it is still a checkbox input — hidden
+  behind the track it paints, so the keyboard, the label's click forwarding, and everything
+  that reads or writes `checked` keep working on a plain checkbox. Hiding it must leave its
+  box in the layout (not `display: none`), or the focus ring goes with it.
+- **One switch, worn by all three automations the player can switch**: the wave, the round, and
+  each ability's auto-cast. Same track, same colours, same shape, sized in `rem` rather than off
+  whichever line it landed on — the wave toggle and the auto-cast toggle are the same object
+  and must not be two objects that merely rhyme. What drives it differs by home and the shape
+  does not: on a card it is the hidden checkbox behind the track, in the HUD it is the button
+  around it wearing `.is-on`.
+- **Two sizes, and the second one is a scale rather than a redraw.** The switch takes its size
+  from its neighbours: the small one on the HUD strip and in the card's foot, where it shares a
+  line with footnote text, and a half-again larger one beside the round button, which is the
+  biggest control in the rail and next to which the small one reads as a speck. Track, knob and
+  inset are three custom properties on `.auto-switch` and the knob's travel is derived from
+  them, so a home that needs another size sets the numbers and never redraws the switch.
+- **The round toggle's label stacks onto two lines**, which is what lets the pill grow with the
+  switch instead of sprawling sideways, and lands it at the round button's own height. Where
+  the label breaks is the **locale's** business, not the layout's: `Auto-Runde` and `Auto round`
+  do not break in the same place, so the break lives in the string and the CSS only agrees to
+  honour it (`white-space: pre-line`).
+- **The label says what is switched, never whether it is on.** That reading belongs to the
+  slider; a word repeating it is a second answer to look at. So the two HUD toggles read "Auto"
+  and "Auto round" at all times, and being on takes nothing but the switch and brighter ink —
+  the teal fill that used to flood the whole button is gone, or the button would be shouting
+  the same thing the slider already says.
+- **Three card shapes, not four.** A checkbox cannot live inside a button any more than a
+  price button can, so the switch forces the same container shape the tiered card already uses.
+
+  | Ability state | Shape |
+  | --- | --- |
+  | Locked | card container, dimmed, with its price button |
+  | Unlocked, automation unowned | a single button |
+  | Unlocked, automation owned | container + cast button + a foot holding the switch |
+  | Tiered (`innate_power`) | as above; the switch joins the foot the tier and its price share |
+
 - **Under the Energy purse: where Energy comes from.** It is the one currency the player earns
   by fighting rather than by surviving, and the purse only ever shows a total. The note names
   the income (1/2/3 per Explorer/Town/City, plus Boon of Vigor) and — the part nothing else on
@@ -249,6 +385,24 @@ from the dev tools, and still is.
 - If an ability is armed and the clicked land is a legal target, the click also resolves
   that ability's effect.
 - Lands are focusable and activate on Enter and Space. No drag, no hover-only affordance.
+- Everything pressable in the ability bar goes dead while the round is not running — the
+  Energy, the unlocks, the tiers and the casts are all bought and spent inside a round. The
+  **auto-cast switch is the one exception and stays live**: it spends nothing, and the shop
+  between rounds is exactly where a player decides how the next round should play.
+- **The whole card casts, not only the cast button.** On a card with a foot — a tier row, a
+  price, a switch — the strip beneath the cast button looked exactly as pressable as the rest
+  of the tile and did nothing, so a click anywhere on the card that nothing else claimed casts
+  the ability. It goes through the card's own cast button rather than the id alone, so a cast
+  that button would refuse — cooling down, or a round that is not running — is refused here
+  too, and a locked card, which has no cast button at all, casts nothing.
+- The switch wins the bar's delegated click outright, ahead of the cast surface, the same way
+  the two price buttons do. The **whole label** is claimed, not just the hidden box inside it:
+  a click on the label's text or track arrives once as itself and once as the click the label
+  forwards to the box, and only the second carries `data-auto-cast` — without the label in the
+  way the first would fall through and cast the ability. The new value is read off the box
+  itself rather than derived from `autoCastOn`, which is `false` for an automation bought this
+  round — deriving it would make the first click of a fresh purchase a no-op that appeared to
+  switch itself back off.
 
 ## Land State Rules
 
@@ -300,6 +454,26 @@ Two clarifications the implementation forced:
   are repainted.
 - Rebuilding the board on a per-second cadence would destroy in-progress hover/focus state
   and any cooldown sweep animation.
+- The two halves of the auto-cast switch split across that line, and must stay split.
+  Whether an automation is **owned** changes a card's *shape*, so it belongs in the ability
+  bar's rebuild signature or a purchase leaves the bar without its switch. Whether the switch is
+  **on** is patched per frame like every other value: folding it into the signature would
+  rebuild the whole bar on every click of the box and destroy the running cooldown sweep, which
+  is the exact failure the render/patch split exists to prevent.
+- The Dahan strike bar's **fill** is patched per frame like the two bars above it, and the
+  fraction is computed **once per frame rather than once per bar** — there is one clock for the
+  whole island, so eight bars asking for it separately would be seven wasted answers. Its
+  **presence** needs no signature work: whether a chip carries it depends on that land's Dahan
+  count and its invader counts, and the board's signature already pushes both per land. The
+  bar therefore appears and disappears as a land gains or loses its last invader without a
+  click, which is the claim worth watching when this is changed.
+- The strike bar carries `data-meter-land` only so the existing per-land patch selector picks
+  it up. Nothing reads the id off it, because there is no per-land strike value to read.
+- The round controls are patched every frame with the rest of the pacing controls, and the
+  shop's rebuild signature does not carry them. It is not the panel they live in, and the
+  catalogue reads nothing about them: whether the toggle is owned or on has no bearing on a
+  single row of it. Ownership still reaches the signature through the upgrade tiers, which is
+  the only part of that purchase the shop actually draws.
 
 ## Terrain Colour Rules
 
@@ -369,9 +543,10 @@ Implemented as a twelve-column grid over three regions:
 - **HUD**, laid over the board: five tiles (Blight, next wave with its controls, Dahan
   strike, Fear, round).
 - **Board**, eight columns: map hint, island, land detail panel.
-- **Rail**, four columns: ability bar, then the shop when a round has ended, then the log.
-  A single flex column, so the shop appearing pushes the log down rather than displacing
-  the board.
+- **Rail**, four columns: ability bar, then the round controls, then the shop when a round
+  has ended, then the log. A single flex column, so the shop appearing pushes the log down
+  rather than displacing the board — and so the round controls keep their place whatever the
+  catalogue below them grows to.
 - **Footer**, full width: the save controls, and under them the redeem bar. Nothing in the
   round is played through either, which is what puts them below everything that is.
 
