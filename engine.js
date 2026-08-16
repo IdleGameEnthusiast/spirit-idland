@@ -1055,6 +1055,8 @@ const I18N = {
     shopRoundRunning: "Runde {round} läuft, Welle {wave}. {fear} Furcht bisher - buchbar am Rundenende.",
     shopFearLabel: "Verfügbare Furcht",
     shopTierLabel: "Stufe {tier}",
+    // Für eine Leiter mit bekanntem Ende - siehe upgradeStatusText.
+    shopTierLabelMax: "Stufe {tier}/{max}",
     // Was ein Becken dort zeigt, wo eine Leiter ihre Stufe zeigt - siehe upgradeStatusText.
     shopHasteLabel: "{pct}% schneller",
     shopCostLabel: "{cost} Furcht",
@@ -1382,6 +1384,8 @@ const I18N = {
     shopRoundRunning: "Round {round} running, wave {wave}. {fear} Fear so far - banked when the round ends.",
     shopFearLabel: "Fear available",
     shopTierLabel: "Tier {tier}",
+    // For a ladder with a known top - see upgradeStatusText.
+    shopTierLabelMax: "Tier {tier}/{max}",
     // What a pool shows where a ladder shows its tier - see upgradeStatusText.
     shopHasteLabel: "{pct}% faster",
     shopCostLabel: "{cost} Fear",
@@ -1976,7 +1980,11 @@ function upgradeStatusText(state, upgradeId) {
       pct: hastePctText(dahanHasteFraction(upgradeTier(state, upgradeId)))
     });
   }
-  return template(t.shopTierLabel, { tier: upgradeTier(state, upgradeId) });
+  const tier = upgradeTier(state, upgradeId);
+  const max = upgradeMaxTier(upgradeId);
+  return Number.isFinite(max)
+    ? template(t.shopTierLabelMax, { tier, max })
+    : template(t.shopTierLabel, { tier });
 }
 
 /* ------------------------------------------------------------------ *
