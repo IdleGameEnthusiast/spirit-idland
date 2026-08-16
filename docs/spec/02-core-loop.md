@@ -54,8 +54,11 @@ upgrade shop between rounds.
    state. Log the round number reached and the Fear earned.
 4. **Upgrade shop.** The player spends any accumulated `meta.fear` on permanent upgrades.
    See [Between Rounds](#between-rounds).
-5. **Next round.** Starting a new round returns to step 1. `round.number` increments;
-   `meta.bestRoundReached` updates if beaten.
+5. **Next round.** Starting a new round returns to step 1 and `round.number` increments. The
+   two best-wave records are written at step 3 rather than here, off `round.wavesResolved`:
+   `meta.bestWaveReached` all-time, `meta.cycleBestWave` since the last ascension. The round
+   number itself is not a record — nothing reads it, and every round starts at the bottom rung
+   whatever number it wears.
 
 ## Abilities
 
@@ -282,6 +285,17 @@ catalogue is content, not loop mechanics; see [05-progression.md](./05-progressi
 
 Starting the next round is always available once in the shop; there's no requirement to
 spend all Fear first.
+
+### The other thing an ended round allows
+
+Ascension is offered here too, once unlocked, and nowhere else. It is not a step in the round
+sequence because it is not part of one: it ends the **cycle** the rounds belong to, hands back
+every Fear purchase and pays out Presence, and starts a fresh round from an empty catalogue.
+See [05-progression.md](./05-progression.md#ascension).
+
+Restricting it to `round.status === "ended"` is the same rule the shop follows, and it buys one
+thing beyond consistency: a round in progress has banked no Fear, so the question of whether a
+part-finished round counts toward the payout never comes up.
 
 ## Dahan Rules
 

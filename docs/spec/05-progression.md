@@ -2,16 +2,43 @@
 
 ## Intent
 
-Document the permanent meta-progression loop: Fear as a persistent currency, the upgrade
-shop it funds, and what carries across rounds versus what resets.
+Document the two meta-progression loops: Fear as a per-cycle currency and the upgrade shop it
+funds, and Presence as the permanent layer above it that ascension pays out in. What carries
+across rounds, what carries across ascensions, and what resets at each boundary.
 
 ## Rules
 
-- Progression in this design happens entirely between rounds. Nothing purchased mid-round
-  exists, because the shop only opens once `round.status` is `ended`.
-- A permanent upgrade, once purchased, applies to every round from then on. There is no
-  respec and no way to lose a purchased upgrade short of a save wipe.
-- `meta.fear` is the only currency. There is no second meta-currency in this slice.
+- Progression happens between rounds. Nothing purchased mid-round takes effect mid-round —
+  the shop is open all the time, but what a round runs on is frozen at its start.
+- A Fear upgrade, once purchased, applies to every round in that **cycle**. There is no
+  respec; the one thing that takes it away is ascension, which takes all of them at once.
+- **There are two currencies and they are not interchangeable.** Fear buys. Presence decides
+  what Fear is allowed to buy. See [The two layers](#the-two-layers).
+
+## The two layers
+
+> **Fear buys. Presence decides what Fear is allowed to buy.**
+
+That single line is the whole of the two-currency design, and everything below is a
+consequence of it.
+
+Presence never touches the board. It buys no Dahan, shortens no clock, and adds no damage.
+What it buys is **permission**: a row that was not in the Fear catalogue is now in it, and the
+player still owes Fear for it. So the two currencies can never be balanced against each other,
+because they are not the same kind of thing — there is no exchange rate to get wrong, and no
+future Presence row can quietly do a Fear row's job at a different price.
+
+It also means the Fear shop is the only place power is bought, which keeps one catalogue to
+balance rather than two. A Presence purchase changes the *shape* of that catalogue and nothing
+about the numbers inside it.
+
+| | Fear | Presence |
+| --- | --- | --- |
+| earned by | rounds, continuously | ascending, once per cycle |
+| spent on | the upgrade catalogue | which rows the catalogue has |
+| survives a round | yes | yes |
+| survives an ascension | **no** | yes |
+| touches the board | yes | never |
 
 ## Meta State
 
@@ -20,18 +47,44 @@ shop it funds, and what carries across rounds versus what resets.
 - `meta.fear` accumulates from every invader defeat and every wave survived, in every round,
   and is never reset by a round ending — win or lose, the Fear earned stays.
 - It is spendable only in the between-round shop.
+- It is **wiped by ascension**, along with every upgrade it bought. Fear is a cycle's
+  currency, not the run's.
 - **`meta.fear` is always a whole number.** `round.fearEarned` accumulates as a float — the
   three Fear ladders multiply it — and `endRound` floors the total once on the way into the
   bank, always downward. See
   [04-economy-formulas.md](./04-economy-formulas.md#where-the-rounding-happens) for why the
   rounding lives at the bank and not at each award.
 
-### Round Tracking
+### Presence
+
+- `meta.presence` is the ascension currency. It is paid out once per ascension, on a curve
+  read off the cycle's Fear income — see [Ascension](#ascension).
+- It is spent in the **Presence shop**, whose rows unlock Fear-catalogue rows. Nothing else
+  spends it and nothing else pays it.
+- `presenceUpgrades.purchased` holds what it bought, in its own object rather than beside
+  `upgrades.purchased`. That separation is what makes the wipe one line instead of a filter
+  with exceptions in it: ascension clears `upgrades.purchased` whole and never looks at this.
+- `meta.ascensionCount` counts ascensions. Unlike the round tally below it, this one is read —
+  the ascension panel shows it, and it is the only number saying how deep a *run* is rather
+  than how deep a cycle got.
+
+### Round Tracking, and the two high scores
 
 - Rounds are not tallied. Nothing in the rules or the UI reads a count of attempts, so a save
   that carries a `meta.totalRoundsPlayed` from an older build drops it on load.
-- `meta.bestRoundReached` updates whenever `round.number` at round-end exceeds it. This is
-  the run's headline score.
+- **`meta.bestWaveReached` is the run's headline score and is never cleared** — not by a round
+  ending, not by ascending. It is what the whole save has ever reached.
+- **`meta.cycleBestWave` is the same measure since the last ascension**, and ascension clears
+  it.
+
+Two scores rather than one, because after an ascension they answer different questions. The
+all-time figure says how far this player has ever got; the cycle figure says how the current
+climb is going, which is the only one that moves in the first rounds after a Reclaim. One
+number cannot do both: cleared, it forgets the run; kept, it says nothing about the cycle.
+
+The naming follows the one rule the state has: **a `cycle*` field is wiped by ascension and
+everything else is not.** `meta.cycleFearGenerated`, `cycleFearGranted` and `cycleFearSpent`
+were named first and set the convention; `cycleBestWave` joins them.
 
 ### Permanent Upgrades
 
@@ -39,6 +92,7 @@ shop it funds, and what carries across rounds versus what resets.
   or tier that upgrade tracks (a flat unlock is `true`; a repeatable upgrade tracks its
   purchased tier as a number).
 - Applied at round setup — see [Round Reset Formula](./04-economy-formulas.md#round-reset-formula).
+- "Permanent" means *for the cycle*. Ascension clears the object; nothing else does.
 
 ### Placeholder Upgrade Catalogue
 
@@ -50,11 +104,17 @@ magnitudes are not balanced yet.
 | `dahan_reinforcement` | +1 starting Dahan | Yes, max tier 8 | 10 |
 | `blight_resilience` | +1 Blight threshold | Yes, max tier 5 | 3 |
 | `headwaters` | Every round opens with Energy in hand, 1 up to 35 by tier | Yes, max tier 9 | 8 |
-| `rising_dread` | +10% Fear from defeated invaders | Yes, soft-capped | 6 |
-| `mounting_terror` | +10% Fear from surviving waves | Yes, soft-capped | 6 |
-| `high_water_mark` | Every 10th wave pays 10% of its own number as Fear | Yes, soft-capped | 12 |
+| `rising_dread` | +10% Fear from defeated invaders | Yes, max tier 10 | 6 |
+| `mounting_terror` | +10% Fear from surviving waves | Yes, max tier 10 | 6 |
+| `high_water_mark` | Every 10th wave pays 10% of its own number as Fear | Yes, max tier 10 | 12 |
 | `dahan_remember` | Fear invested shortens the Dahan strike clock, to half at 10000 | Yes, a pool: max tier 10000 | 1 (flat) |
 | `unlock_<ability_id>` | Unlocks a new ability for the ability bar | No, one-time | — |
+| `auto_buy_abilities` | Energy spends itself on the bar | No, one-time. **Presence-locked** | 200 |
+| `auto_start_round` | An ended round starts the next one | No, one-time. **Presence-locked** | 500 |
+
+The two Presence-locked rows are **absent from the shop** until their Presence purchase is
+made, not listed and dead: the shop lists what Fear can buy, and until then the only place
+either is named is the ascension panel's catalogue, which is where they are opened from.
 
 ### headwaters
 
@@ -71,22 +131,27 @@ It is the exception to the shop's usual shape in two ways, both deliberate:
   are weak by design — 3 Energy crosses none of the unlock prices — and are the entry fee on a
   ladder whose top is very strong. Table, per-tier costs and the Fear-per-Energy curve are in
   [04-economy-formulas.md](./04-economy-formulas.md#headwaters-and-the-shape-of-a-gain).
-- **It is capped where the Fear ladders are not.** 35 is exactly the unlock kit (5 + 10 + 20),
+- **Its cap is the thing it buys, not the curve.** 35 is exactly the unlock kit (5 + 10 + 20),
   so tier 9 with `auto_buy_abilities` opens a round with the whole kit bought and nothing
-  spare. What it buys genuinely runs out, which a soft cap would only obscure.
+  spare. Every other capped ladder stops at a round number; this one stops where what it buys
+  runs out.
 
-At 903 Fear cumulative it is the dearest row in the catalogue, above `auto_start_round` (500),
-and being finishable it counts toward the gate — so the last two purchases now sit that much
-further out. It is also the only upgrade whose worth *shrinks* with depth: a run to wave 100
+At 903 Fear cumulative it is the dearest single row in the catalogue, above `auto_start_round`
+(500). It is also the only upgrade whose worth *shrinks* with depth: a run to wave 100
 barely notices its first thirty seconds. It is the exact inverse of `high_water_mark`, and the
 two are the shop's clearest pair of opposites — this pays for playing, the Mark pays for
 pushing.
 
 ### The three Fear ladders
 
-One shape read three times: +10% a tier on the 1.6 curve, differing only in which half of the
-income they multiply. Together they are the shop's answer to a catalogue that used to
-terminate — see [Known Gap](#known-gap).
+One shape read three times: ten tiers, +10% a tier on the 1.6 curve, +100% at the top,
+differing only in which half of the income they multiply.
+
+They were soft-capped — no `maxTier` at all — for as long as the Fear shop was the game's only
+progression axis and had to absorb income forever. Ascension is that axis now, so they are
+finishable: ten tiers each, and a cycle that maxes all three is a cycle that has bought
+everything the multiplier ladders have. See
+[04-economy-formulas.md](./04-economy-formulas.md#the-ladders-are-capped-at-ten).
 
 - **`rising_dread`** multiplies kill Fear. The cheapest ladder in the shop and deliberately the
   strongest early buy, at a payback of about two rounds. It is priced under
@@ -101,8 +166,11 @@ terminate — see [Known Gap](#known-gap).
   the point. This is the ladder that pays for pushing rather than for playing.
 
 Their totals are quadratic in depth where every other income in the game is linear. Formulas
-and the soft-cap rationale are in
-[04-economy-formulas.md](./04-economy-formulas.md#fear-formula).
+are in [04-economy-formulas.md](./04-economy-formulas.md#fear-formula).
+
+All three feed the ascension payout, because the payout reads banked Fear rather than base
+Fear. That compounding is deliberate and is what the square root exists to tame — see
+[The payout](#the-payout).
 
 ### The Dahan Remember
 
@@ -117,13 +185,18 @@ Three things about it are deliberate and worth keeping straight:
 - **It asks nothing.** Every other row is a decision about whether the next tier is worth its
   price. This one has no next tier, only more of the same at the same rate, which is what a
   sink is for. Its row shows a percentage where the others show `Tier n`.
-- **It does not count toward the gate.** 10000 Fear is several times the rest of the catalogue
-  put together, so requiring it would turn the gate on the last two purchases into a wall. See
-  [04](./04-economy-formulas.md#which-rows-the-gate-counts).
-- **It is priced against income the shop cannot absorb.** This is the sink meant to outlive
-  the catalogue, not another rung in it — which is the same problem the section below is
-  about, approached from the other side. It does not solve that problem; it buys time against
-  it, and it does so without adding a row that eventually empties.
+- **It is nothing but a sink.** Every other row eventually runs out of rungs worth buying; this
+  one takes whatever is left over at whatever rate the player is earning.
+- **Its price now outlives its cycle rather than the catalogue.** 10000 Fear was set when the
+  Fear shop was the only progression axis and the pool had to absorb income forever. Ascension
+  is that axis now, so the pool is just a deep row that gets wiped like every other — deep
+  enough that early cycles will not fill it, which makes it scenery for a while rather than a
+  trap. The figure is deliberately left where it is until a played cycle says what a cycle
+  actually generates. See [Known Gap](#known-gap).
+
+Spending here costs nothing at ascension time, because the payout reads what the cycle
+**generated** rather than what is left in the bank. There is no reason to hoard before a
+Reclaim and no reason to hold back from the pool — see [The payout](#the-payout).
 
 Costs scale with the tier already purchased so the shop stays a real choice instead of a
 flat checklist; the curve is `baseCost * 1.6 ^ tier`, rounded to whole Fear. It is a
@@ -134,10 +207,126 @@ placeholder — see
 starter kit and there is nothing to unlock. The path that reads these keys is implemented
 and normalization accepts them, so adding a fifth ability is content work.
 
+## Ascension
+
+The spirit withdraws from the island and returns greater. Everything Fear bought is given
+back; what the cycle *generated* is paid out in Presence, which buys rows the Fear catalogue
+did not have.
+
+### When it is available
+
+```txt
+unlocked when   ascensionPayout(state) >= ASCENSION_UNLOCK_PRESENCE   (5)
+offered when    round.status === "ended"
+```
+
+Two separate conditions, and both are deliberate.
+
+The unlock reads **what Reclaiming would pay**, so the gate and the reward are the same number.
+There is no cycle in which Reclaiming is legal and worthless, and none in which it is worth
+taking and refused. In generated Fear the gate is `5^2 * 100 = 2500`, but it is written in
+Presence: the threshold belongs in the unit the panel shows the player.
+
+It is therefore **re-earned by every cycle**, which the all-time wave gate it replaces was not.
+That is not the wall a per-cycle *depth* gate would have been. What it forbids is a Reclaim that
+hands back a whole catalogue for four Presence or fewer — the trade the panel should never
+offer — and what it costs is the free Reclaim at the top of a fresh cycle, which paid nothing
+anyway. The decision the layer exists to pose is still untouched: everything above 5 is the
+player's call.
+
+It is offered **only between rounds**, the same rule the whole of progression follows. That
+also removes the question of whether the running round's Fear counts: it has not been banked,
+so there is nothing to ask.
+
+Beyond those two, nothing forces it and nothing recommends it. The Fear catalogue is never
+finished — see [The shop no longer terminates](#the-shop-no-longer-terminates) — so the player
+never runs out of things to buy and is never pushed into ascending by an empty shop. **When to
+Reclaim is the decision the layer exists to pose**, and the payout curve is the only thing
+that argues either way.
+
+### The payout
+
+```txt
+presence = floor( sqrt( meta.cycleFearGenerated / PRESENCE_FEAR_DIVISOR ) )
+```
+
+`PRESENCE_FEAR_DIVISOR` is 100. See
+[04-economy-formulas.md](./04-economy-formulas.md#the-ascension-payout) for the curve and why
+the root is the shape.
+
+Three properties of that one line, each load-bearing:
+
+- **It reads `cycleFearGenerated`, not `meta.fear`.** Spending Fear never costs Presence.
+  There is no incentive to hoard before Reclaiming, no reason to leave the pool unfed, and no
+  moment where the shop and the ascension panel want opposite things from the player.
+- **Granted Fear never counts.** `meta.cycleFearGranted` is a separate field precisely so the
+  playtest grant cannot mint Presence. A tool for looking at the game must not be a way of
+  progressing through it.
+- **It reads banked Fear, which the three ladders multiply.** Deeper ladders make a bigger
+  payout, so the Fear layer compounds into the Presence layer. The square root is what keeps
+  that from running away.
+
+The panel prints one more figure beside it, `fearToNextPresence`: how much further this cycle
+has to run before the payout reads one higher. The root is why it is worth printing — the
+payout alone cannot say whether the next Presence is a round away or six, and the rungs grow
+apart the whole way up. See
+[04-economy-formulas.md](./04-economy-formulas.md#the-gap-to-the-next-presence).
+
+### What Reclaiming does
+
+```txt
+cleared:  meta.fear
+          meta.cycleFearGenerated, cycleFearGranted, cycleFearSpent
+          meta.cycleBestWave
+          upgrades.purchased
+          round.number  -> 1
+
+kept:     meta.bestWaveReached
+          meta.presence (plus the payout), meta.ascensionCount (plus one)
+          presenceUpgrades.purchased
+          ui.*      every preference and every toggle
+          spirit.*
+
+then:     startRound()
+```
+
+`ui.*` surviving is the same rule that carries the language across a save migration: a
+preference is not something the player earned, so taking it away is not part of the price. The
+auto-cast switches in particular stay where they were set, even though the automations they
+switch have just been un-bought — a player who re-buys `auto_wash_away` next cycle gets it back
+in the state they last chose, not reset.
+
+`round.number` going back to 1 is flavour rather than mechanics: nothing in the rules reads it
+(the difficulty ladder is keyed to the wave, per
+[04-economy-formulas.md](./04-economy-formulas.md#unit-stats)), and a new age counting from one
+reads better than a run that remembers every attempt.
+
+### The Presence catalogue
+
+First draft, and deliberately small. Both rows unlock a Fear row that already exists and is
+currently behind nothing at all.
+
+| Presence id | Unlocks | Presence cost |
+| --- | --- | --- |
+| `presence_tide_returns` | `auto_start_round` in the Fear shop (500 Fear) | 2 |
+| `presence_river_knows` | `auto_buy_abilities` in the Fear shop (200 Fear) | 3 |
+
+A first Reclaim pays about 5, so it buys exactly both. That is deliberate: the first ascension
+should read as an unambiguous win rather than a dilemma. Dilemmas belong to the third and
+fourth rows, which are not designed yet.
+
+**The Fear price is still owed, every cycle.** Unlocking *The Tide Returns* does not hand the
+player an automated round; it puts a 500 Fear row in the shop. So each cycle opens hand-played
+and the player buys their way back to idle, and 500 Fear is a real decision against the five
+tiers of `rising_dread` it would otherwise buy. **That is the trade the layer is for: play
+this cycle actively, or pay to idle it.** A later Presence row will buy that price down; there
+is none today, and the two unlocks alone are the first draft.
+
 ## What Is Not Yet Progression
 
 - No additional spirit unlocks.
-- No second meta-currency (a prestige layer above Fear, if one is ever wanted).
+- No Presence rows beyond the two unlocks above — no Fear multiplier, no automation discount,
+  no cap extension, no power cards. All of them are wanted; none is designed.
 - No content unlocks beyond the placeholder ability-unlock row above.
 - No mid-round progression of any kind — everything in-round resets at round setup.
 
@@ -156,35 +345,45 @@ a schema change is a wipe, so an additive field must not be one.
   content, per [Implementation Microtasks](../tasks/implementation-microtasks.md). ✓
 - Fear earned in a round survives that round ending, regardless of outcome. ✓
 - A purchased upgrade is still in effect after any number of further rounds, without being
-  re-purchased. ✓
-- `meta.bestRoundReached` never decreases. ✓
+  re-purchased — and stops being in effect the moment the player Reclaims. ✓
+- `meta.bestWaveReached` never decreases, not even across an ascension.
+  `meta.cycleBestWave` decreases exactly once per ascension, to 0. ✓
+- Presence is never earned except by ascending, and never spent except in the Presence
+  shop. ✓
 
-All four are asserted in `tests/shop.test.js`, including the case that matters most for a
-meta loop: a tier bought after round 1 still applies in round 5.
+The first four are asserted in `tests/shop.test.js`, including the case that matters most for
+a meta loop: a tier bought after round 1 still applies in round 5. The ascension half lives in
+`tests/ascension.test.js`.
 
-## The Shop Still Terminates
+## The shop no longer terminates
 
-Worth naming, because it is the structural problem the three Fear ladders were added against
-and only half-solve.
+The structural problem this design carried for a long time, and what finally answers it.
 
-Before them the catalogue cost about 2,470 Fear in total, and it *ended*: every ladder maxed,
-every one-off bought, nothing left to buy ever again. At 20–40 Fear a round that is 60–120
-rounds to a permanently empty shop — and because the difficulty ladder is keyed to the wave
-rather than the round (see [04](./04-economy-formulas.md), and note that nothing reads
-`round.number`), every round after that is identical to the last. The shop is the game's only
-progression axis, so when it empties there is no axis at all.
+The catalogue *ended*: every ladder maxed, every one-off bought, nothing left to buy ever
+again. Because the difficulty ladder is keyed to the wave rather than the round (see
+[04](./04-economy-formulas.md), and note that nothing reads `round.number`), every round after
+that point was identical to the last. The shop was the game's only progression axis, so an
+empty shop meant no axis at all. Soft-capping the three Fear ladders postponed it without
+fixing the shape, and `dahan_remember` bought time rather than an answer.
 
-The three soft-capped ladders mean the shop no longer runs out of *rows*, and
-`dahan_remember` adds 10000 Fear of somewhere to put income after they stop being worth
-buying. Neither fixes the underlying shape: income is still bounded, the difficulty curve is
-still fixed, a player deep enough will still find the curve outrunning what any tier can buy —
-and the pool, unlike the ladders, does eventually fill.
+Ascension is the answer, and it works by making the catalogue's *size* something the player
+buys rather than something the design fixes. A cycle's shop is bounded — every ladder has a
+top, and 7,031 Fear finishes the lot — but the bound moves every time Presence buys a row into
+it. So the shop is always readable to the end and never actually ends.
 
-The intended answer is an **ascension layer** — a reset of Fear and upgrades in exchange for a
-currency that buys what the Fear shop cannot. It is not designed and not implemented. When it
-is, the soft caps become the open question: a prestige layer and a soft cap solve the same
-problem, and building both is redundant. See
-[04](./04-economy-formulas.md#soft-caps) for what capping them at tier 10 would take.
+Two consequences, both intended:
+
+- **The three ladders could be capped at ten.** They were uncapped for exactly the reason this
+  section describes, and the reason is gone. See
+  [04](./04-economy-formulas.md#the-ladders-are-capped-at-ten).
+- **Nothing tests whether the shop is finished, and nothing should.** The old
+  `gatedUpgradesUnlocked` asked that question in order to release the last two rows, and it is
+  deleted. A shop that is never finished has no such moment to detect, and a design that
+  pushed the player to ascend by running out of things to sell would be taking back the
+  decision the layer exists to pose.
+
+Today the Presence catalogue has two rows and neither grows the Fear catalogue by much. The
+claim above is about the mechanism, not about the amount of content behind it.
 
 ## Known Gap
 
@@ -194,3 +393,22 @@ Fear without the player acting. What is untested is whether it earns *enough*, a
 `dahan_reinforcement` is priced correctly now that the Blight floor and the concentration cap
 have taken the superlinear returns out of a Dahan. See
 [index.md](./index.md#known-balance-problems).
+
+Ascension adds a second unmeasured number on top of that one, and it is the more important of
+the two: **nobody has played a cycle and read what it generates.** `PRESENCE_FEAR_DIVISOR`
+(100) is a guess anchored to "a first Reclaim should pay about 5", and the whole pacing of the
+layer rides on it — the unlock included, since `ASCENSION_UNLOCK_PRESENCE` is priced in the
+same 5. The playtest tally in the redeem bar
+([06-ui-contract.md](./06-ui-contract.md#playtest-tools)) reports `cycleFearGenerated`
+directly, which is exactly the measurement needed: play a cycle to the point where a Reclaim
+feels earned, read the figure, and the divisor is that figure over 25.
+
+Two related unknowns that the same measurement would settle:
+
+- **Whether shallow rounds out-earn deep ones per real minute.** The payout has no depth term,
+  on the argument that Fear income already grows steeply with depth. If it turns out a player
+  with `auto_start_round` earns faster by farming wave 1–10 loops than by pushing, the fix is
+  to bank only Fear from past some wave floor, not to add a depth term back.
+- **Whether `dahan_remember`'s 10000 is now wrong.** It gets wiped like everything else, and
+  10000 inside one cycle may be unreachable for a long time. Left alone deliberately until a
+  played cycle says what a cycle is worth.

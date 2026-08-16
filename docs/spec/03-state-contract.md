@@ -24,13 +24,22 @@ Define the canonical save shape for the round-based redesign.
   },
   "meta": {
     "fear": 0,
-    "bestRoundReached": 0
+    "bestWaveReached": 0,
+    "presence": 0,
+    "ascensionCount": 0,
+    "cycleBestWave": 0,
+    "cycleFearGenerated": 0,
+    "cycleFearGranted": 0,
+    "cycleFearSpent": 0
   },
   "spirit": {
     "activeSpiritId": "core_spirit_01",
     "unlockedSpiritIds": ["core_spirit_01"]
   },
   "upgrades": {
+    "purchased": {}
+  },
+  "presenceUpgrades": {
     "purchased": {}
   },
   "ui": {
@@ -197,7 +206,7 @@ Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
 
 ### Fields added during implementation
 
-Seven fields the first draft of this contract did not have. Each earns its place:
+Fields the first draft of this contract did not have. Each earns its place:
 
 - **`round.blightByLand`** — per-land Blight tally, summing to `round.blight`. The original
   contract said Blight was "a single value for the whole round, not tracked per land"; the
@@ -247,10 +256,70 @@ Seven fields the first draft of this contract did not have. Each earns its place
   its snapshot. Switching off stops future casts and nothing else — no cooldown is reset, shortened or
   lengthened, no cast is undone, nothing is refunded, and the upgrade is never un-bought.
 - **`ui.playtest`** — whether the playtest code has been redeemed, and with it the only thing
-  in the state no rule reads: it widens the speed dial and reveals two buttons that hand out
-  currency, and nothing else in the engine branches on it. It is in `ui` with the other
-  settings rather than in `meta` because it is not something the player has *earned* — see
-  [06-ui-contract.md](./06-ui-contract.md#playtest-tools).
+  in the state no rule reads: it widens the speed dial, reveals two buttons that hand out
+  currency and one readout of the cycle's Fear, and nothing else in the engine branches on it.
+  It is in `ui` with the other settings rather than in `meta` because it is not something the
+  player has *earned* — see [06-ui-contract.md](./06-ui-contract.md#playtest-tools).
+- **`meta.cycleFearGenerated`, `meta.cycleFearGranted`, `meta.cycleFearSpent`** — the cycle's
+  Fear ledger, whole numbers that only ever grow. `meta.fear` is a balance and says nothing
+  about throughput: a player who earned ten thousand and spent it all reads identically to one
+  who earned nothing, which is exactly the question a balance pass asks. `endRound` adds what
+  it banked (the floored figure, never the fractional total), `purchaseUpgrade` adds what it
+  charged, and the playtest grant adds to **granted** rather than generated — it is not income,
+  and counting it as such would corrupt the one number the ledger exists to report. Granted is
+  still counted, because it is still spendable: `generated + granted - spent` is `meta.fear`,
+  and that identity is what makes the readout self-checking. A *cycle* is the span between
+  ascensions, and `ascend()` is what zeroes all three. Read through `cycleFearTotals()`.
+  **On load, an absent `cycleFearGenerated` means "the bank was earned, and so was what it has
+  already bought"**, not zero — and not `meta.fear` either, which was the first answer and was
+  wrong by exactly the size of the player's shopping. Fear leaves the bank in one place only
+  (`purchaseUpgrade`), so a save's owned tiers are a receipt: `normalizeState` prices them back
+  off the catalogue with `upgradeCostFromTier(id, 0, tier)`, seeds `cycleFearSpent` with that
+  sum and `cycleFearGenerated` with `meta.fear + sum`. The identity holds across the upgrade,
+  the same way an absent `round.fearEarnedBase` means "all base". Absent `granted` is honestly
+  zero.
+
+  Four properties of that rebuild are load-bearing, and
+  [08-acceptance-tests.md](./08-acceptance-tests.md#older-save-files-keep-working) holds each:
+
+  - **One-time.** It fires on the *absent key* and writes the key, so it is a seed rather than
+    a recomputation. A save written after the change carries its own figure and is never
+    touched again — which is what stops a post-ascension load from handing back Fear the
+    previous cycle spent.
+  - **Post-normalization.** It reads the rebuilt `upgrades.purchased` — known ids, tiers
+    already capped to the ladder — never the raw save, so a doctored row cannot mint Fear.
+  - **Priced today.** A save bought its rungs at whatever the prices were then; a retune moves
+    what the rebuild reads back. Accepted deliberately: the alternative is a price history no
+    other part of the game needs, and it only ever affects the one load that seeds the field.
+  - **Exact where it matters.** A save old enough to be missing the field predates the playtest
+    grant (the two landed together), so `granted` is genuinely 0 and `bank + spent` is the
+    whole of what was generated.
+
+  `cycleFearGenerated` has a second reader now, and it is the important one: the ascension
+  payout is a function of it alone (see
+  [04-economy-formulas.md](./04-economy-formulas.md#the-ascension-payout)). That is what makes
+  the granted/generated split load-bearing rather than tidy — folding the playtest grant into
+  generated would turn a tool for looking at the game into a way of progressing through it.
+- **`meta.presence`, `meta.ascensionCount`, `presenceUpgrades.purchased`** — the ascension
+  layer, and the three fields ascension does **not** clear. Presence is paid out by `ascend()`
+  and spent only in the Presence catalogue; `presenceUpgrades.purchased` is keyed by Presence
+  id exactly the way `upgrades.purchased` is keyed by upgrade id, and is normalized by the same
+  rebuild-from-the-registry rule.
+
+  It is a **separate object** rather than more keys in `upgrades.purchased`, and that is the
+  single decision that keeps ascension simple: the wipe is `upgrades.purchased = {}` whole,
+  with no filter and no exception list. Two objects with one rule each beats one object with a
+  rule and an exception, and the exception is what a later reader would get wrong.
+- **`meta.cycleBestWave`** — the best wave since the last ascension, against
+  `meta.bestWaveReached`'s all-time figure. Both are written in `endRound` from the same
+  `round.wavesResolved`; `ascend()` clears one and never touches the other. Two scores because
+  after a Reclaim they answer different questions — how far this player has ever got, and how
+  the current climb is going. Neither is read by the ascension unlock, which is priced in
+  Presence; both are score.
+
+  The prefix is the rule: **a `cycle*` field is wiped by ascension and everything else is
+  not.** Anything added later that should survive a Reclaim must not be called `cycle*`, and
+  anything that should not survive one must be.
 - **`round.awaitingWave`** — the gate itself, described above. It is in `round` and not `ui`
   precisely because it *is* round state: it dies with the round that raised it.
 
@@ -300,6 +369,19 @@ to resume mid-effect beyond "which ability is waiting for a click."
   `round.status` is `running`. An ended round holds no gate: the shop is what the player is
   looking at, and a flag left set by a save written mid-gate would freeze the round it starts
   next.
+- `meta.presence`, `meta.ascensionCount` and `meta.cycleBestWave` are whole and never
+  negative, like every other counter in `meta`. An absent value is honestly `0`: a save from
+  before the layer existed has ascended zero times, and seeding any of them from something else
+  would be inventing progress.
+- `presenceUpgrades.purchased` is **rebuilt from the Presence registry**, not merged over it —
+  the same rule `upgrades.purchased` follows, for the same reasons. An unknown id is dropped,
+  a bad value clamps to `0`, and a tier is capped at the row's max.
+- **A save owning `auto_start_round` or `auto_buy_abilities` is granted the matching Presence
+  unlock on load.** Both were bought with Fear under the old gate, and the change that put
+  them behind Presence must not take back a purchase already made. This is the only place
+  normalization writes a Presence row rather than reading one, and it is deliberately
+  idempotent: the grant is a set to `1`, so loading the same save twice cannot pay twice.
+  Asserted in `tests/compat.test.js`.
 - `essence` and `invaders`/`invaderDamage`/`dahan` must be filled for every terrain key or
   land ID respectively.
 - `round.status` must be `running` or `ended`, and normalizes to `running` otherwise.
@@ -332,7 +414,7 @@ game** when it does not, carrying a handful of preferences through and nothing e
 no field-by-field translation layer and none is planned. That puts the whole burden of
 compatibility on normalization, which is exactly where a new field is easiest to get wrong.
 
-Three requirements on anyone adding a field:
+Four requirements on anyone adding a field:
 
 1. **`VERSION` does not move for an additive change.** A field added to `ui`, `round` or `meta`
    that older saves simply lack is not a version bump, because a bump is a wipe — `migrateSave`
@@ -349,6 +431,17 @@ Three requirements on anyone adding a field:
    reads the save per key, dropping keys the registry does not carry. A save then cannot
    smuggle in an id that no longer exists, and a save written before an id was added gets that
    id's default without anyone having to list it a second time.
+4. **A field that is a *history* is reconstructed from what the save still shows, not defaulted
+   away.** Rule 2 covers preferences, where absent honestly means "no answer". A total is
+   different: a save from before `cycleFearGenerated` existed did earn Fear, and defaulting the
+   field to `0` — or to the leftover bank — hands the player a wrong number rather than no
+   number, which the ascension payout then pays out on. Look for the record the history left
+   behind. Fear leaves the bank only in the shop, so owned tiers priced off the catalogue *are*
+   the spend, and `bank + spend` is the earnings. Three rules keep such a rebuild honest: run it
+   on the **absent key** and write the key, so it seeds once rather than recomputing on every
+   load; read the **already-normalized** copy of whatever it derives from, so a doctored save
+   cannot mint currency through it; and say in the code what the reconstruction is exact about
+   and what it only approximates.
 
 This is tested rather than asserted. `tests/compat.test.js` runs against
 `tests/fixtures/save-5.0.0-pre-autocast.js`, a real save **captured** out of an earlier build
@@ -405,6 +498,11 @@ bar. There is no honest mapping for either, and a reset costs the player one rou
   resumes exactly as saved. See the open question on offline behavior in
   [index.md](./index.md).
 - `essence` remains present but has no writer in this design; it neither accrues nor resets.
+- `ascend()` is the only thing that clears `meta.fear`, `upgrades.purchased`, and the four
+  `cycle*` fields; it pays `meta.presence`, increments `meta.ascensionCount`, resets
+  `round.number` to 1, and calls `startRound`. It touches `presenceUpgrades.purchased`,
+  `meta.bestWaveReached`, `ui.*` and `spirit.*` not at all. See
+  [05-progression.md](./05-progression.md#what-reclaiming-does).
 - `resources.energy`, `round.purchasedAbilityIds` and `round.abilityTiers` are all cleared by
   `startRound`. Energy is a round-local currency: it is earned inside a round, spent inside
   that round, and given back with everything it bought when the next one begins. `startRound`

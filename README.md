@@ -5,15 +5,21 @@ time: invaders and Dahan fight automatically while Blight climbs, and the player
 with cooldown-gated abilities. Every round is eventually lost to Blight — how long you lasted
 is the score, and the Fear you earned buys permanent upgrades for the next attempt.
 
+Above that sits a second loop. Once a cycle has earned its way to 5 Presence, the spirit can
+**Reclaim**: hand back every Fear purchase and the Fear itself, and take the cycle's whole
+income back as Presence. Presence buys nothing on the board — it decides which rows the Fear shop has at all.
+Fear buys; Presence decides what Fear is allowed to buy.
+
 The clock is the player's: a speed dial in the top bar runs the round at `1x`, doubles it to
 `2x`, or stops it dead at `0x`, and an auto-proceed toggle beside the wave timer decides
 whether the next wave arrives on its own or waits to be called. Neither changes what a round costs — see
 [docs/spec/02-core-loop.md](docs/spec/02-core-loop.md#pacing).
 
 Typing `playtester` into the redeem bar at the foot of the page switches on the playtest
-tools: an `8x` button on the dial, and a `+100` button inside each of the two currency
-readouts. A button beside the same input takes them away again. Nothing in the rules reads
-the flag — see [docs/spec/06-ui-contract.md](docs/spec/06-ui-contract.md#playtest-tools).
+tools: an `8x` button on the dial, a `+100` button inside each of the two currency readouts,
+and a line in the redeem bar counting what the cycle has generated and spent in Fear. A button
+beside the same input takes them away again. Nothing in the rules reads the flag — see
+[docs/spec/06-ui-contract.md](docs/spec/06-ui-contract.md#playtest-tools).
 
 ## Running it
 
@@ -40,7 +46,7 @@ powershell -File tests\headless.ps1          headless Edge or Chrome; exits 1 on
 node tests/run.js [filter]                   if node is installed
 ```
 
-392 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
+403 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
 the shop, save/migration, backward compatibility with older save files, the land-state rules,
 and the playtest tools. The engine takes its clock and RNG by injection, so the whole suite is
 deterministic and finishes instantly.
@@ -70,7 +76,12 @@ the two known balance problems up front. What to build next is at the top of
 - **Read a tiered ability through `abilityRecord(state, id)`,** never straight out of
   `ABILITIES`. The raw entry for a tiered ability carries no cooldown and no effect of its own.
 - **Energy is round-local.** It, every unlock bought with it, and every Innate tier are cleared
-  by `startRound`. Fear is the only currency that carries.
+  by `startRound`. Fear carries across rounds; Presence carries across everything.
+- **A `cycle*` field is wiped by ascension and everything else is not.** That is the whole rule
+  for what `ascend()` clears, and it is why `presenceUpgrades.purchased` is its own object
+  rather than more keys in `upgrades.purchased` — the wipe is one assignment with no exception
+  list to get wrong. Anything added later that should survive a Reclaim must not be named
+  `cycle*`, and anything that should not survive one must be.
 - **A save file outlives the build that wrote it.** There is an export button, so saves sit on
   players' disks and come back several builds later. A field older saves simply lack defaults
   to whatever costs the player nothing — absent means "predates the field", never "switched it

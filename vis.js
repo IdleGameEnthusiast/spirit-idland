@@ -32,7 +32,26 @@
   state.round.wavesResolved = 45;
   state.round.fearEarned = 4.2;
   state.meta.fear = 12.6;
-  state.meta.bestRoundReached = 3;
+  state.meta.bestWaveReached = 62;
+  // Past a Reclaim, so both high scores are on the strip and they disagree - which is the only
+  // arrangement that says anything about how the pair reads. Before the first ascension the
+  // cycle figure is not drawn at all.
+  state.meta.cycleBestWave = 45;
+  state.meta.ascensionCount = 1;
+  // Enough to buy one Presence row and not the other, so the catalogue renders both an
+  // affordable row and a dimmed one - the comparison that panel exists to make.
+  state.meta.presence = 2;
+  // The cycle ledger behind that bank, so the playtest tally has something other than zeroes
+  // to be judged at once the code is redeemed in this mode. It balances against `meta.fear`
+  // the way a real one does: generated + granted - spent.
+  //
+  // Generated is set just past 2500, which is where the payout reads 5 and the ascension panel
+  // unlocks. The panel is the point: at anything less it draws its locked state, and the state
+  // worth putting in front of a design eye is the live one - a real payout, a real gap to the
+  // next Presence, and a Reclaim button held back only by the round still running.
+  state.meta.cycleFearGenerated = 2512;
+  state.meta.cycleFearGranted = 100;
+  state.meta.cycleFearSpent = 2600;
 
   state.invaders = createInvaderCounts();
   state.invaders["1"] = { explorers: 2, towns: 1, cities: 0 };

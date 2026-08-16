@@ -22,6 +22,23 @@ const dom = {
   roundValue: document.getElementById("roundValue"),
   bestWaveLabel: document.getElementById("bestWaveLabel"),
   bestWaveValue: document.getElementById("bestWaveValue"),
+  cycleBestWaveRow: document.getElementById("cycleBestWaveRow"),
+  cycleBestWaveLabel: document.getElementById("cycleBestWaveLabel"),
+  cycleBestWaveValue: document.getElementById("cycleBestWaveValue"),
+
+  ascensionPanel: document.getElementById("ascensionPanel"),
+  ascensionTitle: document.getElementById("ascensionTitle"),
+  ascensionPresenceLabel: document.getElementById("ascensionPresenceLabel"),
+  ascensionPresenceValue: document.getElementById("ascensionPresenceValue"),
+  ascensionPayoutLabel: document.getElementById("ascensionPayoutLabel"),
+  ascensionPayoutValue: document.getElementById("ascensionPayoutValue"),
+  ascensionNextPresence: document.getElementById("ascensionNextPresence"),
+  ascensionGenerated: document.getElementById("ascensionGenerated"),
+  ascensionLoss: document.getElementById("ascensionLoss"),
+  ascendBtn: document.getElementById("ascendBtn"),
+  ascensionHint: document.getElementById("ascensionHint"),
+  ascensionShopLabel: document.getElementById("ascensionShopLabel"),
+  presenceList: document.getElementById("presenceList"),
   blightLabel: document.getElementById("blightLabel"),
   blightValue: document.getElementById("blightValue"),
   blightFill: document.getElementById("blightFill"),
@@ -90,7 +107,8 @@ const dom = {
   redeemStatus: document.getElementById("redeemStatus"),
   playtestHideBtn: document.getElementById("playtestHideBtn"),
   playtestEnergyBtn: document.getElementById("playtestEnergyBtn"),
-  playtestFearBtn: document.getElementById("playtestFearBtn")
+  playtestFearBtn: document.getElementById("playtestFearBtn"),
+  playtestFearTally: document.getElementById("playtestFearTally")
 };
 
 // What each renderer last drew. A render only reruns when its own signature changes, so
@@ -101,6 +119,7 @@ const renderCache = {
   ladder: null,
   abilityBar: null,
   shop: null,
+  presenceShop: null,
   log: null
 };
 
@@ -962,6 +981,10 @@ function patchAbilityBar(state) {
 // reaches the catalogue through tiers, which is the only part of it this panel draws.
 function shopSignature(state) {
   const tiers = UPGRADE_IDS.map((id) => `${id}:${upgradeTier(state, id)}:${activeUpgradeTier(state, id)}`).join(",");
+  // What the Presence catalogue owns decides which rows exist at all now that a locked one is
+  // absent rather than dead, so a Presence purchase has to reach this signature - nothing else
+  // in the list moves when one is made.
+  const unlocks = PRESENCE_UPGRADE_IDS.map((id) => presenceUpgradeTier(state, id)).join(",");
   return [
     currentLang(state),
     // The Dahan Remember prints its strike interval in real seconds, which the speed dial
@@ -973,9 +996,32 @@ function shopSignature(state) {
     state.meta.bestWaveReached,
     formatFear(state.meta.fear),
     formatFear(state.round.fearEarned),
-    tiers
+    tiers,
+    unlocks
   ].join("|");
 }
+
+// Two rows, no tiers, no prices that move: what changes a Presence row is the purse crossing
+// its cost, and the purse only moves on an ascension or a purchase. So the signature is the
+// purse, what is owned, and the language.
+function presenceShopSignature(state) {
+  const owned = PRESENCE_UPGRADE_IDS.map((id) => `${id}:${presenceUpgradeTier(state, id)}`).join(",");
+  return [currentLang(state), state.meta.presence, owned].join("|");
+}
+
+/* Whether the bought half of the shop is unfolded.
+ *
+ * Shut to start, and shut again on every reload: the list under that heading is a record of
+ * what has already been paid for, and the panel's job is the part still for sale. A player who
+ * wants the record asks for it. Late in a run the sold-out half is most of the catalogue, and
+ * folded it costs one line instead of scrolling the buyable rows off the panel.
+ *
+ * A view preference, not game state, so it lives here rather than in the save - the same
+ * reasoning as `ascendArmed` below, minus the danger. It does sit outside renderShop, because
+ * renderShop runs again whenever the catalogue moves and a flag inside it would snap shut
+ * every time something was bought.
+ */
+let soldOutOpen = false;
 
 function renderShop(state) {
   const t = locale(state);
@@ -1000,15 +1046,12 @@ function renderShop(state) {
 
   dom.upgradeList.innerHTML = "";
 
-  function renderRow(upgradeId, soldOutRow) {
+  function renderRow(upgradeId, soldOutRow, parent) {
     const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
     const tier = upgradeTier(state, upgradeId);
     const maxed = tier >= upgradeMaxTier(upgradeId);
     const cost = upgradeCost(state, upgradeId);
-    // Behind the gate rather than behind the price: the row shows what it will cost, but
-    // nothing about the purse opens it (see upgradeIsLocked).
-    const locked = upgradeIsLocked(state, upgradeId);
-    const affordable = !maxed && !locked && state.meta.fear >= cost;
+    const affordable = !maxed && state.meta.fear >= cost;
     // Owned but not yet running: bought during a round, waiting on the next one to start.
     // Only worth saying while a round is actually in progress - between rounds every
     // purchase is pending, and saying so on every row would say nothing.
@@ -1020,28 +1063,25 @@ function renderShop(state) {
     const statusText = upgradeStatusText(state, upgradeId);
     const status = statusText ? `<span class="upgrade-tier">${statusText}</span>` : "";
     const pendingNote = pending ? `<span class="upgrade-pending">${t.shopPendingHint}</span>` : "";
-    // Only one note per row, and the lock outranks the pending hint: a locked row cannot have
-    // been bought, so the two can never both apply anyway.
-    const lockedNote = locked ? `<span class="upgrade-locked">${t.shopLockedHint}</span>` : "";
     const buyLabel = maxed
       ? (repeatable ? t.shopMaxedBtn : t.shopOwnedBtn)
       : template(t.shopCostLabel, { cost });
 
     const row = document.createElement("div");
-    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}${pending ? " is-pending" : ""}${locked ? " is-locked" : ""}${soldOutRow ? " is-sold-out" : ""}${upgradeIsPool(upgradeId) ? " is-pool" : ""}`;
+    row.className = `upgrade${affordable ? " is-affordable" : ""}${repeatable ? "" : " is-one-off"}${pending ? " is-pending" : ""}${soldOutRow ? " is-sold-out" : ""}${upgradeIsPool(upgradeId) ? " is-pool" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${upgradeName(state, upgradeId)}</span>
         <span class="upgrade-text">${upgradeText(state, upgradeId)}</span>
         ${status}
-        ${lockedNote || pendingNote}
+        ${pendingNote}
       </div>
       ${upgradeIsPool(upgradeId) ? poolButtons(state, upgradeId, maxed) : `
       <button type="button" class="upgrade-buy" data-upgrade="${upgradeId}" ${maxed || !affordable ? "disabled" : ""}>
         ${buyLabel}
       </button>`}
     `;
-    dom.upgradeList.appendChild(row);
+    (parent || dom.upgradeList).appendChild(row);
   }
 
   /* ---------- What a pool row offers instead of a Buy ----------
@@ -1083,9 +1123,17 @@ function renderShop(state) {
   // sinks below everything still worth a look, and within each half the catalogue stays
   // repeatables first, one-offs after. Splitting the passes keeps a maxed ladder from landing
   // under the "One-off" divider it has nothing to do with just because it sorted next to one.
+  //
+  // A row still waiting on its Presence unlock is not drawn at all. It used to sit here dead
+  // with a note naming the Presence row that opens it, on the argument that a row nobody can
+  // see is not a reason to ascend - but the Presence catalogue names what each of its rows
+  // unlocks, so that reason is already stated where the player can act on it, and the dead row
+  // only put an unbuyable price in the middle of the list they are shopping from. The lock
+  // itself is unchanged: purchaseUpgrade still refuses (see upgradeNeedsPresence).
   const maxedId = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
-  const buyable = UPGRADE_IDS.filter((id) => !maxedId(id));
-  const soldOut = UPGRADE_IDS.filter(maxedId);
+  const offered = UPGRADE_IDS.filter((id) => !upgradeNeedsPresence(state, id));
+  const buyable = offered.filter((id) => !maxedId(id));
+  const soldOut = offered.filter(maxedId);
 
   function renderDivider(label, extraClass) {
     const rule = document.createElement("div");
@@ -1104,9 +1152,135 @@ function renderShop(state) {
     renderRow(upgradeId, false);
   }
   // The sold-out half gets its own heading and a wider gap above it: without one the first
-  // bought row reads as just another entry in the list you are still shopping from.
-  if (soldOut.length) renderDivider(t.shopSoldOutLabel, "is-sold-out");
-  for (const upgradeId of soldOut) renderRow(upgradeId, true);
+  // bought row reads as just another entry in the list you are still shopping from. The
+  // heading is also the handle that folds it - see soldOutOpen for why it starts shut.
+  if (soldOut.length) {
+    const fold = document.createElement("button");
+    fold.type = "button";
+    fold.className = "upgrade-divider is-sold-out upgrade-fold";
+    fold.dataset.fold = "sold-out";
+    fold.setAttribute("aria-expanded", String(soldOutOpen));
+    fold.setAttribute("aria-controls", "upgradeSoldOut");
+    // The count is on the heading because it is the only thing the fold can say about what it
+    // is hiding: shut, the list is one line, and "how much have I bought" should not cost a click.
+    fold.innerHTML = `
+      <span class="upgrade-fold-caret" aria-hidden="true"></span>
+      <span>${t.shopSoldOutLabel} (${soldOut.length})</span>
+    `;
+    dom.upgradeList.appendChild(fold);
+
+    const box = document.createElement("div");
+    box.id = "upgradeSoldOut";
+    box.className = "upgrade-fold-body";
+    box.hidden = !soldOutOpen;
+    dom.upgradeList.appendChild(box);
+    for (const upgradeId of soldOut) renderRow(upgradeId, true, box);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * The ascension panel (06-ui-contract.md section 5a)                   *
+ * ------------------------------------------------------------------ */
+
+/* Arming, not a modal.
+ *
+ * Reclaiming is the one irreversible action in the game, so it takes two clicks: the first
+ * arms the button, the second commits. A dialog would have covered the numbers the player is
+ * deciding on - the payout, the Fear about to go, the tiers about to go - and those are all on
+ * the panel behind it. Anything else on the page disarms it, so a click that wandered off and
+ * came back does not find a live button waiting.
+ *
+ * It lives outside the state deliberately: it is not a preference, it means nothing after a
+ * reload, and a save that came back armed would be the worst possible thing to persist.
+ */
+let ascendArmed = false;
+
+function disarmAscend() {
+  ascendArmed = false;
+}
+
+// The catalogue is two rows and neither is repeatable, so this is much simpler than the Fear
+// shop's: no tiers, no pool denominations, no pending hint. What it does share is the sold-out
+// treatment, because a bought Presence row stays on the list exactly as a bought one-off does.
+function renderPresenceShop(state) {
+  const t = locale(state);
+  dom.presenceList.innerHTML = "";
+
+  for (const presenceId of PRESENCE_UPGRADE_IDS) {
+    const owned = presenceUpgradeOwned(state, presenceId);
+    const cost = presenceUpgradeCost(presenceId);
+    const affordable = !owned && state.meta.presence >= cost;
+
+    const row = document.createElement("div");
+    row.className = `upgrade is-one-off is-presence${affordable ? " is-affordable" : ""}${owned ? " is-sold-out" : ""}`;
+    row.innerHTML = `
+      <div class="upgrade-info">
+        <span class="upgrade-name">${presenceUpgradeName(state, presenceId)}</span>
+        <span class="upgrade-text">${presenceUpgradeText(state, presenceId)}</span>
+      </div>
+      <button type="button" class="upgrade-buy" data-presence="${presenceId}" ${owned || !affordable ? "disabled" : ""}>
+        ${owned ? t.presenceOwnedBtn : template(t.presenceCostLabel, { cost })}
+      </button>
+    `;
+    dom.presenceList.appendChild(row);
+  }
+}
+
+/* Patched every frame rather than rebuilt, for the payout above all: it moves as the cycle
+ * earns, and it is the number the whole decision turns on. The catalogue below has its own
+ * signature and is rebuilt only when something in it actually changes.
+ */
+function patchAscension(state) {
+  const t = locale(state);
+
+  // Absent until there is something to decide, not dimmed - see the markup note. Everything
+  // below is skipped in that case, so a hidden panel costs two predicates a frame.
+  //
+  // The unlock is re-earned by every cycle now, but the panel is not hidden again between them:
+  // a player who has Reclaimed once holds Presence, and this is the only place that figure and
+  // the Presence catalogue are drawn. So it appears at the first payout worth taking and stays
+  // from then on, dark hint and disabled button in the cycles where the payout is still short.
+  const unlocked = ascensionUnlocked(state);
+  const visible = unlocked || state.meta.ascensionCount > 0;
+  dom.ascensionPanel.hidden = !visible;
+  if (!visible) {
+    disarmAscend();
+    return;
+  }
+
+  const payout = ascensionPayout(state);
+  const totals = cycleFearTotals(state);
+  const tiers = Object.values(state.upgrades.purchased || {})
+    .reduce((sum, tier) => sum + Math.max(0, Math.floor(Number(tier) || 0)), 0);
+
+  dom.ascensionPresenceValue.textContent = String(state.meta.presence);
+  dom.ascensionPayoutValue.textContent = String(payout);
+  // Under the payout, because it is the same question asked forward: how much further this
+  // cycle has to run before that number reads one higher.
+  dom.ascensionNextPresence.textContent = template(t.ascensionNextPresenceHint, {
+    fear: formatFear(fearToNextPresence(state))
+  });
+  dom.ascensionGenerated.textContent = `${t.ascensionGeneratedLabel}: ${formatFear(totals.generated)} · ${t.ascensionCountLabel}: ${state.meta.ascensionCount}`;
+  dom.ascensionLoss.textContent = template(t.ascensionLossHint, {
+    fear: formatFear(state.meta.fear),
+    tiers
+  });
+
+  // The same rule the round controls follow, and for the same reason: ascension is a
+  // between-rounds action. Disabled rather than hidden, so the panel does not change height at
+  // every round boundary.
+  //
+  // Two reasons it can be disabled, and the hint names whichever is the real one. A short payout
+  // outranks a running round: the round will end on its own in a minute, and the player who is
+  // told to wait for that and then finds the button still dead has been misled.
+  const ready = canAscend(state);
+  if (!ready) disarmAscend();
+  dom.ascendBtn.disabled = !ready;
+  dom.ascendBtn.textContent = ascendArmed ? t.ascensionConfirmBtn : t.ascensionBtn;
+  dom.ascendBtn.classList.toggle("is-armed", ascendArmed);
+  dom.ascensionHint.textContent = !unlocked
+    ? template(t.ascensionLockedHint, { presence: ASCENSION_UNLOCK_PRESENCE })
+    : ready ? "" : t.ascensionRoundHint;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1124,6 +1298,13 @@ function patchHud(state) {
   const currentWave = state.round.wavesResolved + (state.round.status === "running" ? 1 : 0);
   dom.roundValue.textContent = String(currentWave);
   dom.bestWaveValue.textContent = String(state.meta.bestWaveReached);
+  // The cycle's own best, and only from the first ascension on. Before that the two figures are
+  // always equal, and a second identical number on the strip would be noise rather than a
+  // reading. From the first Reclaim they part company, and the cycle one is the only one that
+  // moves in the rounds just after.
+  const showCycleBest = state.meta.ascensionCount > 0;
+  dom.cycleBestWaveRow.hidden = !showCycleBest;
+  if (showCycleBest) dom.cycleBestWaveValue.textContent = String(state.meta.cycleBestWave);
   // The banked pool, which is the only one the shop can spend. What this round has earned
   // rides underneath it so the player can watch it grow without mistaking it for money.
   dom.fearValue.textContent = formatFear(state.meta.fear);
@@ -1317,6 +1498,21 @@ function patchPlaytestTools(state) {
   dom.playtestEnergyBtn.hidden = !on;
   dom.playtestFearBtn.hidden = !on;
   dom.playtestHideBtn.hidden = !on;
+  dom.playtestFearTally.hidden = !on;
+  // Patched here rather than in the static text, because these are numbers rather than labels:
+  // they move while the language sits still. The granted column is only written once something
+  // has been granted - a row of zeroes teaches nothing and makes the line harder to read.
+  if (on) {
+    const t = locale(state);
+    const totals = cycleFearTotals(state);
+    const text = template(t.playtestTally, {
+      generated: formatFear(totals.generated),
+      spent: formatFear(totals.spent)
+    });
+    dom.playtestFearTally.textContent = totals.granted > 0
+      ? text + template(t.playtestTallyGranted, { granted: formatFear(totals.granted) })
+      : text;
+  }
   // Patched rather than rendered with the rest of the static text: the message answers a click
   // that does not change the language, so it cannot wait on the language cache.
   patchRedeemStatus(state);
@@ -1335,6 +1531,7 @@ function applyStaticLanguage(state) {
   dom.speedGroup.setAttribute("aria-label", t.speedLabel);
   dom.roundLabel.textContent = t.roundLabel;
   dom.bestWaveLabel.textContent = t.bestWaveLabel;
+  dom.cycleBestWaveLabel.textContent = t.cycleBestWaveLabel;
   dom.blightLabel.textContent = t.blightLabel;
   dom.waveLabel.textContent = t.waveLabel;
   dom.fearLabel.textContent = t.fearLabel;
@@ -1362,6 +1559,12 @@ function applyStaticLanguage(state) {
   dom.shopTitle.textContent = t.shopTitle;
   dom.shopFearLabel.textContent = t.shopFearLabel;
   dom.startNextRoundBtn.textContent = t.startNextRoundBtn;
+  dom.ascensionTitle.textContent = t.ascensionTitle;
+  dom.ascensionPresenceLabel.textContent = t.ascensionPresenceLabel;
+  dom.ascensionPayoutLabel.textContent = t.ascensionPayoutLabel;
+  dom.ascensionShopLabel.textContent = t.ascensionShopLabel;
+  // Not the Reclaim button itself: its text says whether it is armed, so it is patched every
+  // frame rather than written once per language change.
   dom.logTitle.textContent = t.logTitle;
   dom.manualSaveBtn.textContent = t.manualSaveBtn;
   dom.exportSaveBtn.textContent = t.exportSaveBtn;
@@ -1379,6 +1582,8 @@ function applyStaticLanguage(state) {
   dom.playtestEnergyBtn.title = template(t.playtestEnergyTitle, { amount: PLAYTEST_GRANT });
   dom.playtestFearBtn.textContent = template(t.playtestFearBtn, { amount: PLAYTEST_GRANT });
   dom.playtestFearBtn.title = template(t.playtestFearTitle, { amount: PLAYTEST_GRANT });
+  // Only the tally's explanation is static; its numbers are patched every frame.
+  dom.playtestFearTally.title = t.playtestTallyTitle;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1461,6 +1666,15 @@ function updateUI(state) {
     renderShop(state);
     renderCache.shop = nextShopSig;
   }
+
+  const nextPresenceSig = presenceShopSignature(state);
+  if (renderCache.presenceShop !== nextPresenceSig) {
+    renderPresenceShop(state);
+    renderCache.presenceShop = nextPresenceSig;
+  }
+  // Always, and after the catalogue: the payout moves as the cycle earns, and the arming state
+  // changes on a click that never touches the rows.
+  patchAscension(state);
 
   const nextLogSig = (state._log || [])[0] || "";
   if (renderCache.log !== nextLogSig) {
@@ -1657,6 +1871,19 @@ dom.landDetail.addEventListener("click", (event) => {
 dom.upgradeList.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  // Folding is done in place rather than by asking for a redraw: the shop only redraws when
+  // its signature moves, and nothing about a fold is in the signature - it is not state the
+  // game has an opinion about. The flag still has to be set, so the next real redraw keeps it.
+  const fold = target.closest("button[data-fold]");
+  if (fold) {
+    soldOutOpen = !soldOutOpen;
+    fold.setAttribute("aria-expanded", String(soldOutOpen));
+    const body = document.getElementById("upgradeSoldOut");
+    if (body) body.hidden = !soldOutOpen;
+    return;
+  }
+
   const button = target.closest("button[data-upgrade]");
   if (!button) return;
   // Absent on every row but the pool's, where it is the denomination the button was drawn
@@ -1673,6 +1900,45 @@ dom.startNextRoundBtn.addEventListener("click", () => {
   updateUI(state);
   persist();
 });
+
+dom.presenceList.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest("button[data-presence]");
+  if (!button) return;
+  purchasePresenceUpgrade(state, button.getAttribute("data-presence") || "");
+  updateUI(state);
+  persist();
+});
+
+/* Two clicks, and the second one is the only one that does anything. See the note above
+ * `ascendArmed` for why this is an arming button rather than a dialog.
+ *
+ * The `canAscend` check is not trusted to the disabled attribute alone: `ascend` refuses on its
+ * own terms and logs why, which is what makes the rule live in the engine rather than here.
+ */
+dom.ascendBtn.addEventListener("click", () => {
+  if (!ascendArmed) {
+    ascendArmed = true;
+    updateUI(state);
+    return;
+  }
+  disarmAscend();
+  ascend(state);
+  updateUI(state);
+  persist();
+});
+
+// Anything else on the page disarms it, so a click that wandered off and came back does not
+// find a live Reclaim waiting. Capture, because the handlers above it stop nothing and this
+// has to see a click the shop or the board is about to consume.
+document.addEventListener("click", (event) => {
+  if (!ascendArmed) return;
+  const target = event.target;
+  if (target instanceof Element && target.closest("#ascendBtn")) return;
+  disarmAscend();
+  updateUI(state);
+}, true);
 
 // A submit rather than a click, so Enter in the field is the button - the code is typed, and a
 // typist reaches for Enter. The default navigation is what would reload the page and lose the

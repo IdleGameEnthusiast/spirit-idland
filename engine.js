@@ -114,12 +114,55 @@ const DAHAN_ATTACK_DAMAGE = 1;
  *
  * The cap is therefore a design decision rather than a safety rail: at 1.0 the Dahan strike
  * twice as often, which at the 1x speed dial is every 10 real seconds against the base 20,
- * and 10000 Fear is several times the price of the entire rest of the catalogue. It is meant
- * to be the sink that outlives the shop, so it is priced against income the shop cannot
- * spend rather than against the shop.
+ * and 10000 Fear is several times the price of the entire rest of the catalogue. It was
+ * priced as the sink that outlives the shop, back when the shop was the only progression
+ * axis; ascension is that axis now and this is a deep row that gets wiped like the rest. The
+ * figure is left alone until a played cycle says what a cycle generates.
  */
 const DAHAN_HASTE_FEAR_FOR_FULL = 10000;
 const DAHAN_HASTE_MAX = 1;
+
+/* ---------- The ascension layer (05-progression.md) ----------
+ *
+ * The spirit withdraws from the island and returns greater: everything Fear bought is given
+ * back, and what the cycle *generated* is paid out in Presence.
+ *
+ * The unlock reads the payout itself: Reclaiming is offered once it would pay
+ * ASCENSION_UNLOCK_PRESENCE, and not before. Gate and reward are then the same number, so there
+ * is no cycle in which Reclaiming is legal and worthless. The all-time wave gate this replaces
+ * measured depth the payout does not read, and let a cycle that had generated nothing Reclaim
+ * for zero.
+ *
+ * It is re-earned every cycle, which the wave gate deliberately was not. That is not the wall a
+ * per-cycle *depth* gate would have been: what it forbids is a Reclaim that hands back a whole
+ * catalogue for four Presence or fewer, which is the trade the panel should never offer. What
+ * it costs is the free Reclaim at the top of a fresh cycle, which paid nothing anyway.
+ *
+ * 5 is the figure PRESENCE_FEAR_DIVISOR was itself anchored to - "a first Reclaim should pay
+ * about 5" - so the gate asks for exactly what the payout was always meant to deliver first. In
+ * generated Fear that is 5*5*100 = 2500, but the constant is written in Presence on purpose:
+ * retuning the divisor moves the Fear the gate costs and leaves the promise to the player alone.
+ *
+ * The payout is a square root, and that is the whole mechanism. A linear payout would make a
+ * cycle twice as long pay exactly twice as much, so waiting would never be worse than
+ * Reclaiming and the answer to "should I ascend now" would be *no, later*, forever - a
+ * decision the player is asked to make and can only get wrong. Under the root, doubling a
+ * cycle's Fear pays 1.41x, so two short cycles beat one long one and ascending early is a real
+ * strategy rather than a mistake. It also absorbs the compounding: the payout reads *banked*
+ * Fear, which the three Fear ladders multiply and high_water_mark makes quadratic in depth, so
+ * a linear payout on top of that would be quadratic on quadratic.
+ *
+ * PRESENCE_FEAR_DIVISOR is a guess anchored only to "a first Reclaim should pay about 5", and
+ * the pacing of the entire layer rides on it - the unlock above included, since 5 Presence is
+ * 25 divisors of generated Fear. No cycle has been played to read the real figure. The
+ * measurement is one line in the playtest tally: play a cycle to the point where a Reclaim
+ * feels earned, read cycleFearGenerated, and the divisor is that number over 25.
+ */
+const ASCENSION_UNLOCK_PRESENCE = 5;
+const PRESENCE_FEAR_DIVISOR = 100;
+
+// Ten tiers, +10% each, +100% at the top - see the note above the three ladders in UPGRADES.
+const FEAR_LADDER_MAX_TIER = 10;
 
 /* ---------- The difficulty ladder ----------
  *
@@ -572,25 +615,24 @@ const UPGRADES = {
   /* ---------- The three Fear ladders ----------
    *
    * One shape read three times: ten tiers, +10% a tier, +100% at the top, on the 1.6 curve
-   * every other repeatable uses. They carry no `maxTier` - the curve is what stops them, not a
-   * number (see upgradeIsSoftCapped). At 1.6 a tier costs 60% more than the
-   * one under it while paying the same flat +10%, so the price pulls away from the payoff on
-   * its own: tier 1 pays for itself in about two rounds, tier 10 in over a hundred.
+   * every other repeatable uses. At 1.6 a tier costs 60% more than the one under it while
+   * paying the same flat +10%, so the price pulls away from the payoff on its own: tier 1 pays
+   * for itself in about two rounds, tier 10 in over a hundred.
    *
-   * `requiredForGate: false` is what a ladder with no top has to carry: the gate asks whether
-   * everything else is finished, and a row that can never finish would hold it shut forever.
-   * See upgradeRequiredForGate.
+   * They used to carry no `maxTier` at all - soft-capped, stopped by the curve rather than by
+   * a number - and the reason was structural rather than numeric. The Fear shop was the game's
+   * only progression axis, so it had to keep absorbing income forever or the game ran out of
+   * progression. Ascension is that axis now, and a catalogue whose size Presence grows does not
+   * need a row with no top. Ten tiers is the whole matched set: +100% each, finishable, and
+   * able to reach the shop's sold-out half like every other row.
    *
-   * Leaving them uncapped rather than stopping at 10 is a playtest decision, not a permanent
-   * one. What it buys is that the ceiling floats: payback is measured against the *current*
-   * Fear rate, so tiers that were absurd at wave 40 come back into range at wave 150 instead
-   * of sitting maxed and dead. If that reads as noise rather than as depth, a `maxTier: 10`
-   * on each of these three turns them into finishable ladders and nothing else has to move.
+   * Tier 12 alone cost more than the whole ten-tier ladder, so the cap removes rungs nobody was
+   * going to buy and turns "this never ends" into a number a player can plan against.
    */
   rising_dread: {
     id: "rising_dread",
     repeatable: true,
-    requiredForGate: false,
+    maxTier: FEAR_LADDER_MAX_TIER,
     effect: "fear_kill_bonus_per_tier",
     // The cheapest ladder in the shop and deliberately the strongest early buy: at 6 Fear it
     // pays back inside two rounds. It is priced under dahan_reinforcement (10) without being
@@ -601,7 +643,7 @@ const UPGRADES = {
   mounting_terror: {
     id: "mounting_terror",
     repeatable: true,
-    requiredForGate: false,
+    maxTier: FEAR_LADDER_MAX_TIER,
     effect: "fear_wave_bonus_per_tier",
     // Same price as rising_dread on purpose, even though wave Fear is the smaller half of the
     // income and falls further behind at every damage rung of the ladder. What squares the two
@@ -613,7 +655,7 @@ const UPGRADES = {
   high_water_mark: {
     id: "high_water_mark",
     repeatable: true,
-    requiredForGate: false,
+    maxTier: FEAR_LADDER_MAX_TIER,
     effect: "fear_wave_milestone_per_tier",
     // Every tenth wave pays a bonus of `tier * 10%` of its own number. Wave 50 at tier 3 pays
     // 15. That makes the total quadratic in depth - a run to wave 10m collects
@@ -641,16 +683,15 @@ const UPGRADES = {
    * there to keep a ladder a decision; a sink is the opposite of a decision, and a sink whose
    * price climbed would just be another ladder with a worse name.
    *
-   * `requiredForGate: false` for a different reason than the three Fear ladders carry it.
-   * They are unfinishable, so the gate could never open. This one is finishable and the gate
-   * would eventually open - after 10000 Fear, which is several times the rest of the
-   * catalogue put together. That is not a gate, it is a wall, and what stands behind it was
-   * meant to be what finishing the shop pays for.
+   * Its 10000 was priced when the Fear shop was the only progression axis and the pool had to
+   * absorb income forever. Ascension is that axis now, so this is a deep row that gets wiped
+   * like every other - deep enough that early cycles will not fill it, which makes it scenery
+   * for a while rather than a trap. The figure is left alone deliberately until a played cycle
+   * says what a cycle actually generates.
    */
   dahan_remember: {
     id: "dahan_remember",
     repeatable: true,
-    requiredForGate: false,
     effect: "dahan_attack_haste",
     // One Fear, one hundredth of a percent, and the cap is the whole pool - see
     // DAHAN_HASTE_FEAR_FOR_FULL for why the price is what it is.
@@ -721,32 +762,82 @@ const UPGRADES = {
     baseCost: 400
   },
 
-  // The last two rows in the catalogue, and the only ones behind a gate rather than behind a
-  // price (see upgradeIsLocked). Between them they take the last two things still done by
-  // hand - the bar and the round - so they are what the shop ends with rather than something
-  // it can be skipped ahead to.
+  /* ---------- The two rows Presence unlocks ----------
+   *
+   * The only rows in this catalogue that Fear alone cannot reach. Each names a Presence row in
+   * `presenceUnlock`, and until that row is bought the Fear row is locked whatever the purse
+   * holds (see upgradeNeedsPresence).
+   *
+   * They were behind a completion gate until the ascension layer landed: refused until every
+   * other row was maxed, which is ~2674 Fear and something like ninety hand-played rounds
+   * before the game would play itself. The gate is deleted along with the idea it rested on -
+   * that the shop is a thing which finishes.
+   *
+   * The Fear price is still owed, and owed again every cycle: a Presence unlock puts the row in
+   * the shop, it does not buy the row. So every cycle opens hand-played and 500 Fear is a live
+   * decision against the five tiers of rising_dread it would otherwise buy. That trade - play
+   * this cycle actively, or pay to idle it - is the point of leaving the price where it is.
+   */
   auto_buy_abilities: {
     id: "auto_buy_abilities",
     repeatable: false,
     effect: "auto_buy_abilities",
-    // Cheap for where it sits, and deliberately so: the gate is what holds it back, not the
-    // price, and by the time the gate opens 200 Fear is a formality. What it sells is also
-    // less than the automations under it - it spends Energy the round was already going to
-    // spend, in the order a settled player already spends it, and buys back the clicks rather
-    // than any new power.
+    presenceUnlock: "presence_river_knows",
+    // Cheap for where it sits, and deliberately so: Presence is what holds it back, not the
+    // price. What it sells is also less than the automations under it - it spends Energy the
+    // round was already going to spend, in the order a settled player already spends it, and
+    // buys back the clicks rather than any new power.
     baseCost: 200
   },
   auto_start_round: {
     id: "auto_start_round",
     repeatable: false,
     effect: "auto_start_round",
-    // The most expensive thing in the shop, and the only one that changes the shape of the
-    // game rather than a number in it: rounds stop needing a hand on them. It is priced as a
+    presenceUnlock: "presence_tide_returns",
+    // The most expensive one-off in the shop, and the only one that changes the shape of the
+    // game rather than a number in it: rounds stop needing a hand on them. Priced as a
     // milestone - several rounds of income even once the ladders are deep - because what it
-    // buys is every round after it.
+    // buys is every round after it, for the rest of the cycle.
     baseCost: 500
   }
 };
+
+/* ------------------------------------------------------------------ *
+ * The Presence catalogue (05-progression.md, 07-content-registry.md)   *
+ *                                                                      *
+ * Fear buys. Presence decides what Fear is allowed to buy.             *
+ *                                                                      *
+ * Every row here unlocks a Fear row and does nothing else. Presence never touches the board:
+ * it buys no Dahan, shortens no clock, adds no damage. That is what makes the two currencies
+ * impossible to price against each other - there is no exchange rate to get wrong, and no
+ * future Presence row can quietly do a Fear row's job at a different price.
+ *
+ * Prices are flat because neither row is repeatable. A repeatable row added later wants
+ * something nearer 1.3-1.5 growth, or none at all: Presence income is root-shaped and grows
+ * slowly, so the Fear catalogue's 1.6 curve would kill a Presence ladder inside three tiers.
+ *
+ * The names are the ones the Fear rows already carried, kept rather than invented. The
+ * Presence row and the Fear row it opens are the same idea at two prices, and separate names
+ * would make the player learn the pairing.
+ * ------------------------------------------------------------------ */
+
+const PRESENCE_UPGRADES = {
+  // 2 and 3 against a first payout of about 5, so the first Reclaim buys both. Deliberate: the
+  // first ascension should read as an unambiguous win rather than a dilemma. Dilemmas belong
+  // to rows that do not exist yet.
+  presence_tide_returns: {
+    id: "presence_tide_returns",
+    unlocks: "auto_start_round",
+    cost: 2
+  },
+  presence_river_knows: {
+    id: "presence_river_knows",
+    unlocks: "auto_buy_abilities",
+    cost: 3
+  }
+};
+
+const PRESENCE_UPGRADE_IDS = Object.keys(PRESENCE_UPGRADES);
 
 const UPGRADE_IDS = Object.keys(UPGRADES);
 
@@ -865,6 +956,7 @@ const I18N = {
     hudTitle: "Runde",
     roundLabel: "Welle",
     bestWaveLabel: "Höchste Welle",
+    cycleBestWaveLabel: "Dieser Zyklus",
     blightLabel: "Verderbnis",
     waveLabel: "Nächste Welle",
     fearLabel: "Furcht",
@@ -957,9 +1049,41 @@ const I18N = {
     shopSoldOutLabel: "Bereits gekauft",
     // Während der Runde gekauft: gehört dir, wirkt aber erst ab der nächsten Runde.
     shopPendingHint: "Wirkt ab der nächsten Runde.",
-    // Verschlossen, nicht zu teuer: der Preis steht daneben und ist nicht der Grund.
-    shopLockedHint: "Erst zu haben, wenn alles andere gekauft ist.",
     startNextRoundBtn: "Nächste Runde starten",
+
+    /* ---------- Aszension und Präsenz ---------- */
+    ascensionTitle: "Aszension",
+    ascensionPresenceLabel: "Präsenz",
+    ascensionPayoutLabel: "Zurückziehen bringt",
+    ascensionCountLabel: "Bisher zurückgezogen",
+    ascensionGeneratedLabel: "Dieser Zyklus erzeugte",
+    // Die Auszahlung ist eine Wurzel, also sagt die Zahl allein nie, wie nah die nächste
+    // Präsenz ist. Diese Zeile sagt es: was noch erzeugt werden muss, damit der Knopf eine
+    // Präsenz mehr bringt.
+    ascensionNextPresenceHint: "Noch {fear} Furcht bis zur nächsten Präsenz.",
+    // Was der Knopf kostet, vor dem Knopf statt danach. Das Einzige im Spiel, das sich nicht
+    // rückgängig machen lässt.
+    ascensionLossHint: "Zurückziehen nimmt alles: {fear} Furcht und {tiers} gekaufte Stufen. Präsenz und die höchste Welle bleiben.",
+    ascensionBtn: "Zurückziehen",
+    ascensionConfirmBtn: "Wirklich zurückziehen",
+    ascensionLockedHint: "Erst wenn Zurückziehen {presence} Präsenz bringt.",
+    ascensionRoundHint: "Erst zwischen den Runden.",
+    ascensionShopLabel: "Was Präsenz freischaltet",
+    ascended: "Aszension {count}. {generated} Furcht dieses Zyklus wurden zu {presence} Präsenz - {total} insgesamt. Die Insel beginnt von vorn.",
+    ascendRefused: "Noch nicht. Zurückziehen geht erst zwischen den Runden, und erst wenn der Zyklus es wert ist.",
+    presenceNames: {
+      presence_tide_returns: "Die Flut kehrt wieder",
+      presence_river_knows: "Der Fluss weiß, was er braucht"
+    },
+    presenceTexts: {
+      presence_tide_returns: "Öffnet \"Die Flut kehrt wieder\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu.",
+      presence_river_knows: "Öffnet \"Der Fluss weiß, was er braucht\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu."
+    },
+    presencePurchased: "{upgrade} für {cost} Präsenz. {unlocks} steht jetzt im Laden.",
+    presenceOwned: "{upgrade} gehört dir bereits.",
+    presenceTooExpensive: "{upgrade} kostet {cost} Präsenz, du hast {presence}.",
+    presenceCostLabel: "{cost} Präsenz",
+    presenceOwnedBtn: "Freigeschaltet",
     upgradeNames: {
       dahan_reinforcement: "Verstärkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
@@ -1032,6 +1156,10 @@ const I18N = {
     playtestFearBtn: "+{amount} Furcht",
     playtestFearTitle: "Playtest: {amount} Furcht hinzufügen",
     playtestFearLog: "Playtest: +{amount} Furcht.",
+    playtestTally: "Zyklus: {generated} Furcht erzeugt · {spent} ausgegeben",
+    // Angehängt statt eingebaut: wer die Knöpfe nie drückt, soll auch keine dritte Zahl lesen.
+    playtestTallyGranted: " · {granted} geschenkt",
+    playtestTallyTitle: "Playtest: Furcht dieses Zyklus, also seit der letzten Aszension. Erzeugt = von Runden eingezahlt, ausgegeben = im Laden. Geschenkte Furcht zählt getrennt, damit die erzeugte Zahl ehrlich bleibt.",
 
     explorersLabel: "Entdecker",
     townsLabel: "Dörfer",
@@ -1142,7 +1270,7 @@ const I18N = {
     upgradeInvested: "{upgrade}: {cost} Furcht erinnert. Jetzt {pct}% schneller - ein Schlag alle {seconds}s.",
     upgradeTooExpensive: "{upgrade} kostet {cost} Furcht. Du hast {fear}.",
     upgradeMaxed: "{upgrade} ist bereits auf der höchsten Stufe.",
-    upgradeLocked: "{upgrade} bleibt verschlossen, bis alles andere im Laden gekauft ist.",
+    upgradeLocked: "{upgrade} bleibt verschlossen, bis {presence} mit Präsenz gekauft ist.",
 
     migrationReset: "Alter Spielstand (Version {version}) ist nicht mit dem Rundenmodus kompatibel und wurde zurückgesetzt.",
     saveWiped: "Spielstand gelöscht.",
@@ -1158,6 +1286,7 @@ const I18N = {
     hudTitle: "Round",
     roundLabel: "Wave",
     bestWaveLabel: "Highest wave",
+    cycleBestWaveLabel: "This cycle",
     blightLabel: "Blight",
     waveLabel: "Next wave",
     fearLabel: "Fear",
@@ -1234,8 +1363,40 @@ const I18N = {
     shopOneOffLabel: "One-off",
     shopSoldOutLabel: "Already bought",
     shopPendingHint: "Takes effect next round.",
-    shopLockedHint: "Sealed until everything else is bought.",
     startNextRoundBtn: "Start next round",
+
+    /* ---------- Ascension and Presence ---------- */
+    ascensionTitle: "Ascension",
+    ascensionPresenceLabel: "Presence",
+    ascensionPayoutLabel: "Reclaiming pays",
+    ascensionCountLabel: "Reclaimed so far",
+    ascensionGeneratedLabel: "This cycle generated",
+    // The payout is a root, so the figure alone never says how close the next Presence is.
+    // This line says it: the Fear still to generate before the button pays one more.
+    ascensionNextPresenceHint: "{fear} more Fear until the next Presence.",
+    // What the button costs, before the button rather than after it. The one thing in the game
+    // that cannot be undone.
+    ascensionLossHint: "Reclaiming takes all of it: {fear} Fear and {tiers} purchased tiers. Presence and your highest wave stay.",
+    ascensionBtn: "Reclaim",
+    ascensionConfirmBtn: "Reclaim, and mean it",
+    ascensionLockedHint: "Not until Reclaiming pays {presence} Presence.",
+    ascensionRoundHint: "Between rounds only.",
+    ascensionShopLabel: "What Presence unlocks",
+    ascended: "Ascension {count}. {generated} Fear this cycle became {presence} Presence - {total} in all. The island begins again.",
+    ascendRefused: "Not yet. Reclaiming waits for the end of a round, and for a cycle worth giving back.",
+    presenceNames: {
+      presence_tide_returns: "The Tide Returns",
+      presence_river_knows: "The River Knows Its Own Need"
+    },
+    presenceTexts: {
+      presence_tide_returns: "Opens \"The Tide Returns\" in the Fear shop. Its Fear price is still owed - every cycle, again.",
+      presence_river_knows: "Opens \"The River Knows Its Own Need\" in the Fear shop. Its Fear price is still owed - every cycle, again."
+    },
+    presencePurchased: "{upgrade} for {cost} Presence. {unlocks} is in the shop now.",
+    presenceOwned: "{upgrade} is already yours.",
+    presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",
+    presenceCostLabel: "{cost} Presence",
+    presenceOwnedBtn: "Unlocked",
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
@@ -1310,6 +1471,11 @@ const I18N = {
     playtestFearBtn: "+{amount} Fear",
     playtestFearTitle: "Playtest: add {amount} fear",
     playtestFearLog: "Playtest: +{amount} Fear.",
+    playtestTally: "Cycle: {generated} Fear generated · {spent} spent",
+    // Appended rather than built in: a playtester who never presses the grant has no third
+    // number to read.
+    playtestTallyGranted: " · {granted} granted",
+    playtestTallyTitle: "Playtest: this cycle's Fear, i.e. since the last ascension. Generated = banked by rounds, spent = in the shop. Granted Fear is counted apart, so the generated figure stays honest.",
 
     explorersLabel: "Explorers",
     townsLabel: "Towns",
@@ -1419,7 +1585,7 @@ const I18N = {
     upgradeInvested: "{upgrade}: {cost} Fear remembered. Now {pct}% faster - a strike every {seconds}s.",
     upgradeTooExpensive: "{upgrade} costs {cost} Fear. You have {fear}.",
     upgradeMaxed: "{upgrade} is already at its highest tier.",
-    upgradeLocked: "{upgrade} stays sealed until everything else in the shop is bought.",
+    upgradeLocked: "{upgrade} stays sealed until {presence} is bought with Presence.",
 
     migrationReset: "The old save (version {version}) is not compatible with the round-based build and was reset.",
     saveWiped: "Save wiped.",
@@ -1663,6 +1829,16 @@ function upgradeName(state, upgradeId) {
   return (t.upgradeNames && t.upgradeNames[upgradeId]) || upgradeId;
 }
 
+function presenceUpgradeName(state, presenceId) {
+  const t = locale(state);
+  return (t.presenceNames && t.presenceNames[presenceId]) || presenceId;
+}
+
+function presenceUpgradeText(state, presenceId) {
+  const t = locale(state);
+  return (t.presenceTexts && t.presenceTexts[presenceId]) || "";
+}
+
 /* ---------- The rows that describe where they stand ----------
  *
  * Every other repeatable pays a constant per tier, so "+1 Dahan, per tier" answers the only
@@ -1674,9 +1850,8 @@ function upgradeName(state, upgradeId) {
  *
  * The Mark needs a wave to be concrete about, and the useful one is the next milestone the
  * player is actually heading for rather than a fixed example: at wave 20 the row should talk
- * about 30, and at wave 200 about 210. It has no top tier to run into - it is soft-capped, so
- * there is always another rung to price - while `headwaters` ends, and a ladder at its top has
- * to say what it pays rather than what it would next.
+ * about 30, and at wave 200 about 210. Both it and `headwaters` end, so both need the same
+ * fallback: a ladder at its top has to say what it pays rather than what it would next.
  *
  * Anything here may return "" to fall back to the static `upgradeTexts` entry, which is why
  * those two entries stay in both locale tables: a row is never left blank because a
@@ -2052,6 +2227,175 @@ function upgradeTier(state, upgradeId) {
   return Math.max(0, Math.floor(Number(raw) || 0));
 }
 
+/* ---------- The Presence side of the same idea ----------
+ *
+ * Deliberately a separate object from `upgrades.purchased` rather than more keys in it, and
+ * that one decision is what keeps ascension simple: the wipe is `upgrades.purchased = {}`
+ * whole, with no filter and no exception list. Two objects with one rule each beats one object
+ * with a rule and an exception, and the exception is what a later reader gets wrong.
+ *
+ * Everything below deliberately mirrors the Fear side rather than sharing code with it. The
+ * two catalogues answer different questions and are about to diverge - a Presence row will
+ * grow a cap or discount a price, neither of which a UPGRADES record can describe - so
+ * factoring them together now would only have to be undone.
+ */
+function presenceUpgradeTier(state, presenceId) {
+  const raw = state.presenceUpgrades && state.presenceUpgrades.purchased
+    ? state.presenceUpgrades.purchased[presenceId]
+    : 0;
+  if (raw === true) return 1;
+  return Math.max(0, Math.floor(Number(raw) || 0));
+}
+
+function presenceUpgradeOwned(state, presenceId) {
+  return presenceUpgradeTier(state, presenceId) > 0;
+}
+
+function presenceUpgradeCost(presenceId) {
+  const record = PRESENCE_UPGRADES[presenceId];
+  return record ? record.cost : Infinity;
+}
+
+function purchasePresenceUpgrade(state, presenceId) {
+  const t = locale(state);
+  const record = PRESENCE_UPGRADES[presenceId];
+  if (!record) return false;
+
+  if (presenceUpgradeOwned(state, presenceId)) {
+    addLog(state, template(t.presenceOwned, { upgrade: presenceUpgradeName(state, presenceId) }));
+    return false;
+  }
+
+  const cost = record.cost;
+  if (state.meta.presence < cost) {
+    addLog(state, template(t.presenceTooExpensive, {
+      upgrade: presenceUpgradeName(state, presenceId),
+      cost,
+      presence: state.meta.presence
+    }));
+    return false;
+  }
+
+  state.meta.presence -= cost;
+  state.presenceUpgrades.purchased[presenceId] = 1;
+
+  // Names the Fear row it opened, not just itself. What a Presence purchase *does* is put a
+  // row in the other shop, and a log line that did not say which one would be reporting a
+  // number going down and nothing going up.
+  addLog(state, template(t.presencePurchased, {
+    upgrade: presenceUpgradeName(state, presenceId),
+    unlocks: upgradeName(state, record.unlocks),
+    cost
+  }));
+  return true;
+}
+
+/* ---------- Ascension ----------
+ *
+ * Two conditions, and they are separate on purpose. The unlock reads what Reclaiming would pay,
+ * so it is re-earned by every cycle and asks nothing of the player that the payout was not
+ * already asking. And it is offered only between rounds, the same rule the whole of progression
+ * follows - which also removes the question of whether a running round's Fear counts, since it
+ * has not been banked.
+ *
+ * Reading the payout rather than cycleFearGenerated directly is what keeps the gate honest if
+ * either constant moves: the threshold is in Presence, the unit the player is being shown.
+ */
+function ascensionUnlocked(state) {
+  return ascensionPayout(state) >= ASCENSION_UNLOCK_PRESENCE;
+}
+
+function canAscend(state) {
+  return ascensionUnlocked(state) && state.round.status === "ended";
+}
+
+/* What Reclaiming right now would pay. See the note above PRESENCE_FEAR_DIVISOR for why the
+ * root is the shape.
+ *
+ * It reads what the cycle *generated*, never the bank, and that is a property rather than an
+ * implementation detail: spending Fear costs no Presence, so there is no reason to hoard
+ * before Reclaiming and no moment where the shop and this panel want opposite things from the
+ * player. `cycleFearGranted` is excluded for the other half of the same reason - a tool for
+ * looking at the game must not be a way of progressing through it.
+ */
+function ascensionPayout(state) {
+  const generated = Math.max(0, Math.floor(Number(state.meta.cycleFearGenerated) || 0));
+  return Math.floor(Math.sqrt(generated / PRESENCE_FEAR_DIVISOR));
+}
+
+/* How much further this cycle has to go before the payout reads one higher.
+ *
+ * The root is what makes this worth printing: the payout figure alone cannot say whether the
+ * next Presence is a round away or six, and the gap between rungs grows with every one taken.
+ * Inverting the payout gives the answer exactly - the smallest generated total whose root
+ * floors to `payout + 1` is `(payout + 1)^2 * PRESENCE_FEAR_DIVISOR`, because the division
+ * comes before the root and the floor only ever rounds down.
+ *
+ * It reads `cycleFearGenerated` for the same reason ascensionPayout does, which also keeps the
+ * two figures agreeing: a round in progress has generated nothing yet as far as either is
+ * concerned, so this number never counts Fear the payout above it is ignoring.
+ */
+function fearToNextPresence(state) {
+  const generated = Math.max(0, Math.floor(Number(state.meta.cycleFearGenerated) || 0));
+  const next = ascensionPayout(state) + 1;
+  return Math.max(0, next * next * PRESENCE_FEAR_DIVISOR - generated);
+}
+
+/* The one irreversible action in the game.
+ *
+ * What it clears is every `cycle*` field plus the two things they describe - the bank and the
+ * catalogue it bought. What it keeps is everything else, and the naming carries the rule: a
+ * `cycle*` field is wiped by ascension and everything else is not. Anything added later that
+ * should survive a Reclaim must not be called `cycle*`, and anything that should not survive
+ * one must be.
+ *
+ * `ui.*` surviving is the same rule that carries the language through a save migration: a
+ * preference is not something the player earned, so taking it away is not part of the price.
+ * The auto-cast switches in particular stay where they were set even though the automations
+ * they switch have just been un-bought, so re-buying one next cycle gets it back in the state
+ * the player last chose.
+ */
+function ascend(state) {
+  const t = locale(state);
+  if (!canAscend(state)) {
+    addLog(state, t.ascendRefused);
+    return false;
+  }
+
+  const payout = ascensionPayout(state);
+  const generated = Math.max(0, Math.floor(Number(state.meta.cycleFearGenerated) || 0));
+
+  state.meta.presence += payout;
+  state.meta.ascensionCount += 1;
+
+  state.meta.fear = 0;
+  state.meta.cycleFearGenerated = 0;
+  state.meta.cycleFearGranted = 0;
+  state.meta.cycleFearSpent = 0;
+  state.meta.cycleBestWave = 0;
+  state.upgrades.purchased = {};
+
+  // Flavour rather than mechanics: nothing in the rules reads the round number - the
+  // difficulty ladder is keyed to the wave - and a new age counting from one reads better than
+  // a run that remembers every attempt.
+  state.round.number = 1;
+
+  addLog(state, template(t.ascended, {
+    count: state.meta.ascensionCount,
+    generated: formatFear(generated),
+    presence: payout,
+    total: state.meta.presence
+  }));
+
+  startRound(state);
+  // The same closing move startNextRound makes, for the same reason: the button the player
+  // just pressed is the click that starts the round, so the wave gate does not ask for a
+  // second one. startRound raises that gate on its own, which is right for a fresh game nobody
+  // has looked at yet and wrong here - Reclaiming already took two deliberate clicks.
+  state.round.awaitingWave = false;
+  return true;
+}
+
 /* ---------- Owning an upgrade and running on it ----------
  *
  * The shop is open during a round now (see purchaseUpgrade), which splits a question that
@@ -2103,64 +2447,29 @@ function upgradeMaxTier(upgradeId) {
   return Number.isFinite(record.maxTier) ? record.maxTier : Infinity;
 }
 
-/* ---------- The end of the shop ----------
+/* ---------- The two rows Fear alone cannot reach ----------
  *
- * Two purchases stand behind everything else rather than beside it: the one that stops the
- * ability bar needing a hand on it, and the one that stops the round needing one. Both remove
- * a thing the player still does every round, and a game that hands those over while there is
- * still a catalogue to shop from has sold the ending before the middle. So neither is for
- * sale until the shop has nothing else left to sell - they are what finishing the catalogue
- * pays for, not an alternative to finishing it.
+ * A row naming a `presenceUnlock` is locked until that Presence row is bought, whatever the
+ * Fear purse holds. The lock is about a different currency than the price, which is why
+ * purchaseUpgrade tests it *before* the price: a player holding 500 Fear in front of a dead
+ * button deserves the real reason.
  *
- * The pair does not gate itself, which is the whole of why "everything else" is defined by
- * exclusion: read the other way, each would be waiting on the other and neither would ever
- * open.
+ * This replaces `gatedUpgradesUnlocked`, which asked whether the whole catalogue was finished.
+ * That question no longer has an answer worth having - the Fear catalogue is not a thing that
+ * finishes, because Presence is what grows it - and a test for a state that never arrives is
+ * a wall rather than a gate. Deleted with it: GATED_UPGRADE_IDS, upgradeIsLocked,
+ * upgradeRequiredForGate, the `requiredForGate` field, and upgradeIsSoftCapped, which lost its
+ * last caller when the three Fear ladders got a maxTier.
  */
-const GATED_UPGRADE_IDS = ["auto_buy_abilities", "auto_start_round"];
-
-// A ladder the cost curve stops rather than a tier number: no maxTier, so upgradeMaxTier
-// reports Infinity and it is never "maxed". Derived rather than declared - a record that says
-// it has no top and a record that has one cannot disagree if only one of them is written down.
-function upgradeIsSoftCapped(upgradeId) {
-  return upgradeMaxTier(upgradeId) === Infinity;
-}
-
-/* Which rows the gate counts, and it is the row that says so rather than the gate.
- *
- * The question `gatedUpgradesUnlocked` asks is "is everything else finished", and there are
- * two ways a row can be the wrong thing to ask that of. A soft-capped ladder can never be
- * finished, so it would hold the gate shut forever - the pair behind it taken off the table
- * permanently, with the shop showing a price the player could pay and a refusal that never
- * lifts. A deep sink like `dahan_remember` *can* be finished, but only after several times
- * the price of everything else, which is a wall rather than a gate.
- *
- * Both carry `requiredForGate: false`, and the flag is deliberately about the gate and
- * nothing else. It used to be `softCapped`, which was the shape of the ladder standing in for
- * the decision about the gate - fine while the two coincided, wrong the moment a capped row
- * needed the same exemption. Default is true: a new row counts unless it says otherwise, so
- * the gate can only be widened on purpose.
- */
-function upgradeRequiredForGate(upgradeId) {
+function upgradePresenceUnlock(upgradeId) {
   const record = UPGRADES[upgradeId];
-  if (!record) return false;
-  // The pair does not gate itself: read the other way, each would be waiting on the other and
-  // neither would ever open.
-  if (GATED_UPGRADE_IDS.includes(upgradeId)) return false;
-  return record.requiredForGate !== false;
+  return (record && record.presenceUnlock) || null;
 }
 
-// Whether the rest of the catalogue is finished: every ladder the gate counts at its top
-// tier, every one-off bought. Maxed is the same test the shop's sold-out half uses, so
-// "nothing left to sell" and "the gate is open" can never disagree.
-function gatedUpgradesUnlocked(state) {
-  return UPGRADE_IDS.every((id) => (
-    !upgradeRequiredForGate(id) ||
-    upgradeTier(state, id) >= upgradeMaxTier(id)
-  ));
-}
-
-function upgradeIsLocked(state, upgradeId) {
-  return GATED_UPGRADE_IDS.includes(upgradeId) && !gatedUpgradesUnlocked(state);
+function upgradeNeedsPresence(state, upgradeId) {
+  const required = upgradePresenceUnlock(upgradeId);
+  if (!required) return false;
+  return presenceUpgradeTier(state, required) <= 0;
 }
 
 // The 1.6 curve unless the row names its own. A `costGrowth` of 1 is what makes a row a pool
@@ -2191,12 +2500,23 @@ function upgradeCost(state, upgradeId) {
  * asks about thousands.
  */
 function upgradeCostFor(state, upgradeId, count) {
+  return upgradeCostFromTier(upgradeId, upgradeTier(state, upgradeId), count);
+}
+
+/* The same sum without a state to read the starting rung from.
+ *
+ * upgradeCostFor is this function with `from` filled in from what the player owns, which is
+ * every caller in the game. The one caller that needs the other end of it is the migration in
+ * normalizeState, which asks what a save's owned tiers *have already cost* - a question about
+ * rungs 0..n-1, with no state to ask because the state is still being built.
+ */
+function upgradeCostFromTier(upgradeId, from, count) {
   const record = UPGRADES[upgradeId];
   if (!record) return Infinity;
   const want = Math.max(0, Math.floor(Number(count) || 0));
   if (want === 0) return 0;
 
-  const tier = upgradeTier(state, upgradeId);
+  const tier = Math.max(0, Math.floor(Number(from) || 0));
   const growth = upgradeCostGrowth(upgradeId);
   if (growth === 1) return Math.round(record.baseCost) * want;
 
@@ -2314,9 +2634,12 @@ function purchaseUpgrade(state, upgradeId, count) {
   }
 
   // Before the price check, because a locked row's price is not the reason it is refused and
-  // a player with the Fear in hand deserves the real reason.
-  if (upgradeIsLocked(state, upgradeId)) {
-    addLog(state, template(t.upgradeLocked, { upgrade: upgradeName(state, upgradeId) }));
+  // a player with the Fear in hand deserves the real reason - which is a different currency.
+  if (upgradeNeedsPresence(state, upgradeId)) {
+    addLog(state, template(t.upgradeLocked, {
+      upgrade: upgradeName(state, upgradeId),
+      presence: presenceUpgradeName(state, upgradePresenceUnlock(upgradeId))
+    }));
     return false;
   }
 
@@ -2333,6 +2656,7 @@ function purchaseUpgrade(state, upgradeId, count) {
   }
 
   state.meta.fear -= cost;
+  state.meta.cycleFearSpent += cost;
   state.upgrades.purchased[upgradeId] = tier + amount;
 
   // A pool has no tier worth naming, so it reports what it is: Fear in, haste out. Every
@@ -4353,11 +4677,21 @@ function endRound(state) {
   // where they get dropped. Down, never up: a part-earned Fear is not a Fear.
   const banked = Math.floor(state.round.fearEarned);
   state.meta.fear += banked;
+  // The cycle ledger counts what the bank was actually credited, not the fractional total the
+  // round carried, so the two can never disagree about what a round was worth.
+  state.meta.cycleFearGenerated += banked;
 
   // How far up the ladder this run has ever climbed. The wave is the honest measure of a
   // run's depth now that the ladder is keyed to it - the round number only counts attempts,
   // and every round starts at the bottom rung regardless of which number it wears.
+  //
+  // Written twice from the same figure, into the two high scores. The all-time one outlives
+  // every ascension; the cycle one is cleared by each Reclaim and is the only one that moves in
+  // the rounds just after. Both are score and nothing else - the ascension unlock is priced in
+  // Presence and reads neither. Neither can be derived from the other, which is why both are
+  // stored.
   state.meta.bestWaveReached = Math.max(state.meta.bestWaveReached, state.round.wavesResolved);
+  state.meta.cycleBestWave = Math.max(state.meta.cycleBestWave, state.round.wavesResolved);
 
   addLog(state, template(t.roundEnded, {
     round: state.round.number,
@@ -4549,8 +4883,23 @@ function grantPlaytestEnergy(state) {
 function grantPlaytestFear(state) {
   if (!playtestOn(state)) return false;
   state.meta.fear += PLAYTEST_GRANT;
+  // Into the granted column, never the generated one - see the meta.cycleFear* note.
+  state.meta.cycleFearGranted += PLAYTEST_GRANT;
   addLog(state, template(locale(state).playtestFearLog, { amount: PLAYTEST_GRANT }));
   return true;
+}
+
+// The cycle's Fear ledger as one object, read by the playtest tally. `banked` is handed back
+// with the rest so a reader can check the identity without going to a second field: generated
+// plus granted, less spent, is what is in the bank.
+function cycleFearTotals(state) {
+  const meta = state.meta || {};
+  return {
+    generated: Math.max(0, Math.floor(Number(meta.cycleFearGenerated) || 0)),
+    granted: Math.max(0, Math.floor(Number(meta.cycleFearGranted) || 0)),
+    spent: Math.max(0, Math.floor(Number(meta.cycleFearSpent) || 0)),
+    banked: Math.max(0, Math.floor(Number(meta.fear) || 0))
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -4743,13 +5092,43 @@ function createInitialState() {
     },
     meta: {
       fear: 0,
-      bestWaveReached: 0
+      bestWaveReached: 0,
+      // The best wave since the last ascension, against bestWaveReached's all-time figure.
+      // Two scores because after a Reclaim they answer different questions - how far this
+      // player has ever got, and how the current climb is going. Both are score: the ascension
+      // unlock is priced in Presence and reads neither.
+      cycleBestWave: 0,
+      // The ascension layer. Neither is ever cleared: presence is spent only in the Presence
+      // catalogue, and the count is the one number saying how deep a *run* is rather than how
+      // deep a cycle got.
+      presence: 0,
+      ascensionCount: 0,
+      // The cycle's Fear ledger, for playtesting: everything the economy has produced, and
+      // everything the shop has taken back. `fear` is only what is left over right now, which
+      // says nothing about how much passed through it - a player who earned ten thousand and
+      // spent ten thousand reads as a player who never earned anything.
+      //
+      // A cycle is the span between ascensions. Nothing resets these because nothing ascends
+      // yet; when ascension lands, it is the one thing that zeroes all three.
+      cycleFearGenerated: 0,
+      // Playtest grants, kept apart from what the round earned. They are not income - counting
+      // them as generated would make the one number a balance pass is read from a lie - but
+      // they are spendable, so they are counted somewhere: generated + granted - spent is the
+      // bank, and that identity is what makes the readout self-checking.
+      cycleFearGranted: 0,
+      cycleFearSpent: 0
     },
     spirit: {
       activeSpiritId: "core_spirit_01",
       unlockedSpiritIds: ["core_spirit_01"]
     },
     upgrades: {
+      purchased: {}
+    },
+    // Its own object rather than more keys in `upgrades.purchased`, and that one decision is
+    // what keeps ascension simple: the wipe is `upgrades.purchased = {}` whole, with no filter
+    // and no exception list to get wrong later.
+    presenceUpgrades: {
       purchased: {}
     },
     ui: {
@@ -4835,6 +5214,27 @@ function createFreshGameState() {
   return state;
 }
 
+/* What a set of owned tiers cost to buy, at the catalogue's current prices.
+ *
+ * Takes the normalized `purchased` map rather than a state, because its one caller runs while
+ * the state is still being assembled. See the ledger note in normalizeState for why the answer
+ * is exact rather than an estimate, and for the two ids it deliberately skips.
+ *
+ * "At the catalogue's current prices" is the one honest caveat: a save bought its rungs at
+ * whatever the prices were then, and a retune moves what this reads back. That is the right
+ * trade - the alternative is storing a price history no other part of the game needs - and it
+ * only ever affects the single load that seeds the field.
+ */
+function rebuildSpentFear(purchased) {
+  let spent = 0;
+  for (const [id, tier] of Object.entries(purchased || {})) {
+    if (!UPGRADES[id]) continue;
+    const cost = upgradeCostFromTier(id, 0, tier);
+    if (Number.isFinite(cost)) spent += cost;
+  }
+  return Math.max(0, Math.floor(spent));
+}
+
 function normalizeState(raw) {
   const base = createInitialState();
   const input = raw && typeof raw === "object" ? raw : {};
@@ -4846,6 +5246,7 @@ function normalizeState(raw) {
     meta: { ...base.meta, ...(input.meta || {}) },
     spirit: { ...base.spirit, ...(input.spirit || {}) },
     upgrades: { ...base.upgrades, ...(input.upgrades || {}) },
+    presenceUpgrades: { ...base.presenceUpgrades, ...(input.presenceUpgrades || {}) },
     ui: { ...base.ui, ...(input.ui || {}) },
     round: { ...base.round, ...(input.round || {}) },
     resources: { ...base.resources, ...(input.resources || {}) }
@@ -4889,10 +5290,24 @@ function normalizeState(raw) {
   // Floored, not just clamped: a save written while Fear was fractional loads as the whole
   // number the shop can actually spend, and never as 6.3.
   merged.meta.fear = Math.max(0, Math.floor(Number(merged.meta.fear) || 0));
+  merged.meta.cycleFearGranted = Math.max(0, Math.floor(Number(merged.meta.cycleFearGranted) || 0));
+  // The other two fields of the ledger are seeded further down, after the catalogue has told
+  // us what the save's purchases cost - see the note above rebuiltCycleSpend.
+  //
   // A save from before the ladder tracked waves has no best wave to carry. The old best round
   // is not a substitute - it counted attempts, not depth - so the record simply restarts at 0
   // and the first finished round writes a true one.
   merged.meta.bestWaveReached = Math.max(0, Math.floor(merged.meta.bestWaveReached || 0));
+  // The other half of the pair, and honestly zero when absent rather than seeded from the
+  // all-time figure: a save from before the split has ascended zero times, so its whole
+  // history *is* the current cycle - but claiming a cycle best it never recorded would be
+  // inventing a number, and the first finished round writes a true one anyway.
+  merged.meta.cycleBestWave = Math.max(0, Math.floor(merged.meta.cycleBestWave || 0));
+  // The ascension layer. Both honestly zero when absent: a save from before it existed has
+  // ascended no times and holds no Presence, and seeding either from anything else would be
+  // inventing progress.
+  merged.meta.presence = Math.max(0, Math.floor(Number(merged.meta.presence) || 0));
+  merged.meta.ascensionCount = Math.max(0, Math.floor(Number(merged.meta.ascensionCount) || 0));
   delete merged.meta.bestRoundReached;
   // Rounds played was only ever a tally: nothing reads it, and the record that does say
   // something about a run is the best wave above. A save that carries one drops it here.
@@ -4905,9 +5320,81 @@ function normalizeState(raw) {
     if (!known) continue;
     const tier = value === true ? 1 : Math.max(0, Math.floor(Number(value) || 0));
     if (tier <= 0) continue;
+    // Capping here is what makes the three Fear ladders' new maxTier free: a save carrying
+    // rising_dread at 14 from the soft-capped build clamps to 10 rather than being stranded
+    // above the ladder's end. No migration code was needed for it, only the number.
     purchased[id] = Math.min(tier, upgradeMaxTier(id));
   }
   merged.upgrades.purchased = purchased;
+
+  /* ---------- The cycle ledger, and the one-time rebuild that seeds it ----------
+   *
+   * Whole and never negative for the same reason the bank is. `cycleFearGenerated` is the one
+   * field an absent value cannot honestly call zero: a save from before the ledger existed
+   * still has a bank, and that bank was earned somehow - and so was everything already spent
+   * out of it. Seeding generated from `meta.fear` alone was the first answer and it was the
+   * wrong one: a player who had earned ten thousand and spent nine of it loaded as a player who
+   * had earned a thousand, and the ascension payout reads this field, so the whole of that
+   * player's shopping was quietly deducted from the Presence their first Reclaim would pay.
+   *
+   * Fear leaves the bank in exactly one place - purchaseUpgrade - so what was spent is not
+   * guesswork: it is the sum of the catalogue's own price curve over the rungs the save owns,
+   * read back with upgradeCostFromTier. generated = bank + spent, which is the ledger identity
+   * turned around, and it is exact for any save that never had the playtest grant (i.e. every
+   * save old enough to be missing the field, since the grant and the ledger landed together).
+   *
+   * Three things make it safe to run on load:
+   *
+   * - It only fires when the key is absent, and it writes the key. That is what makes it
+   *   one-time rather than a recomputation every load - a save written after this change
+   *   carries its own generated figure and is never touched again, so a player who ascends and
+   *   spends their way back down does not get their pre-ascension shopping handed back.
+   * - It reads `purchased` above rather than the raw save: normalized ids, tiers already capped
+   *   to the ladder. A doctored row that was dropped on the way past cannot mint Fear here, and
+   *   a tier clamped from 14 to 10 is priced as the 10 it now is.
+   * - An id with no catalogue price (the `unlock_` ability path, which no row uses today) is
+   *   skipped rather than counted as Infinity. Undercounting a row nobody owns beats an
+   *   ascension payout of NaN.
+   */
+  const hadGenerated = Boolean(input.meta) && "cycleFearGenerated" in input.meta;
+  const hadSpent = Boolean(input.meta) && "cycleFearSpent" in input.meta;
+  const rebuiltCycleSpend = hadGenerated && hadSpent ? 0 : rebuildSpentFear(purchased);
+  merged.meta.cycleFearGenerated = hadGenerated
+    ? Math.max(0, Math.floor(Number(merged.meta.cycleFearGenerated) || 0))
+    : merged.meta.fear + rebuiltCycleSpend;
+  // Seeded from the same figure, so generated + granted - spent = bank still holds after the
+  // rebuild and the playtest tally stays self-checking. Reconstructing one and zeroing the
+  // other would have made the readout lie by exactly the amount it had just discovered.
+  merged.meta.cycleFearSpent = hadSpent
+    ? Math.max(0, Math.floor(Number(merged.meta.cycleFearSpent) || 0))
+    : rebuiltCycleSpend;
+
+  // Rebuilt from the Presence registry, never merged over it - the same rule upgrades.purchased
+  // and ui.autoCast follow, so a save cannot smuggle in a row the catalogue no longer has.
+  const presencePurchased = {};
+  for (const id of PRESENCE_UPGRADE_IDS) {
+    const value = (merged.presenceUpgrades.purchased || {})[id];
+    const tier = value === true ? 1 : Math.max(0, Math.floor(Number(value) || 0));
+    if (tier > 0) presencePurchased[id] = 1;
+  }
+
+  /* Grandfathering, and the only place normalization *writes* a Presence row rather than
+   * reading one.
+   *
+   * `auto_start_round` and `auto_buy_abilities` were bought with Fear alone under the old
+   * completion gate. Putting them behind Presence must not take back a purchase already made,
+   * so a save that owns the Fear row is handed the Presence row that now opens it.
+   *
+   * Idempotent by construction: the grant is a set to 1, not an increment, so loading the same
+   * save twice cannot pay twice. And it runs off `purchased` above rather than the raw save,
+   * so a doctored id that was already dropped cannot mint Presence on the way past.
+   */
+  for (const id of Object.keys(purchased)) {
+    const required = upgradePresenceUnlock(id);
+    if (required && PRESENCE_UPGRADES[required]) presencePurchased[required] = 1;
+  }
+
+  merged.presenceUpgrades.purchased = presencePurchased;
 
   // An unknown ability id is dropped rather than carried: a save that names an ability the
   // build no longer has would otherwise show a bar entry nothing can cast. Duplicates are
@@ -5275,18 +5762,34 @@ const ENGINE_EXPORTS = {
   upgradeMaxTier,
   upgradeCost,
   upgradeCostFor,
+  upgradeCostFromTier,
   upgradeCostGrowth,
   upgradeTiersAffordable,
   upgradeIsPool,
   upgradeBulkAmounts,
-  upgradeIsLocked,
-  upgradeIsSoftCapped,
-  upgradeRequiredForGate,
-  gatedUpgradesUnlocked,
-  GATED_UPGRADE_IDS,
+  upgradeNeedsPresence,
+  upgradePresenceUnlock,
   upgradeTotals,
   startingEnergyForTier,
   purchaseUpgrade,
+
+  // The ascension layer.
+  PRESENCE_UPGRADES,
+  PRESENCE_UPGRADE_IDS,
+  ASCENSION_UNLOCK_PRESENCE,
+  PRESENCE_FEAR_DIVISOR,
+  FEAR_LADDER_MAX_TIER,
+  presenceUpgradeTier,
+  presenceUpgradeOwned,
+  presenceUpgradeCost,
+  presenceUpgradeName,
+  presenceUpgradeText,
+  purchasePresenceUpgrade,
+  ascensionUnlocked,
+  ascensionPayout,
+  fearToNextPresence,
+  canAscend,
+  ascend,
   spiritAbilityIds,
   unlockedAbilityIds,
   lockedAbilityIds,
@@ -5382,6 +5885,7 @@ const ENGINE_EXPORTS = {
   playtestOn,
   setPlaytest,
   redeemCode,
+  cycleFearTotals,
   grantPlaytestEnergy,
   grantPlaytestFear,
   autoProceedOn,

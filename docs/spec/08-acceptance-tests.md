@@ -90,7 +90,9 @@ neither control may change what the round costs.
 
 The redeem code and the tools it switches on, in `tests/playtest.test.js`. The tools are
 outside the game's economy entirely, so what these assert is the boundary: that nothing is
-handed out without the code, and that everything the code added can be taken back.
+handed out without the code, and that everything the code added can be taken back. The cycle's
+Fear ledger is here too, though it is written by the economy rather than by the tools — it
+exists to be read by them, and it is the one place a grant is allowed to leave a trace.
 
 1. A fresh game has no playtest tools, and the code switches them on however it is typed —
    the comparison trims and lowercases.
@@ -107,6 +109,21 @@ handed out without the code, and that everything the code added can be taken bac
 6. Through a save: the code and the speed it enabled load together. A save at `8x` **without**
    the code loads at `DEFAULT_GAME_SPEED`, and a migration reset carries the code — and only
    then the speed.
+7. The cycle's Fear ledger counts what the bank was credited, not what the round carried in
+   fractions, and adds round to round rather than resetting. Spending raises `spent` by the
+   shop's own price and leaves `generated` where it is — it is a total, not a balance — while
+   a refused purchase spends nothing.
+8. A playtest grant lands in `granted` and never in `generated`, but is spendable all the same,
+   so `generated + granted - spent` is the bank at every point.
+9. The ledger round-trips a save. A save written before it existed reads its bank as generated,
+   so the identity above holds across the upgrade; fractional, negative and unreadable values
+   load as whole non-negative ones.
+10. A save written before the ledger has its spend **rebuilt from what it owns**: every purchased
+    tier priced back off the catalogue becomes `spent`, and `bank + spent` becomes `generated`,
+    with the identity above still holding. The rebuild fires on the absent key only — a save
+    carrying a genuine `0` is left at `0`, which is what keeps a post-ascension load from being
+    handed the previous cycle's shopping — and it prices the tiers that survived normalization,
+    so a doctored ladder is worth its cap and an unknown id is worth nothing.
 
 ## Blight Checks
 
@@ -260,8 +277,9 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    remaining Fear.
 6. Rounds ended are not counted: no `meta.totalRoundsPlayed` on a fresh game, and a save
    carrying one from an older build loses it on load.
-7. `meta.bestRoundReached` updates only when the ended round's number exceeds it, and never
-   decreases.
+7. `meta.bestWaveReached` updates only when the ended round's `wavesResolved` exceeds it, and
+   never decreases. `meta.cycleBestWave` follows the same rule and is additionally cleared by
+   an ascension — see [Ascension Checks](#ascension-checks).
 8. `auto_innate` is a one-time 100 Fear purchase, priced above `auto_boon`'s 25 because it
    automates a higher-uptime ability with a real target to pick rather than a fixed no-target
    effect; the second buy is refused once owned, same as any one-off.
@@ -273,11 +291,14 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     300 (kills with damage, which the invader health ladder erodes), `auto_wash_away` 400
     (removes outright, which it does not). All three sit under `auto_start_round`'s 500, and
     the Bounty sits under the last rung of the `dahan_reinforcement` ladder.
-11. `auto_buy_abilities` (200) and `auto_start_round` (500) are refused while any other upgrade
-    in the catalogue is short of its max tier, however much Fear is banked, and the refusal
-    names the gate rather than the price. Handing a single ladder rung back shuts the gate
-    again. Once the rest of the catalogue is finished both are for sale, and buying one does
-    not lock the other.
+11. `auto_buy_abilities` (200) and `auto_start_round` (500) are refused while their Presence
+    unlock is unbought, however much Fear is banked, and the shop does not list a row it cannot
+    sell: neither appears until its Presence row is bought. Buying `presence_tide_returns` opens `auto_start_round` and leaves
+    `auto_buy_abilities` shut, and vice versa — the two locks are independent. Once unlocked,
+    the Fear price is owed normally, and it is owed **again** after an ascension: the Presence
+    row survives the wipe and the Fear purchase does not. No other row in the catalogue is
+    locked by anything, and there is no completion gate: maxing every other upgrade changes
+    nothing about these two.
 12. `headwaters` pays its tier's Energy into every round start and nothing else: without it a
     round still opens on an empty purse, and a round that ended holding 40 Energy still opens
     the next one at the ladder's figure rather than at 40. Its gain table climbs strictly
@@ -286,15 +307,19 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     tenth buy is refused. A tier bought mid-round leaves the running purse where it was and
     pays out only from the next round. A tier past the end of the table clamps to its top
     rather than reading `undefined`.
+12a. The three Fear ladders are capped at tier 10 and the eleventh buy is refused, so every row
+    in the catalogue has a top and every row can reach the sold-out half. A save carrying a
+    tier above 10 from the soft-capped build clamps down to 10 on load rather than being
+    stranded above the ladder's end.
 13. `dahan_remember` is a pool, not a ladder. Every unit costs a flat 1 Fear at any depth, 100
     units buy 1% of haste, and the haste divides the strike interval by `1 + haste` — so a full
     10000-Fear pool halves it and no amount of haste reaches zero. The cap holds against a
     doctored save and the 10001st unit is refused. A bulk buy spends exactly what the same
     number of single clicks would have; one larger than the pool's remaining room buys only
     what is left and is charged for only that; one the purse cannot cover is refused whole
-    rather than part-paid. The Max count is bounded by the purse and by the room left. The row
-    does not count toward the gate — an empty pool never seals the last two purchases — and no
-    soft-capped row is required for the gate either. Fear poured in mid-round leaves the
+    rather than part-paid. The Max count is bounded by the purse and by the room left. The pool
+    stands in front of nothing: an empty one and a full one leave the two Presence-locked rows
+    exactly as reachable as each other. Fear poured in mid-round leaves the
     running round striking at its old rate and speeds up the next one. The row prints its haste
     to two decimals instead of a tier, quotes the strike interval in the speed dial's own
     seconds, and logs a purchase as Fear in and haste out.
@@ -320,6 +345,47 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     - The map holds exactly the five ability automations: not `auto_buy_abilities`, which
       automates a purchase rather than a cast, and not `auto_start_round`, which has its own
       toggle.
+
+## Ascension Checks
+
+1. **The unlock.** `canAscend` is false while `ascensionPayout` is under
+   `ASCENSION_UNLOCK_PRESENCE` (5, i.e. 2500 generated) however deep the save is, and false
+   during a running round however much the cycle has generated. It turns true once the payout
+   reaches 5 **and** the round has ended, and it is re-earned by every cycle: the Reclaim that
+   clears `cycleFearGenerated` closes the door behind it, and the next cycle opens it again by
+   generating 2500 of its own. Granted Fear never opens it, because the gate reads the payout.
+   `ascend()` itself refuses when `canAscend` is false and changes nothing when it does.
+2. **The payout.** `ascensionPayout` is `floor(sqrt(cycleFearGenerated / 100))`: 0 at 99
+   generated, 1 at 100, 5 at 2500, 10 at 10000. It reads generated rather than the bank, so
+   spending every Fear in the shop first pays exactly the same, and it ignores
+   `cycleFearGranted` entirely — a save that generated nothing and was granted 10000 pays 0.
+2a. **The gap to the next Presence.** `fearToNextPresence` is what the payout still wants:
+   100 at 0 generated, 1 at 99, 300 at 100, 1100 at 2500, 2100 at 10000. It agrees with the
+   payout at the boundary — generating exactly the gap pays one more Presence, one Fear less
+   pays no more — and it reads generated rather than the bank, like the payout beside it.
+3. **What is cleared.** After `ascend()`: `meta.fear` is 0, `upgrades.purchased` is empty, all
+   four `cycle*` fields are 0, and `round.number` is 1. The round is running again from
+   `startRound`, on the baseline of an empty catalogue — six Dahan, threshold 10, empty purse.
+4. **What survives.** `meta.bestWaveReached` is unchanged, `meta.presence` has grown by exactly
+   the payout, `meta.ascensionCount` by exactly one, `presenceUpgrades.purchased` is untouched,
+   and every `ui` preference — language, speed, auto-proceed, auto-round, all five auto-cast
+   switches — reads exactly what it read before.
+5. **The Presence catalogue.** A row costs its price in `meta.presence` and is refused when the
+   Presence purse is short; a second buy of a one-time row is refused. Buying one writes into
+   `presenceUpgrades.purchased` and never into `upgrades.purchased`. Fear is not spendable on
+   it and Presence is not spendable in the Fear shop.
+6. **The two-key rule end to end.** With `presence_tide_returns` bought and 500 Fear banked,
+   `auto_start_round` is purchasable and takes effect. Ascending then leaves the Presence row
+   owned and the Fear row un-bought, so the automation is off and the row is purchasable again
+   at 500 — which is the property the whole layer rests on, and the one that breaks if the wipe
+   ever learns about `presenceUpgrades`.
+7. **The two high scores.** A round ending at wave 60 writes 60 into both `bestWaveReached` and
+   `cycleBestWave`. Ascending clears the second and not the first. A later round ending at wave
+   20 raises `cycleBestWave` to 20 and leaves `bestWaveReached` at 60; neither ever decreases
+   except `cycleBestWave` at an ascension.
+8. **Grandfathering.** A save carrying `auto_start_round` or `auto_buy_abilities` in
+   `upgrades.purchased` loads with the matching Presence row already owned, so a purchase made
+   under the old gate is not taken back. Loading the same save twice grants the same 1, never 2.
 
 ## Save and Migration Checks
 
@@ -361,6 +427,10 @@ before the auto-cast toggle existed. The rule they enforce is in
 14. It keeps what the player earned: `meta.fear` and `meta.bestWaveReached` both survive.
 15. It keeps every purchase, including a laddered tier, and the round's frozen `upgradeTiers`
     snapshot agrees with `upgrades.purchased`.
+15b. Its **generated Fear counts what it already spent**. The fixture predates the ledger, so
+    the figure is rebuilt on load: its five purchases priced off the catalogue are `spent`, and
+    `meta.fear` plus that is `generated`. Read off the bank alone, a save that had been shopping
+    would arrive at the Reclaim button short by everything it had bought.
 16. It keeps the preferences it carries — language, auto-proceed, auto-start-round.
 17. **Every `ui` field added since the file was written loads at its fresh default.** Asserted
     against `createInitialState()`'s own keys rather than a list, so the check covers the next
@@ -401,7 +471,7 @@ before the auto-cast toggle existed. The rule they enforce is in
 
 ## Current Validation Status
 
-**392 automated checks, all passing.** Coverage by file:
+**403 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |

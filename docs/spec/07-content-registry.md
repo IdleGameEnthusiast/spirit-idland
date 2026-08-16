@@ -183,11 +183,11 @@ table and cost-curve note.
   `startingEnergyForTier`, which clamps a tier past the end of the table to its top rather than
   answering `undefined`. It is the only row that spends Fear and pays out in Energy, and the
   only one whose worth shrinks with depth. Its ceiling is exactly the unlock kit (5 + 10 + 20).
-- `rising_dread` — repeatable, **soft-capped**, +10% Fear from defeated invaders per tier.
+- `rising_dread` — repeatable, max tier 10, +10% Fear from defeated invaders per tier.
   `baseCost` 6.
-- `mounting_terror` — repeatable, **soft-capped**, +10% Fear from surviving waves per tier.
+- `mounting_terror` — repeatable, max tier 10, +10% Fear from surviving waves per tier.
   `baseCost` 6.
-- `high_water_mark` — repeatable, **soft-capped**, every 10th wave pays a bonus of `tier * 10%`
+- `high_water_mark` — repeatable, max tier 10, every 10th wave pays a bonus of `tier * 10%`
   of its own wave number as Fear. `baseCost` 12. `mounting_terror` multiplies the payout, since
   the payout is wave income; that interaction is why the pair is priced as a pair. It is the
   only income in the game that is quadratic in depth, and the only one that arrives as an event
@@ -198,20 +198,14 @@ table and cost-curve note.
   is the Fear invested, and the Fear invested is haste on the Dahan strike clock —
   `interval / (1 + invested / 10000)`, capped at 100% haste, which halves it. Bought in
   denominations plus a Max button rather than one rung at a time, and its row shows the haste
-  where a ladder shows its tier (`upgradeStatusText`). Carries `requiredForGate: false`. Read
-  the formula in
+  where a ladder shows its tier (`upgradeStatusText`). Read the formula in
   [04-economy-formulas.md](./04-economy-formulas.md#the-interval-and-the-one-thing-that-shortens-it).
 
-A **soft-capped** row has no `maxTier`, which `upgradeIsSoftCapped` derives rather than the
-record declaring twice. It is never "maxed", so it
-never sinks into the shop's sold-out half and never shows a `Maximum` button — it shows a bare
-tier number and a price, forever.
-
-`requiredForGate: false` is a separate matter, and about the gate rather than about the shape
-of the ladder: it takes a row out of the "everything else is bought" test. Every soft-capped
-row must carry it, or the gate could never open; `dahan_remember` carries it because 10000
-Fear is a wall. See
-[04-economy-formulas.md](./04-economy-formulas.md#which-rows-the-gate-counts).
+**Every row in this catalogue has a `maxTier`.** The three Fear ladders used to carry none —
+`upgradeIsSoftCapped` derived "no top" from the missing field — and both the ladders and the
+predicate are gone: ten tiers each now, and a predicate with no `false` case left to report.
+So every row can sink into the shop's sold-out half, and none shows a bare price forever. See
+[04-economy-formulas.md](./04-economy-formulas.md#the-ladders-are-capped-at-ten).
 - `unlock_<ability_id>` — one-time, adds an ability the active spirit's kit does not contain.
   **The machinery is implemented and no catalogue row uses it.** Unlocking a *kit* ability is
   now Energy's job and does not go through the shop at all; this key remains the path for a
@@ -278,19 +272,34 @@ removes. Each rung up is a stronger claim on the round than the one under it.
   fallback is a trade a player can see the cost of and an automation cannot. Switchable off
   from the card without being un-bought — the reason the toggle exists at all, since 400 Fear
   used to remove the ability from active play permanently.
-The last two rows are behind a **gate** rather than behind a price (`GATED_UPGRADE_IDS`, read
-through `upgradeIsLocked`). Neither is for sale until every other upgrade in the catalogue is
-finished — every repeatable at its max tier, every one-off bought. Between them they hand over
-the last two things still done by hand each round, so they are what finishing the shop pays for
-rather than an alternative to finishing it. The pair does not gate *itself*: "everything else"
-is defined by excluding the pair, because read the other way each would wait on the other and
-neither would ever open. `purchaseUpgrade` refuses a locked row before it looks at the price,
-so a player holding the Fear is told the real reason.
+The last two rows are behind **Presence** rather than behind Fear alone (`upgradeNeedsPresence`,
+read from the Presence catalogue below). Each names a Presence row in `presenceUnlock`, and
+until that row is bought the Fear row is locked whatever the purse holds. Between them they
+hand over the last two things still done by hand each round.
 
-- `auto_buy_abilities` — one-time, gated. Each tick, this round's Energy spends itself on the
+They were behind a completion gate until the ascension layer landed — refused until every
+other row in the catalogue was maxed, which was ~2,674 Fear and roughly ninety hand-played
+rounds. That gate is deleted along with the idea it rested on, that the shop is a thing which
+finishes; see
+[05-progression.md](./05-progression.md#the-shop-no-longer-terminates). `purchaseUpgrade` still
+refuses a locked row **before** it looks at the price: the unlock is the reason, never the
+purse.
+
+The shop **does not draw a locked row at all** — see
+[06-ui-contract.md](./06-ui-contract.md#required-screen-sections). The two rows below therefore describe
+what the player sees *after* the matching Presence purchase; before it, the only place either is
+named is the ascension panel's catalogue, which is where the decision to open them is made.
+
+**The Fear price is still owed, and owed again every cycle.** A Presence unlock puts the row in
+the shop; it does not buy the row. So each cycle opens hand-played and 500 Fear is a live
+decision against the five tiers of `rising_dread` it would otherwise buy — play this cycle
+actively, or pay to idle it.
+
+- `auto_buy_abilities` — one-time, Presence-locked behind `presence_river_knows`. Each tick,
+  this round's Energy spends itself on the
   ability bar: the locked kit abilities first, cheapest before dearest (5 / 10 / 20), then one
   rung of the Innate's tier ladder if the Energy is still there. `baseCost` 200 — cheap for
-  where it sits, deliberately: the gate is what holds it back, and what it sells is less than
+  where it sits, deliberately: Presence is what holds it back, and what it sells is less than
   the automations under it. It spends Energy the round was already going to spend, in the order
   a settled player already spends it, and buys back the clicks rather than any new power.
   Unlocks come before tiers for two reasons that point the same way: an unlock is the cheaper
@@ -299,14 +308,47 @@ so a player holding the Fear is told the real reason.
   in the tick, so an ability it buys (which arrives ready, exactly as a clicked unlock does)
   can fire on the same tick. Purchases go through `unlockAbility` / `upgradeAbility`, so an
   automated buy and a clicked one are the same buy: same refusals, same log line.
-- `auto_start_round` — one-time, gated, an ended round starts the next one by itself, subject
-  to a toggle the player can switch off. `baseCost` 500 — the most expensive thing in the shop
-  and the only one that changes the shape of the game rather than a number in it.
+- `auto_start_round` — one-time, Presence-locked behind `presence_tide_returns`, an ended round
+  starts the next one by itself, subject to a toggle the player can switch off. `baseCost` 500
+  — the most expensive one-off in the shop and the only one that changes the shape of the game
+  rather than a number in it.
 
 Every automation except `auto_buy_abilities` buys the *click*, never the ability: the Energy
 unlock is still owed every round, and an automation with nothing unlocked to fire does nothing.
 `auto_buy_abilities` buys the unlock instead of the cast — and still owes it every round, out
 of that round's own Energy.
+
+## Presence Catalogue
+
+The ascension layer's shop, in `PRESENCE_UPGRADES`, keyed into `presenceUpgrades.purchased`.
+Bought with `meta.presence`, which only `ascend()` pays out, and never lost to an ascension.
+
+**Every row here unlocks a Fear row and does nothing else.** Presence never touches the board:
+it buys no Dahan, shortens no clock, adds no damage. That is the rule the whole two-currency
+design rests on, and it is what makes the two impossible to price against each other — see
+[05-progression.md](./05-progression.md#the-two-layers).
+
+| id | unlocks | cost |
+| --- | --- | --- |
+| `presence_tide_returns` — *Die Flut kehrt wieder* / The Tide Returns | `auto_start_round` | 2 |
+| `presence_river_knows` — *Der Fluss weiß, was er braucht* / The River Knows Its Own Need | `auto_buy_abilities` | 3 |
+
+Both names are the ones the Fear rows already carried in the I18N table, kept rather than
+invented: the Presence row and the Fear row it opens are the same idea at two prices, and
+giving them separate names would make a player learn the pairing.
+
+The two together cost exactly what a first Reclaim is shaped to pay (about 5), so the first
+ascension buys both. That is deliberate — the first one should read as an unambiguous win, and
+the dilemmas belong to rows that do not exist yet.
+
+Prices are flat, with no growth curve, because neither row is repeatable. What a repeatable
+Presence row would need is in
+[04-economy-formulas.md](./04-economy-formulas.md#presence-prices-and-why-they-are-not-on-this-curve):
+Presence income is root-shaped, so the Fear catalogue's 1.6 growth would kill a ladder inside
+three tiers.
+
+Nothing here is a multiplier, a discount or a cap extension, and all three are wanted. This is
+the first draft of the layer, not its intended shape.
 
 ## Terrain Registry
 
