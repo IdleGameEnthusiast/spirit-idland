@@ -30,6 +30,7 @@ const dom = {
   ascensionTitle: document.getElementById("ascensionTitle"),
   ascensionPresenceLabel: document.getElementById("ascensionPresenceLabel"),
   ascensionPresenceValue: document.getElementById("ascensionPresenceValue"),
+  ascensionPresenceBonus: document.getElementById("ascensionPresenceBonus"),
   ascensionPayoutLabel: document.getElementById("ascensionPayoutLabel"),
   ascensionPayoutValue: document.getElementById("ascensionPayoutValue"),
   ascensionNextPresence: document.getElementById("ascensionNextPresence"),
@@ -1254,6 +1255,11 @@ function patchAscension(state) {
     .reduce((sum, tier) => sum + Math.max(0, Math.floor(Number(tier) || 0)), 0);
 
   dom.ascensionPresenceValue.textContent = String(state.meta.presence);
+  // Only drawn once it is nonzero, same as the fear split beneath the HUD's own purse: at 0
+  // Presence the bonus is 0% and the line would be a standing reminder of nothing.
+  dom.ascensionPresenceBonus.textContent = state.meta.presence > 0
+    ? template(t.ascensionPresenceBonusHint, { percent: pctText(presenceFearMultiplier(state) - 1) })
+    : "";
   dom.ascensionPayoutValue.textContent = String(payout);
   // Under the payout, because it is the same question asked forward: how much further this
   // cycle has to run before that number reads one higher.

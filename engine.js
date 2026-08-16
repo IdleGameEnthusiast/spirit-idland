@@ -161,6 +161,13 @@ const DAHAN_HASTE_MAX = 1;
 const ASCENSION_UNLOCK_PRESENCE = 5;
 const PRESENCE_FEAR_DIVISOR = 100;
 
+// What unspent Presence is worth while it sits in the purse, so that holding it instead of
+// spending it is a real choice and not a free stat. Uncapped and read live, not from the round
+// snapshot the three Fear ladders use - Presence never moves mid-round from combat, only from
+// Reclaiming (which ends the round outright) or a Presence purchase (which only ever lowers
+// it), so there is no same-round loop here for a snapshot to guard against.
+const PRESENCE_FEAR_BONUS_PER_POINT = 0.01;
+
 // Ten tiers, +10% each, +100% at the top - see the note above the three ladders in UPGRADES.
 const FEAR_LADDER_MAX_TIER = 10;
 
@@ -1054,23 +1061,27 @@ const I18N = {
     /* ---------- Aszension und Präsenz ---------- */
     ascensionTitle: "Aszension",
     ascensionPresenceLabel: "Präsenz",
-    ascensionPayoutLabel: "Zurückziehen bringt",
-    ascensionCountLabel: "Bisher zurückgezogen",
+    ascensionPayoutLabel: "Aufsteigen bringt",
+    ascensionCountLabel: "Bisher aufgestiegen",
     ascensionGeneratedLabel: "Dieser Zyklus erzeugte",
     // Die Auszahlung ist eine Wurzel, also sagt die Zahl allein nie, wie nah die nächste
     // Präsenz ist. Diese Zeile sagt es: was noch erzeugt werden muss, damit der Knopf eine
     // Präsenz mehr bringt.
     ascensionNextPresenceHint: "Noch {fear} Furcht bis zur nächsten Präsenz.",
+    // Was ungenutzte Präsenz gerade kostet, statt sie zu verkaufen: 1% mehr Furcht pro Punkt,
+    // auf jeden Kill, jede Welle und jeden Meilenstein. Nur sichtbar, wenn sie etwas beiträgt -
+    // bei 0 Präsenz wäre "+0%" nur eine Zeile mehr zu lesen für nichts.
+    ascensionPresenceBonusHint: "+{percent}% Furcht durch ungenutzte Präsenz.",
     // Was der Knopf kostet, vor dem Knopf statt danach. Das Einzige im Spiel, das sich nicht
     // rückgängig machen lässt.
-    ascensionLossHint: "Zurückziehen nimmt alles: {fear} Furcht und {tiers} gekaufte Stufen. Präsenz und die höchste Welle bleiben.",
-    ascensionBtn: "Zurückziehen",
-    ascensionConfirmBtn: "Wirklich zurückziehen",
-    ascensionLockedHint: "Erst wenn Zurückziehen {presence} Präsenz bringt.",
+    ascensionLossHint: "Aufsteigen nimmt alles: {fear} Furcht und {tiers} gekaufte Stufen. Präsenz und die höchste Welle bleiben.",
+    ascensionBtn: "Aufsteigen",
+    ascensionConfirmBtn: "Wirklich aufsteigen",
+    ascensionLockedHint: "Erst wenn Aufsteigen {presence} Präsenz bringt.",
     ascensionRoundHint: "Erst zwischen den Runden.",
     ascensionShopLabel: "Was Präsenz freischaltet",
     ascended: "Aszension {count}. {generated} Furcht dieses Zyklus wurden zu {presence} Präsenz - {total} insgesamt. Die Insel beginnt von vorn.",
-    ascendRefused: "Noch nicht. Zurückziehen geht erst zwischen den Runden, und erst wenn der Zyklus es wert ist.",
+    ascendRefused: "Noch nicht. Aufsteigen geht erst zwischen den Runden, und erst wenn der Zyklus es wert ist.",
     presenceNames: {
       presence_tide_returns: "Die Flut kehrt wieder",
       presence_river_knows: "Der Fluss weiß, was er braucht"
@@ -1368,22 +1379,26 @@ const I18N = {
     /* ---------- Ascension and Presence ---------- */
     ascensionTitle: "Ascension",
     ascensionPresenceLabel: "Presence",
-    ascensionPayoutLabel: "Reclaiming pays",
-    ascensionCountLabel: "Reclaimed so far",
+    ascensionPayoutLabel: "Ascending pays",
+    ascensionCountLabel: "Ascended so far",
     ascensionGeneratedLabel: "This cycle generated",
     // The payout is a root, so the figure alone never says how close the next Presence is.
     // This line says it: the Fear still to generate before the button pays one more.
     ascensionNextPresenceHint: "{fear} more Fear until the next Presence.",
+    // What unspent Presence is worth right now instead of being spent: 1% more Fear per point,
+    // on every kill, wave and milestone. Shown only when it is actually contributing - at 0
+    // Presence "+0%" would just be another line to read for nothing.
+    ascensionPresenceBonusHint: "+{percent}% Fear from unspent Presence.",
     // What the button costs, before the button rather than after it. The one thing in the game
     // that cannot be undone.
-    ascensionLossHint: "Reclaiming takes all of it: {fear} Fear and {tiers} purchased tiers. Presence and your highest wave stay.",
-    ascensionBtn: "Reclaim",
-    ascensionConfirmBtn: "Reclaim, and mean it",
-    ascensionLockedHint: "Not until Reclaiming pays {presence} Presence.",
+    ascensionLossHint: "Ascending takes all of it: {fear} Fear and {tiers} purchased tiers. Presence and your highest wave stay.",
+    ascensionBtn: "Ascend",
+    ascensionConfirmBtn: "Ascend, and mean it",
+    ascensionLockedHint: "Not until ascending pays {presence} Presence.",
     ascensionRoundHint: "Between rounds only.",
     ascensionShopLabel: "What Presence unlocks",
     ascended: "Ascension {count}. {generated} Fear this cycle became {presence} Presence - {total} in all. The island begins again.",
-    ascendRefused: "Not yet. Reclaiming waits for the end of a round, and for a cycle worth giving back.",
+    ascendRefused: "Not yet. Ascending waits for the end of a round, and for a cycle worth giving back.",
     presenceNames: {
       presence_tide_returns: "The Tide Returns",
       presence_river_knows: "The River Knows Its Own Need"
@@ -4030,6 +4045,13 @@ function fearMultiplier(state, upgradeId, perTier) {
   return 1 + activeUpgradeTier(state, upgradeId) * perTier;
 }
 
+// See the note above PRESENCE_FEAR_BONUS_PER_POINT: 1% more Fear for every point of Presence
+// still unspent, on every kill, wave and milestone alike.
+function presenceFearMultiplier(state) {
+  const presence = Math.max(0, Math.floor((state.meta && state.meta.presence) || 0));
+  return 1 + presence * PRESENCE_FEAR_BONUS_PER_POINT;
+}
+
 // Fear from a defeat, by the unit's power value: explorer 1, town 2, city 3 - and one more
 // each at every damage rung of the ladder, so a tougher Invader is worth proportionally more
 // to kill rather than being strictly worse news.
@@ -4038,7 +4060,8 @@ function gainFearFromDefeat(state, unitType, defeatedCount) {
   if (defeated <= 0) return;
   const power = unitStats(state, unitType).damage || 0;
   const base = defeated * power * FEAR_PER_POWER;
-  const gain = base * fearMultiplier(state, "rising_dread", FEAR_KILL_BONUS_PER_TIER);
+  const gain = base * fearMultiplier(state, "rising_dread", FEAR_KILL_BONUS_PER_TIER)
+    * presenceFearMultiplier(state);
   if (gain <= 0) return;
 
   state.round.fearEarned += gain;
@@ -4050,7 +4073,8 @@ function gainFearFromDefeat(state, unitType, defeatedCount) {
 function gainFearFromWave(state) {
   if (FEAR_PER_WAVE <= 0) return;
   state.round.fearEarned += FEAR_PER_WAVE
-    * fearMultiplier(state, "mounting_terror", FEAR_WAVE_BONUS_PER_TIER);
+    * fearMultiplier(state, "mounting_terror", FEAR_WAVE_BONUS_PER_TIER)
+    * presenceFearMultiplier(state);
   state.round.fearEarnedBase += FEAR_PER_WAVE;
 }
 
@@ -4069,7 +4093,8 @@ function gainFearFromWaveMilestone(state) {
   if (tier <= 0) return 0;
 
   const bonus = wave * tier * FEAR_MILESTONE_FRACTION_PER_TIER
-    * fearMultiplier(state, "mounting_terror", FEAR_WAVE_BONUS_PER_TIER);
+    * fearMultiplier(state, "mounting_terror", FEAR_WAVE_BONUS_PER_TIER)
+    * presenceFearMultiplier(state);
   if (bonus <= 0) return 0;
 
   // Nothing is added to `fearEarnedBase`: without high_water_mark there is no milestone at
@@ -5778,6 +5803,8 @@ const ENGINE_EXPORTS = {
   PRESENCE_UPGRADE_IDS,
   ASCENSION_UNLOCK_PRESENCE,
   PRESENCE_FEAR_DIVISOR,
+  PRESENCE_FEAR_BONUS_PER_POINT,
+  presenceFearMultiplier,
   FEAR_LADDER_MAX_TIER,
   presenceUpgradeTier,
   presenceUpgradeOwned,

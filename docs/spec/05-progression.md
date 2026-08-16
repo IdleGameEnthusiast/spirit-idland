@@ -22,15 +22,26 @@ across rounds, what carries across ascensions, and what resets at each boundary.
 That single line is the whole of the two-currency design, and everything below is a
 consequence of it.
 
-Presence never touches the board. It buys no Dahan, shortens no clock, and adds no damage.
-What it buys is **permission**: a row that was not in the Fear catalogue is now in it, and the
-player still owes Fear for it. So the two currencies can never be balanced against each other,
-because they are not the same kind of thing — there is no exchange rate to get wrong, and no
-future Presence row can quietly do a Fear row's job at a different price.
+Presence never touches the board directly. It buys no Dahan, shortens no clock, and adds no
+damage. What its Presence *shop* purchases buy is **permission**: a row that was not in the
+Fear catalogue is now in it, and the player still owes Fear for it. So the two currencies can
+never be balanced against each other on that axis, because a Presence purchase is not the same
+kind of thing as a Fear one — there is no exchange rate to get wrong, and no future Presence
+row can quietly do a Fear row's job at a different price.
 
-It also means the Fear shop is the only place power is bought, which keeps one catalogue to
-balance rather than two. A Presence purchase changes the *shape* of that catalogue and nothing
-about the numbers inside it.
+It also means the Fear shop is the only place power is bought *through spending*, which keeps
+one catalogue to balance rather than two. A Presence purchase changes the *shape* of that
+catalogue and nothing about the numbers inside it.
+
+**Holding Presence is the one exception.** Presence still sitting unspent multiplies every Fear
+source by 1% a point — see [Presence multiplies Fear generation, and does not
+cap](./04-economy-formulas.md#presence-multiplies-too-and-does-not-cap). That bonus comes from
+*not* spending, which is the opposite of everything else Presence does: every Presence
+purchase both removes a row's lock and removes that Presence from the multiplier. Spending is
+still never a Fear-catalogue interaction — the two currencies still cannot buy each other's
+rows — but it is no longer true that Presence "touches nothing but permission." What a player
+holds now costs something to keep holding, on purpose, so that spending it is a real trade-off
+and not a pure unlock with no downside to delaying.
 
 | | Fear | Presence |
 | --- | --- | --- |
@@ -39,6 +50,7 @@ about the numbers inside it.
 | survives a round | yes | yes |
 | survives an ascension | **no** | yes |
 | touches the board | yes | never |
+| held (not spent) does something | no | yes — +1% Fear a point, uncapped |
 
 ## Meta State
 
@@ -61,6 +73,9 @@ about the numbers inside it.
   read off the cycle's Fear income — see [Ascension](#ascension).
 - It is spent in the **Presence shop**, whose rows unlock Fear-catalogue rows. Nothing else
   spends it and nothing else pays it.
+- Whatever is not spent multiplies Fear generation, 1% per point, read live off
+  `meta.presence` rather than off a round snapshot and uncapped — see
+  [04-economy-formulas.md](./04-economy-formulas.md#presence-multiplies-too-and-does-not-cap).
 - `presenceUpgrades.purchased` holds what it bought, in its own object rather than beside
   `upgrades.purchased`. That separation is what makes the wipe one line instead of a filter
   with exceptions in it: ascension clears `upgrades.purchased` whole and never looks at this.
@@ -325,8 +340,11 @@ is none today, and the two unlocks alone are the first draft.
 ## What Is Not Yet Progression
 
 - No additional spirit unlocks.
-- No Presence rows beyond the two unlocks above — no Fear multiplier, no automation discount,
-  no cap extension, no power cards. All of them are wanted; none is designed.
+- No Presence rows beyond the two unlocks above — no automation discount, no cap extension,
+  no power cards. All of them are wanted; none is designed. (A Fear multiplier now exists, but
+  it is not a Presence-shop row: it is the passive +1%-a-point bonus unspent Presence itself
+  carries — see [Presence](#presence) — and it is exactly the gap a repeatable row would fill,
+  since spending is currently the only way to give that number a ceiling.)
 - No content unlocks beyond the placeholder ability-unlock row above.
 - No mid-round progression of any kind — everything in-round resets at round setup.
 

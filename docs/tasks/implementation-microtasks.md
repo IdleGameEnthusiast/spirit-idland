@@ -6,7 +6,8 @@ turn-based `app.js` is deleted; the build is `engine.js` (rules, no DOM) plus `u
 no rules), with a regression suite in `tests/`.
 
 What remains is balance and content, not structure — see
-[What To Build Next](#what-to-build-next).
+[What To Build Next](#what-to-build-next) for the ranked queue, and
+[Idea Inbox](#idea-inbox) for the unsorted pile that feeds it.
 
 ## Round-Based Redesign — Complete
 
@@ -292,35 +293,15 @@ easiest to get wrong — and until now nothing failed when it was.
 
 Ordered by what most changes the game. The first item is the one that matters.
 
-### 1. Balance: settle the casualty rate
+### 1. Balance: settle the casualty rate — *done, confirmed by playtest 2026-08-16*
 
-`DAHAN_LOSS_PER_DAMAGE_SECOND` was raised from 0.02 to 0.05 a beat during Task C1 and is
-explicitly under playtest. (It reads `0.05 / TIME_SCALE` in the source; retune the beat rate,
-not the quotient.) At 0.02 no Dahan ever died and the whole casualty system was dead code; at
-0.05 a round costs 2-4 of the starting 6, which is what puts the death spiral on screen. That
-is one measurement, not a tuned number — play it and see whether losing Dahan feels like
-something the player can act against or just weather.
+`DAHAN_LOSS_PER_DAMAGE_SECOND` at `0.05 / TIME_SCALE` feels right: losing Dahan reads as
+something the player can act against, not just weather. No further change.
 
-### 2. Balance: are Dahan too strong once they survive? (braked, needs playtest)
+### 2. Balance: are Dahan too strong once they survive? — *done, confirmed by playtest 2026-08-16*
 
-Casualty damage divided by the stack size gave a stack quadratic lifetime, and defence
-cancelling Blight outright gave it a hard cliff to zero. Together, one fortified land beat six
-defended ones and `rivers_bounty` was the only ability worth casting.
-
-Two brakes are in, both in `landPressure`:
-
-- `BLIGHT_FLOOR_FRACTION = 0.25` — a held land seeps a quarter of its gross instead of sitting
-  at zero. Defence buys time, not immunity.
-- `DAHAN_CONCENTRATION_CAP = 2` — concentration stops past two survivors, so a stack's
-  lifetime is linear in its size rather than quadratic.
-
-Both numbers are guesses. What to watch: whether holding a land still feels worth doing at all
-(if not, the floor is too high), and whether `rivers_bounty` is now merely one option among
-five rather than useless. `dahan_reinforcement` and `rivers_bounty` still have not been
-repriced against the brakes — and `rivers_bounty` has since changed from a gather to a
-creation, and then again to an ability that never fails at all (it falls back to the thinnest
-land on the board when nothing is contested), which strengthens it twice over without any of
-this having been re-measured.
+The two brakes in `landPressure` (`BLIGHT_FLOOR_FRACTION = 0.25`, `DAHAN_CONCENTRATION_CAP =
+2`) hold up under play. No further change.
 
 ### 3. Balance: the first Blight arrives on a wide spread
 
@@ -341,11 +322,25 @@ acceptable needs a fresh trace — the measured numbers in
 three rounds for the first tier. Whether that is the right pace depends on item 2 — a tier
 that buys both defence and survival time may be worth more than three rounds even so.
 
-### 5. A fifth ability, so `unlock_` has content
+### 5. A fifth ability, delivered through the Presence shop — *redirected 2026-08-16*
 
-The unlock path is built and untested against real content. One new ability — something that
-removes invaders from a land outright, since that is the lever the player actually has —
-would exercise it and give the shop a non-numeric reward.
+No longer just "one more `unlock_` row." The Presence shop is to grow two separate purchase
+kinds:
+
+- **Permanent unlocks** — same shape as the existing `unlock_<ability_id>` pattern, just
+  bought with Presence instead of (or alongside) Fear.
+- **Round-scoped ability cards** — bought with Presence, but what they buy is a card that can
+  be *drawn* during a round and only lasts until the round ends, closer to how a hand of Power
+  Cards works in the physical game. This is a new subsystem: a card pool, a draw trigger, a
+  hand that resets every round, and however that hand interacts with the existing ability bar.
+
+Permanent unlocks are the smaller lift — they reuse the shop and ability-bar plumbing that
+already exists. The round-scoped card hand is the bigger, riskier piece: it needs its own
+design pass (when does a draw happen, does it sit in the ability bar or somewhere new, what
+happens to an undrawn/unplayed card at round end) before it's an implementation task rather
+than an idea. Recommendation: build the permanent-unlock purchase first — it validates the
+Presence shop taking a second purchase category at all — then design the card-hand subsystem
+once that's landed, rather than starting both at once.
 
 ### 6. Invaders that scale with the player — *the next real feature*
 
@@ -388,6 +383,54 @@ across every land at once, which moves income and round length together.
 The board is focusable and activates on Enter and Space, but the ability bar has no live
 region, the log is not announced, and the HUD's meters carry no text alternative beyond
 their own numbers. Worth doing before the UI grows further.
+
+### 11. Unspent Presence multiplies Fear generation — *done 2026-08-16*
+
+Holding Presence now costs something to keep holding: +1% Fear from every source (kill, wave,
+milestone) per point of `meta.presence` still unspent, read live and uncapped. See
+[04-economy-formulas.md](../spec/04-economy-formulas.md#presence-multiplies-too-and-does-not-cap)
+for the formula and [05-progression.md](../spec/05-progression.md#the-two-layers) for how it
+sits against the "Presence never touches the board" framing. Shown in the ascension panel next
+to the Presence total, only while it is nonzero.
+
+This is deliberately uncapped, unlike the three Fear ladders it stacks with — the point is to
+make *not* spending Presence a real, growing cost rather than a free stat. That only holds up
+once there is something worth spending Presence on past the first cycle or two: today the
+Presence shop is still just the two flat one-off unlocks (2 + 3 Presence, ever), so past that
+every point of Presence a player earns has no in-system reason to be spent and the bonus only
+grows. **Item 5's permanent-unlock Presence rows are now the balance fix, not just a feature
+request** — build them before this compounds past a cycle or two of real play.
+
+---
+
+## Idea Inbox
+
+Unsorted and unargued. One line each, written down before it is thought about — the point is
+that catching an idea costs nothing. Nothing here is a commitment.
+
+An idea leaves this list in one of two ways: it earns a paragraph and moves up into
+[What To Build Next](#what-to-build-next) as a numbered item, or it stops being interesting
+and gets deleted. It should never exist in both places at once — if it is numbered above, it
+is not a line down here.
+
+### Mechanics
+
+- check if Wash Away works correctly when a land holds more than 3 invaders
+- check if the Innate tier 1 push-rules automation should be reworked
+- give tokens for casting abilities, spendable to upgrade them (or route that through the
+  Presence shop instead)
+- presence shop: buy an ability to lower a cooldown mid-round with Energy
+
+### UI
+
+- give the player better feedback: invader/Dahan deaths, end of round, Fear/Energy generated
+- rework or toss the land info panel
+
+### Balance questions
+
+- Innate tiers 2 and 3 maybe too expensive
+- Wash Away: too expensive and/or cooldown too long for what it actually does
+- general balancing pass
 
 ---
 

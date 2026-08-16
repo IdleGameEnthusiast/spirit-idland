@@ -363,4 +363,78 @@
 
     assertClose(killOneTown(state), plain * 2, 0.0001, "which pays the new rate");
   });
+
+  /* ---------- Presence: 1% Fear a point, unspent and uncapped ---------- */
+
+  test("fear: presenceFearMultiplier is 1 at zero and grows 1% a point, uncapped", () => {
+    const { state } = newGame();
+    assertEqual(engine.presenceFearMultiplier(state), 1, "nothing held, nothing added");
+
+    state.meta.presence = 37;
+    assertClose(engine.presenceFearMultiplier(state), 1.37, 0.0001, "37 points is +37%");
+
+    // No FEAR_LADDER_MAX_TIER here on purpose - see the note above
+    // PRESENCE_FEAR_BONUS_PER_POINT in engine.js.
+    state.meta.presence = 1000;
+    assertClose(engine.presenceFearMultiplier(state), 11, 0.0001, "and it never tops out");
+  });
+
+  test("fear: unspent Presence multiplies kill Fear", () => {
+    const plain = killOneTown(newGame().state);
+
+    const boosted = newGame().state;
+    boosted.meta.presence = 50;
+
+    assertClose(killOneTown(boosted), plain * 1.5, 0.0001, "50 held Presence is +50%");
+  });
+
+  test("fear: unspent Presence multiplies wave Fear", () => {
+    const { state } = newGame();
+    state.meta.presence = 50;
+
+    state.round.fearEarned = 0;
+    engine.resolveWave(state);
+
+    assertClose(state.round.fearEarned, engine.FEAR_PER_WAVE * 1.5, 0.0001, "+50% on the wave too");
+  });
+
+  test("fear: unspent Presence multiplies the high_water_mark milestone", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "high_water_mark", 5);
+    state.meta.presence = 50;
+
+    state.round.wavesResolved = 49;
+    state.round.fearEarned = 0;
+    engine.resolveWave(state);
+
+    // Wave 50: 1 (wave) + 25 (milestone, 50*5*10%), all at +50% Presence.
+    assertClose(state.round.fearEarned, (engine.FEAR_PER_WAVE + 25) * 1.5, 0.0001, "the milestone too");
+  });
+
+  test("fear: Presence stacks with a Fear ladder rather than replacing it", () => {
+    const { state } = newGame();
+    grantUpgrade(state, "rising_dread", 5);
+    state.meta.presence = 50;
+
+    // Tier 5 is +50% on its own (see the rising_dread test above); +50% Presence on top of
+    // that is two independent multipliers, not one added rate.
+    assertClose(killOneTown(state), killOneTown(newGame().state) * 1.5 * 1.5, 0.0001, "1.5 x 1.5");
+  });
+
+  // Unlike the three ladders, which read activeUpgradeTier off the round's own snapshot,
+  // Presence is read live: it never moves from combat, only from Reclaiming (which ends the
+  // round outright) or a Presence purchase, so there is no same-round loop for a snapshot to
+  // guard against - see the note above PRESENCE_FEAR_BONUS_PER_POINT.
+  test("fear: the Presence bonus is read live, not frozen for the round", () => {
+    const { state } = newGame();
+    state.meta.presence = 100;
+
+    const boosted = killOneTown(state);
+
+    state.meta.presence = 0;
+    const unboosted = killOneTown(state);
+
+    assertClose(boosted, unboosted * 2, 0.0001, "100 Presence pays double");
+    assert(unboosted < boosted, "and dropping it mid-round takes effect immediately");
+  });
 })();

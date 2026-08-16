@@ -271,8 +271,8 @@ Without the second, a round that holds its line perfectly and kills little would
 nothing.
 
 ```txt
-killFear = defeatedPower * FEAR_PER_POWER * (1 + tier(rising_dread) * 0.10)
-waveFear = FEAR_PER_WAVE * (1 + tier(mounting_terror) * 0.10)
+killFear = defeatedPower * FEAR_PER_POWER * (1 + tier(rising_dread) * 0.10) * presenceMult
+waveFear = FEAR_PER_WAVE * (1 + tier(mounting_terror) * 0.10) * presenceMult
 
 FEAR_PER_POWER = 1        defeatedPower = the unit's damage value, which rides
 FEAR_PER_WAVE  = 1        the difficulty ladder: see Unit Stats
@@ -281,7 +281,7 @@ FEAR_PER_WAVE  = 1        the difficulty ladder: see Unit Stats
 Every tenth wave pays a third source on top, if `high_water_mark` is owned:
 
 ```txt
-milestone = wave * tier(high_water_mark) * 0.10 * (1 + tier(mounting_terror) * 0.10)
+milestone = wave * tier(high_water_mark) * 0.10 * (1 + tier(mounting_terror) * 0.10) * presenceMult
             ... on waves where wave % 10 == 0, and 0 otherwise
 ```
 
@@ -293,6 +293,37 @@ multiplies the one number in the game that grows faster than the invaders do.
 A run reaching wave `10m` collects `tier * m(m+1)/2` in milestones against `10m` in flat wave
 Fear — **quadratic in depth against linear**. At tier 5 a run to wave 100 collects 275 from
 milestones and 100 from waves.
+
+### Presence multiplies too, and does not cap
+
+```txt
+presenceMult = 1 + meta.presence * PRESENCE_FEAR_BONUS_PER_POINT
+
+PRESENCE_FEAR_BONUS_PER_POINT = 0.01   (1% Fear per unspent Presence)
+```
+
+Unlike the three ladders above, `presenceMult` is read live off `state.meta.presence`, not off
+a round snapshot, and has no `FEAR_LADDER_MAX_TIER` to stop it. It applies to all three Fear
+sources identically, which is why it is a separate factor rather than folded into the two
+per-source ladder multipliers.
+
+The three ladders were deliberately capped at tier 10 after an earlier, uncapped version of
+this same shop stopped terminating (see [05-progression.md](./05-progression.md) on the Fear
+ladder cap). Presence reopens that door on purpose: holding Presence instead of spending it is
+meant to be a live trade-off, which requires the number sitting in the purse to actually be
+worth something, growing without limit as long as it goes unspent. What keeps this from being
+the same runaway problem the ladder cap fixed is not a ceiling on the bonus but a floor on the
+spending side — the Presence shop needs enough to spend it on that leaving a stack unspent is a
+real cost and not just a free multiplier no one has a reason to touch. At the two flat, one-off
+unlocks the catalogue holds today, that floor does not exist yet: see [Presence prices, and why
+they are not on this curve](#presence-prices-and-why-they-are-not-on-this-curve).
+
+Because the ascension payout ([below](#the-ascension-payout)) is itself a function of generated
+Fear, a larger `presenceMult` also means a larger Presence payout next cycle — Presence earned
+compounds into Presence earned faster. The payout's square root keeps that compounding
+sub-linear (doubling generated Fear only ever pays 1.41× the Presence), the same way it already
+tempers the three ladders' own compounding; it does not undo it. A repeatable Presence sink is
+what turns "unspent Presence" back into a choice instead of a number that only ever grows.
 
 ### Where the rounding happens
 
@@ -808,6 +839,13 @@ root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth would 
 inside three tiers and every rung past the third would be dead. A Presence ladder wants
 something nearer 1.3–1.5, or a flat price, and the check is whether a tier stays buyable a
 cycle or two after the one below it.
+
+This is no longer only a shop-pacing concern. Since [Presence multiplies Fear
+generation](#presence-multiplies-too-and-does-not-cap) at 1% per point held, and that bonus has
+no ceiling, a repeatable row here is what gives holding Presence a real opposite — a reason
+spending it can beat sitting on it. Until one exists, the two flat unlocks above are the only
+sink in the game, and every point of Presence past 5 is Presence a player has no in-system
+reason to ever spend.
 
 ## Offline Handling
 

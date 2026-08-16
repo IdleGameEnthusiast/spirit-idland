@@ -1279,6 +1279,16 @@ button.reset {
   margin-left: auto;
 }
 
+/* What the purse above is worth left unspent, in the same tint as the number it is explaining
+   and small enough that it reads as a footnote to it rather than a second stat. */
+.ascension-bonus {
+  display: block;
+  margin: -0.2rem 0 0.5rem;
+  font-size: 0.68rem;
+  color: rgba(166, 143, 216, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
 /* The payout is the whole of the decision, so it gets the panel's largest number - larger than
    the purse above it, which is only the standing balance. */
 .ascension-payout {

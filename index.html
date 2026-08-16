@@ -274,6 +274,9 @@
           <span id="ascensionPresenceLabel">Praesenz</span>
           <strong id="ascensionPresenceValue">0</strong>
         </div>
+        <!-- Only drawn while it says something: at 0 Presence the bonus is 0% and the line
+             would just be another zero to read. -->
+        <small id="ascensionPresenceBonus" class="ascension-bonus"></small>
 
         <!-- The payout is the whole of the decision, so it is the panel's centre of gravity
              and is patched every frame rather than left to the panel's rebuild. -->
@@ -289,7 +292,7 @@
         <!-- What will be lost, stated before the button rather than after it. -->
         <small id="ascensionLoss" class="ascension-loss"></small>
 
-        <button type="button" id="ascendBtn" class="primary-btn ascend-btn">Zurueckziehen</button>
+        <button type="button" id="ascendBtn" class="primary-btn ascend-btn">Aufsteigen</button>
         <small id="ascensionHint" class="hint"></small>
 
         <div class="ascension-shop">
