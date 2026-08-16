@@ -386,6 +386,49 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 8. **Grandfathering.** A save carrying `auto_start_round` or `auto_buy_abilities` in
    `upgrades.purchased` loads with the matching Presence row already owned, so a purchase made
    under the old gate is not taken back. Loading the same save twice grants the same 1, never 2.
+9. **The third Presence row unlocks a capability, not a Fear row.** `presence_current_quickens`
+   carries no `unlocks` field; buying it flips `abilityFocusUnlocked` straight on rather than
+   opening a row in the Fear catalogue. The first Reclaim (which pays exactly the first two
+   rows' combined cost) does not also cover this one — see [Focus Checks](#focus-checks).
+
+## Focus Checks
+
+`tests/focus.test.js`. See
+[04-economy-formulas.md](../spec/04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown)
+for the formulas these checks hold.
+
+1. **The curve.** `abilityFocusMultiplierForPurchases(0)` is 1. The first purchase is exactly
+   `* 0.95`. The rate re-derived from each step's own previous value never exceeds `0.95` above
+   70% remaining, `0.97` between 50% and 70%, or `0.98` below 50%, and the multiplier never
+   drops under `FOCUS_FLOOR_MULT` (0.3) however many purchases are asked for — 400 in a row
+   both cross both thresholds and still land pinned at the floor.
+2. **Cost anchors to what the ability already costs.** The first Focus purchase on
+   `rivers_bounty`, `flash_floods` or `wash_away` costs exactly that ability's own
+   `abilityUnlockCost`. `boon_of_vigor` (`unlockCost: 0`) falls back to a flat 3. `innate_power`
+   (also `unlockCost: 0`) does not share that fallback — it carries its own `focusBaseCost: 25`,
+   because it is the one ability that keeps growing stronger after it is bought.
+3. **Cost grows 1.5x per purchase, compounding, per ability.** Buying Focus for one ability
+   never moves the price on any other. Past the floor, the cost reads `Infinity` — the same
+   refusal shape `abilityUpgradeCost` uses at the top of a tier ladder — and a further purchase
+   spends nothing.
+4. **The gate.** A purchase is refused, however much Energy is on hand, until
+   `presence_current_quickens` is bought. It is further refused for an ability that is not
+   unlocked this round, and between rounds — the same `round.status === "running"` rule every
+   other Energy spend follows.
+5. **A successful purchase** spends the quoted Energy, records one more purchase in
+   `round.abilityFocus[id]`, and shortens `abilityCooldownSeconds` for that ability by exactly
+   the multiplier the curve says. Made while the ability is mid-cooldown, it clamps
+   `cooldownRemaining` down to the new, shorter maximum rather than leaving it stranded above
+   one; made while the ability sits comfortably under the new maximum already, it changes
+   nothing. It applies to the tiered Innate exactly as it does to any other ability.
+6. **Reset.** `round.abilityFocus` and its multiplier both return to their untouched state at
+   the next `startRound`, same as the Energy that paid for them. `abilityFocusUnlocked` itself
+   is not round-scoped — the Presence purchase survives every round boundary, only the
+   purchases made with Energy die with the round.
+7. **Save round-trip.** Purchase counts survive a save. An unknown ability id, or a
+   non-positive count, is dropped on load rather than carried or clamped negative.
+8. Both locales name `presence_current_quickens` and carry the Focus button label and its two
+   log lines.
 
 ## Save and Migration Checks
 
@@ -471,7 +514,7 @@ before the auto-cast toggle existed. The rule they enforce is in
 
 ## Current Validation Status
 
-**403 automated checks, all passing.** Coverage by file:
+**461 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
@@ -488,6 +531,8 @@ before the auto-cast toggle existed. The rule they enforce is in
 | `tests/shop.test.js` | Fear persistence, purchases, tiers, next round |
 | `tests/fear.test.js` | The three Fear ladders, the locale tables, the gate |
 | `tests/haste.test.js` | The Dahan Remember: the Fear pool and the strike clock |
+| `tests/focus.test.js` | Focus: the reduction curve, cost anchoring, the gate, save round-trip |
+| `tests/ascension.test.js` | The Presence layer, the two-key rule, the Presence catalogue |
 | `tests/save.test.js` | Round-trip, no offline credit, migration, normalization, export/import |
 | `tests/compat.test.js` | A save from an earlier build still loads, still plays, still imports |
 | `tests/landstate.test.js` | Land state precedence (06) |

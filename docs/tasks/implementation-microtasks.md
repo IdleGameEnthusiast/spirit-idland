@@ -404,6 +404,61 @@ every point of Presence a player earns has no in-system reason to be spent and t
 grows. **Item 5's permanent-unlock Presence rows are now the balance fix, not just a feature
 request** — build them before this compounds past a cycle or two of real play.
 
+### 12. Focus: spend Energy to shorten ability cooldowns mid-round — *built 2026-08-16*
+
+From the Idea Inbox: "presence shop: buy an ability to lower a cooldown mid-round with Energy."
+Landed as designed below. Covered by `tests/focus.test.js`; `tests/ascension.test.js` updated
+for the third Presence row. Not yet run against a live playtest - the numbers below are a
+first pass, not a measurement.
+
+**What it is:** a per-ability, per-round purchase — "Focus" — that shortens one ability's
+cooldown for the rest of the round, paid for out of the same Energy that buys unlocks and tier
+upgrades. This is deliberately not the same mechanism as `cooldownReductionPct` /
+`abilityCooldownMult` (`upgradeTotals` in engine.js) — that stub is for a *permanent*,
+Fear/Presence-bought, round-wide multiplier, frozen at round start (see the comment at
+engine.js:2619-2624). Focus is a *live*, mid-round, per-ability spend, closer in shape to
+`upgradeAbility` (tier purchases, engine.js:2802) than to the shop. Both can coexist later;
+only Focus is designed here.
+
+**Gate:** a new Presence-shop row, cost 5 Presence, flat, one-off. Unlike the two existing rows
+(`presence_tide_returns`, `presence_river_knows`), it does not unlock a Fear-shop entry — it
+flips `state.presenceUpgrades.purchased[id]` directly, and Focus purchases check that flag.
+This is the first Presence row to touch the board rather than gate a Fear row, so the "Presence
+never touches the board" framing at engine.js:817-820 needs a one-line update when this lands.
+
+**Effect, per purchase, per ability:**
+
+- Multiplies that ability's cooldown by a rate chosen from how much of the round-frozen
+  baseline (`abilityCooldownSeconds` before Focus) remains:
+  - above 70% remaining: ×0.95 (a 5% cut)
+  - 70% down to 50% remaining: ×0.97
+  - 50% down to the 30% floor: ×0.98
+- Hard floor at 30% of the original cooldown (70% max reduction) — stronger than
+  `dahan_remember`'s own 50% cap (engine.js:2592-2596), confirmed intentional. Purchases past
+  the floor are refused, same as `abilityUpgradeCost` at max tier.
+- Reads the zone off the *current* multiplier before each purchase (same "read live" idiom as
+  `DIFFICULTY_RUNGS`), so a purchase can overshoot slightly into the next zone rather than
+  needing partial steps.
+- Applies to every unlocked ability, Innate included — no special-casing needed, since
+  `abilityRecord` already resolves the tiered case.
+
+**Cost, per ability:** `(abilityUnlockCost(ability) || focusBaseCost || 3) * 1.5^purchasesSoFar`
+Energy. Both `innate_power` and `boon_of_vigor` carry `unlockCost: 0`, but only
+`boon_of_vigor` falls through to the flat `3`: the Innate keeps growing stronger after it is
+bought (three tiers, each a bigger swing than the last), so its own `focusBaseCost: 25` keeps
+Focus from being the cheap way into its strongest cooldown. The 1.5x growth is deliberately
+gentler than the Fear shop's `UPGRADE_COST_GROWTH` (1.6x), since this is a same-round repeatable
+rather than a permanent tier.
+
+**Resets:** purchase count and multiplier both live in `state.round` and clear on
+`startRound()`, same as Energy itself and `abilityTiers`.
+
+**Why no wave-number scaling:** considered and dropped. Energy is round-scoped and earned from
+kills, so the compounding per-purchase cost is already wave-gated in practice — a player can't
+afford many Focus purchases before waves have produced the Energy for them, without a second
+wave-indexed formula stacked on top. The hard 30% floor is the actual safety valve against
+idle-game exponential Energy income, not a wave gate.
+
 ---
 
 ## Idea Inbox
@@ -422,7 +477,6 @@ is not a line down here.
 - check if the Innate tier 1 push-rules automation should be reworked
 - give tokens for casting abilities, spendable to upgrade them (or route that through the
   Presence shop instead)
-- presence shop: buy an ability to lower a cooldown mid-round with Energy
 
 ### UI
 

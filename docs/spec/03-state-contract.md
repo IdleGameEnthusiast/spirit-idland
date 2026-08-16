@@ -322,6 +322,13 @@ Fields the first draft of this contract did not have. Each earns its place:
   anything that should not survive one must be.
 - **`round.awaitingWave`** — the gate itself, described above. It is in `round` and not `ui`
   precisely because it *is* round state: it dies with the round that raised it.
+- **`round.abilityFocus`** — Focus purchase counts, keyed by ability id (`{ [abilityId]:
+  purchases }`, absent or 0 dropped). Round-scoped exactly like `round.abilityTiers` and
+  `round.purchasedAbilityIds` beside it: it is bought with the round's own Energy, so it is
+  wiped by the same `startRound` that wipes them. Not the multiplier itself — that is
+  `abilityFocusMultiplierForPurchases(purchases)`, a pure function of the count, recomputed
+  live rather than cached, so the two can never disagree. See
+  [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown).
 
 ## `abilities` Shape
 

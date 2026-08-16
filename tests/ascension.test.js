@@ -241,14 +241,30 @@
     assertEqual(state.meta.presence, 8, "and only paid for once");
   });
 
-  test("ascension: the first reclaim pays for exactly both rows", () => {
-    const total = engine.PRESENCE_UPGRADE_IDS
+  // Only the two original rows: see the "first ascension reads as an unambiguous win" comment
+  // above PRESENCE_UPGRADES. Every row added since is meant to be a real dilemma rather than a
+  // freebie the first Reclaim covers alongside these two, so the sum stays pinned to the two
+  // ids rather than to PRESENCE_UPGRADE_IDS as a whole - see the row below for the row that
+  // proves the dilemma actually holds.
+  test("ascension: the first reclaim pays for exactly both starter rows", () => {
+    const total = ["presence_tide_returns", "presence_river_knows"]
       .reduce((sum, id) => sum + engine.presenceUpgradeCost(id), 0);
     assertEqual(total, 5, "two plus three");
 
     const state = readyToAscend(2500);
     engine.ascend(state);
     assertEqual(state.meta.presence, total, "and a first Reclaim at 2500 pays exactly that");
+  });
+
+  test("ascension: Focus is not part of that first-Reclaim freebie", () => {
+    const total = engine.PRESENCE_UPGRADE_IDS
+      .reduce((sum, id) => sum + engine.presenceUpgradeCost(id), 0);
+    assert(total > 5, "a third row on top of the first two's 5 raises the full catalogue's cost");
+
+    const state = readyToAscend(2500);
+    engine.ascend(state);
+    assert(state.meta.presence < total, "the first Reclaim alone cannot buy the whole catalogue");
+    assert(!engine.presenceUpgradeOwned(state, "presence_current_quickens"), "Focus is still unbought");
   });
 
   /* ---------- The two-key rule, end to end ---------- */
@@ -348,13 +364,23 @@
     }
   });
 
-  // Structural: a Presence row that unlocked nothing, or unlocked a row that does not name it
-  // back, would be a dead purchase the shop never reacts to.
-  test("ascension: every Presence row unlocks a Fear row that names it back", () => {
+  // Structural: a Presence row that names a Fear row must have that row name it back, or it
+  // would be a dead purchase the shop never reacts to. `presence_current_quickens` carries no
+  // `unlocks` at all - see the block comment above PRESENCE_UPGRADES - so it is checked instead
+  // for the thing a direct-unlock row must have in its place: something abilityFocusUnlocked
+  // actually reads.
+  test("ascension: every Presence row either unlocks a Fear row that names it back, or gates a capability directly", () => {
     for (const id of engine.PRESENCE_UPGRADE_IDS) {
       const unlocks = engine.PRESENCE_UPGRADES[id].unlocks;
+      if (!unlocks) continue;
       assert(engine.UPGRADES[unlocks], `${id} unlocks ${unlocks}, which is not in the catalogue`);
       assertEqual(engine.upgradePresenceUnlock(unlocks), id, `${unlocks} must name ${id} back`);
     }
+
+    assertEqual(engine.PRESENCE_UPGRADES.presence_current_quickens.unlocks, undefined, "no Fear row for Focus");
+    const { state } = newGame();
+    assert(!engine.abilityFocusUnlocked(state), "unbought, Focus reads as locked");
+    grantPresence(state, "presence_current_quickens");
+    assert(engine.abilityFocusUnlocked(state), "and bought, it reads as open");
   });
 })();

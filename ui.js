@@ -762,7 +762,33 @@ function abilityBarSignature(state) {
   const automations = spiritAbilityIds(state)
     .map((id) => `${id}:${autoCastOwned(state, id) ? 1 : 0}`)
     .join(",");
-  return [currentLang(state), unlockedAbilityIds(state).join(","), tiers, automations].join("|");
+  // Focus buttons show a cost that climbs with every purchase, the same reason a tiered
+  // ability's upgrade button is in `tiers` above rather than left to the per-frame patch - and
+  // whether Focus is unlocked at all can change mid-round, since buying the Presence row
+  // carries no round-status check.
+  const focus = spiritAbilityIds(state)
+    .map((id) => `${id}:${abilityFocusPurchases(state, id)}`)
+    .join(",");
+  return [
+    currentLang(state),
+    unlockedAbilityIds(state).join(","),
+    tiers,
+    automations,
+    abilityFocusUnlocked(state) ? 1 : 0,
+    focus
+  ].join("|");
+}
+
+// A Focus purchase button for one unlocked ability, or nothing if Focus is not unlocked yet or
+// this ability has already been bought down to the floor. Reuses .ability-unlock rather than a
+// class of its own - it is the same kind of thing the tier-upgrade button already is: a price
+// in the foot of the card.
+function abilityFocusMarkup(state, abilityId) {
+  if (!abilityFocusUnlocked(state)) return "";
+  const t = locale(state);
+  const cost = abilityFocusCost(state, abilityId);
+  if (!Number.isFinite(cost)) return "";
+  return `<button type="button" class="ability-unlock" data-focus-ability="${abilityId}">${template(t.abilityFocusBtn, { cost })}</button>`;
 }
 
 // The switch that says whether this ability's automation casts. Drawn only once the automation
@@ -793,10 +819,11 @@ function abilityAutoCastMarkup(state, abilityId) {
 
 // One unlocked ability: the pressable card, with the cooldown sweep behind its text.
 //
-// Two shapes, and which one it takes is the automation. Without one it stays the single button
-// it has always been. With one it becomes the container the tiered card already is - a checkbox
-// cannot live inside a button, which is the same wall renderTieredAbility hit - so the cast
-// surface moves into a button of its own and the box sits in a foot beneath it.
+// Two shapes, and which one it takes is whether the card has a foot at all - the automation
+// switch, a Focus button, or both. With neither it stays the single button it has always been.
+// With either it becomes the container the tiered card already is - a checkbox cannot live
+// inside a button, which is the same wall renderTieredAbility hit - so the cast surface moves
+// into a button of its own and the foot sits beneath it.
 function renderUnlockedAbility(state, abilityId) {
   const face = `
     <span class="ability-sweep" data-role="sweep"></span>
@@ -810,7 +837,8 @@ function renderUnlockedAbility(state, abilityId) {
   `;
 
   const auto = abilityAutoCastMarkup(state, abilityId);
-  if (!auto) {
+  const focus = abilityFocusMarkup(state, abilityId);
+  if (!auto && !focus) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ability";
@@ -823,7 +851,7 @@ function renderUnlockedAbility(state, abilityId) {
   card.className = "ability is-automated";
   card.innerHTML = `
     <button type="button" class="ability-cast" data-ability="${abilityId}">${face}</button>
-    <span class="ability-foot">${auto}</span>
+    <span class="ability-foot">${focus}${auto}</span>
   `;
   return card;
 }
@@ -882,6 +910,7 @@ function renderTieredAbility(state, abilityId) {
     <span class="ability-foot">
       <span class="ability-tier">${template(t.abilityTierLabel, { tier: abilityTier(state, abilityId) + 1 })}</span>
       ${upgrade}
+      ${abilityFocusMarkup(state, abilityId)}
       ${abilityAutoCastMarkup(state, abilityId)}
     </span>
   `;
@@ -912,13 +941,16 @@ function patchAbilityBar(state) {
   // rather than taking a click the engine will only refuse (see unlockAbility).
   const running = state.round.status === "running";
 
-  // Both prices in the bar answer the same question - can I afford this yet - so they are
+  // All three prices in the bar answer the same question - can I afford this yet - so they are
   // patched the same way, and the card wears the answer as a warm border either way.
-  for (const button of dom.abilityBar.querySelectorAll("[data-unlock-ability], [data-upgrade-ability]")) {
+  for (const button of dom.abilityBar.querySelectorAll("[data-unlock-ability], [data-upgrade-ability], [data-focus-ability]")) {
     const unlockId = button.getAttribute("data-unlock-ability");
+    const upgradeId = button.getAttribute("data-upgrade-ability");
     const cost = unlockId
       ? abilityUnlockCost(state, unlockId)
-      : abilityUpgradeCost(state, button.getAttribute("data-upgrade-ability"));
+      : upgradeId
+      ? abilityUpgradeCost(state, upgradeId)
+      : abilityFocusCost(state, button.getAttribute("data-focus-ability"));
     const affordable = running && state.resources.energy >= cost;
     button.disabled = !affordable;
     button.closest(".ability").classList.toggle("is-affordable", affordable);
@@ -1794,8 +1826,8 @@ dom.abilityBar.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
-  // Both prices are checked before the cast path. A locked card carries no data-ability at
-  // all, but a tiered card carries both - its upgrade button sits beside the cast button, and
+  // All three prices are checked before the cast path. A locked card carries no data-ability
+  // at all, but a tiered or Focus-bearing card carries a price beside the cast button, and
   // whichever was clicked has to win outright rather than by DOM accident.
   const unlock = target.closest("[data-unlock-ability]");
   if (unlock) {
@@ -1808,6 +1840,14 @@ dom.abilityBar.addEventListener("click", (event) => {
   const upgrade = target.closest("[data-upgrade-ability]");
   if (upgrade) {
     upgradeAbility(state, upgrade.getAttribute("data-upgrade-ability") || "");
+    updateUI(state);
+    persist();
+    return;
+  }
+
+  const focus = target.closest("[data-focus-ability]");
+  if (focus) {
+    purchaseAbilityFocus(state, focus.getAttribute("data-focus-ability") || "");
     updateUI(state);
     persist();
     return;

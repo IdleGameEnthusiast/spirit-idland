@@ -501,6 +501,10 @@ const ABILITIES = {
   innate_power: {
     id: "innate_power",
     unlockCost: 0,
+    // Focus's own base price (see FOCUS_BASE_COST_FALLBACK) - the Innate outgrows the flat
+    // fallback because it outgrows every other ability, tier over tier, and Focus should not
+    // be the cheap way into the strongest cooldown in the kit.
+    focusBaseCost: 25,
     tiers: [
       {
         cooldownSeconds: 8 * TIME_SCALE,
@@ -826,6 +830,11 @@ const UPGRADES = {
  * The names are the ones the Fear rows already carried, kept rather than invented. The
  * Presence row and the Fear row it opens are the same idea at two prices, and separate names
  * would make the player learn the pairing.
+ *
+ * `presence_current_quickens` breaks that rule on purpose: it has no Fear-shop row to name
+ * itself after, because it unlocks Focus (see abilityFocusUnlocked below) rather than a shop
+ * entry. That makes it the first Presence row to touch the board directly - "buys no Dahan,
+ * shortens no clock" above is no longer true of the whole catalogue, only of the two older rows.
  * ------------------------------------------------------------------ */
 
 const PRESENCE_UPGRADES = {
@@ -841,6 +850,12 @@ const PRESENCE_UPGRADES = {
     id: "presence_river_knows",
     unlocks: "auto_buy_abilities",
     cost: 3
+  },
+  // No `unlocks` - see the block comment above. `abilityFocusUnlocked` reads this row's own
+  // owned-ness straight off `presenceUpgradeOwned` rather than going through a Fear row.
+  presence_current_quickens: {
+    id: "presence_current_quickens",
+    cost: 5
   }
 };
 
@@ -1010,6 +1025,7 @@ const I18N = {
     abilityUnlockBtn: "{cost} Energie",
     abilityTierLabel: "Stufe {tier}",
     abilityUpgradeBtn: "Stufe {tier}: {cost} Energie",
+    abilityFocusBtn: "Fokus: {cost} Energie",
     abilityNames: {
       innate_power: "Angeborene Kraft",
       boon_of_vigor: "Boon of Vigor",
@@ -1084,13 +1100,16 @@ const I18N = {
     ascendRefused: "Noch nicht. Aufsteigen geht erst zwischen den Runden, und erst wenn der Zyklus es wert ist.",
     presenceNames: {
       presence_tide_returns: "Die Flut kehrt wieder",
-      presence_river_knows: "Der Fluss weiß, was er braucht"
+      presence_river_knows: "Der Fluss weiß, was er braucht",
+      presence_current_quickens: "Die Strömung eilt"
     },
     presenceTexts: {
       presence_tide_returns: "Öffnet \"Die Flut kehrt wieder\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu.",
-      presence_river_knows: "Öffnet \"Der Fluss weiß, was er braucht\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu."
+      presence_river_knows: "Öffnet \"Der Fluss weiß, was er braucht\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu.",
+      presence_current_quickens: "Schaltet Fokus frei: Abklingzeiten von Fähigkeiten lassen sich während der Runde mit Energie verkürzen, bis auf 30% ihrer Ausgangszeit."
     },
     presencePurchased: "{upgrade} für {cost} Präsenz. {unlocks} steht jetzt im Laden.",
+    presencePurchasedDirect: "{upgrade} für {cost} Präsenz.",
     presenceOwned: "{upgrade} gehört dir bereits.",
     presenceTooExpensive: "{upgrade} kostet {cost} Präsenz, du hast {presence}.",
     presenceCostLabel: "{cost} Präsenz",
@@ -1275,6 +1294,8 @@ const I18N = {
     abilityUnlockTooExpensive: "{ability} kostet {cost} Energie. Du hast {energy}.",
     abilityUpgraded: "{ability} auf Stufe {tier} gebracht für {cost} Energie.",
     abilityUpgradeTooExpensive: "Stufe {tier} von {ability} kostet {cost} Energie. Du hast {energy}.",
+    abilityFocused: "{ability} fokussiert: Abklingzeit jetzt {pct}% kürzer, für {cost} Energie.",
+    abilityFocusTooExpensive: "{ability} kostet {cost} Energie für mehr Fokus. Du hast {energy}.",
 
     upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) für {cost} Furcht.",
     // Ein Becken hat keine Stufe zu melden - also meldet es, was hineinging und was herauskam.
@@ -1334,6 +1355,7 @@ const I18N = {
     abilityUnlockBtn: "{cost} Energy",
     abilityTierLabel: "Tier {tier}",
     abilityUpgradeBtn: "Tier {tier}: {cost} Energy",
+    abilityFocusBtn: "Focus: {cost} Energy",
     abilityNames: {
       innate_power: "Innate Power",
       boon_of_vigor: "Boon of Vigor",
@@ -1401,13 +1423,16 @@ const I18N = {
     ascendRefused: "Not yet. Ascending waits for the end of a round, and for a cycle worth giving back.",
     presenceNames: {
       presence_tide_returns: "The Tide Returns",
-      presence_river_knows: "The River Knows Its Own Need"
+      presence_river_knows: "The River Knows Its Own Need",
+      presence_current_quickens: "The Current Quickens"
     },
     presenceTexts: {
       presence_tide_returns: "Opens \"The Tide Returns\" in the Fear shop. Its Fear price is still owed - every cycle, again.",
-      presence_river_knows: "Opens \"The River Knows Its Own Need\" in the Fear shop. Its Fear price is still owed - every cycle, again."
+      presence_river_knows: "Opens \"The River Knows Its Own Need\" in the Fear shop. Its Fear price is still owed - every cycle, again.",
+      presence_current_quickens: "Unlocks Focus: ability cooldowns can be shortened mid-round with Energy, down to 30% of where they started."
     },
     presencePurchased: "{upgrade} for {cost} Presence. {unlocks} is in the shop now.",
+    presencePurchasedDirect: "{upgrade} for {cost} Presence.",
     presenceOwned: "{upgrade} is already yours.",
     presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",
     presenceCostLabel: "{cost} Presence",
@@ -1594,6 +1619,8 @@ const I18N = {
     abilityUnlockTooExpensive: "{ability} costs {cost} Energy. You have {energy}.",
     abilityUpgraded: "{ability} raised to tier {tier} for {cost} Energy.",
     abilityUpgradeTooExpensive: "Tier {tier} of {ability} costs {cost} Energy. You have {energy}.",
+    abilityFocused: "{ability} focused: cooldown now {pct}% shorter, for {cost} Energy.",
+    abilityFocusTooExpensive: "{ability} costs {cost} Energy for more Focus. You have {energy}.",
 
     upgradePurchased: "Purchased: {upgrade} (tier {tier}) for {cost} Fear.",
     // A pool has no tier to report, so it reports what went in and what came out of it.
@@ -2296,12 +2323,18 @@ function purchasePresenceUpgrade(state, presenceId) {
 
   // Names the Fear row it opened, not just itself. What a Presence purchase *does* is put a
   // row in the other shop, and a log line that did not say which one would be reporting a
-  // number going down and nothing going up.
-  addLog(state, template(t.presencePurchased, {
-    upgrade: presenceUpgradeName(state, presenceId),
-    unlocks: upgradeName(state, record.unlocks),
-    cost
-  }));
+  // number going down and nothing going up. A row with no Fear-row counterpart (see
+  // PRESENCE_UPGRADES) has nothing to name, so it gets the plainer line instead.
+  addLog(state, record.unlocks
+    ? template(t.presencePurchased, {
+        upgrade: presenceUpgradeName(state, presenceId),
+        unlocks: upgradeName(state, record.unlocks),
+        cost
+      })
+    : template(t.presencePurchasedDirect, {
+        upgrade: presenceUpgradeName(state, presenceId),
+        cost
+      }));
   return true;
 }
 
@@ -2902,22 +2935,120 @@ function normalizeAbilities(state, abilities) {
 }
 
 // The round's own cooldown baseline, frozen at setup so a shop purchase cannot shorten a
-// cooldown that is already ticking.
+// cooldown that is already ticking. `focus` is the one exception - see abilityFocusMultiplier
+// below - because it is not a shop purchase against the round's snapshot, it is a live spend
+// against the cooldown itself.
 function abilityCooldownSeconds(state, abilityId) {
   const record = abilityRecord(state, abilityId);
   if (!record) return 0;
   const mult = Number.isFinite(state.round && state.round.abilityCooldownMult)
     ? state.round.abilityCooldownMult
     : 1;
+  const focus = abilityFocusMultiplier(state, abilityId);
   // Deliberately not rounded: at -5% per tier the difference between two tiers is under a
   // tenth of a second, and rounding here would quietly flatten the diminishing curve into
   // equal steps. The display rounds instead.
-  return Math.max(1, record.cooldownSeconds * mult);
+  return Math.max(1, record.cooldownSeconds * mult * focus);
 }
 
 function abilityIsReady(state, abilityId) {
   const slot = state.abilities[abilityId];
   return Boolean(slot) && slot.cooldownRemaining <= 0;
+}
+
+/* ---------- Focus: spending Energy mid-round to shorten one ability's cooldown ----------
+ *
+ * docs/tasks/implementation-microtasks.md#12. Not the same mechanism as `abilityCooldownMult`
+ * above: that one is a permanent, Fear/Presence-bought multiplier frozen at round start. This
+ * is a live, per-ability purchase made during the round itself, closer in shape to
+ * `upgradeAbility` (tier purchases) than to the shop.
+ *
+ * The rate a purchase buys depends on where the ability's multiplier already stands, not on
+ * how many purchases came before it - three thresholds, each gentler than the last, so the
+ * cut is felt hardest at the start and tapers on its own as it approaches the floor. The floor
+ * itself is a hard stop: no purchase, however cheap Energy gets late in an idle run, buys a
+ * cooldown under 30% of what it started the round at.
+ */
+const FOCUS_FLOOR_MULT = 0.3;
+const FOCUS_COST_GROWTH = 1.5;
+// The fallback for an ability with unlockCost 0 - there is no unlock price to anchor the first
+// purchase to. `innate_power` is also unlockCost 0 but does not use this: its own
+// `focusBaseCost` overrides it, because it is the one ability that keeps growing after it is
+// bought and Focus should not be the cheap way into its strongest tier.
+const FOCUS_BASE_COST_FALLBACK = 3;
+
+function abilityFocusUnlocked(state) {
+  return presenceUpgradeOwned(state, "presence_current_quickens");
+}
+
+function abilityFocusPurchases(state, abilityId) {
+  const raw = state.round && state.round.abilityFocus ? state.round.abilityFocus[abilityId] : 0;
+  return Math.max(0, Math.floor(Number(raw) || 0));
+}
+
+// Replayed from the purchase count rather than stored as its own field, so the multiplier and
+// the count that produced it can never disagree - the same reason difficultyLadder reads
+// wavesResolved live instead of caching a rung.
+function abilityFocusMultiplierForPurchases(purchases) {
+  let mult = 1;
+  for (let i = 0; i < purchases && mult > FOCUS_FLOOR_MULT; i += 1) {
+    const rate = mult > 0.7 ? 0.95 : (mult > 0.5 ? 0.97 : 0.98);
+    mult = Math.max(FOCUS_FLOOR_MULT, mult * rate);
+  }
+  return mult;
+}
+
+function abilityFocusMultiplier(state, abilityId) {
+  return abilityFocusMultiplierForPurchases(abilityFocusPurchases(state, abilityId));
+}
+
+// Infinity once the floor is reached, the same refusal shape as abilityUpgradeCost at the top
+// of a tier ladder.
+function abilityFocusCost(state, abilityId) {
+  if (!abilityRecord(state, abilityId)) return Infinity;
+  if (abilityFocusMultiplier(state, abilityId) <= FOCUS_FLOOR_MULT) return Infinity;
+  const record = ABILITIES[abilityId];
+  const base = abilityUnlockCost(state, abilityId) || (record && record.focusBaseCost) || FOCUS_BASE_COST_FALLBACK;
+  return Math.round(base * Math.pow(FOCUS_COST_GROWTH, abilityFocusPurchases(state, abilityId)));
+}
+
+function purchaseAbilityFocus(state, abilityId) {
+  const t = locale(state);
+  if (!abilityFocusUnlocked(state)) return false;
+  if (!abilityIsUnlocked(state, abilityId)) return false;
+  if (state.round.status !== "running") return false;
+
+  const cost = abilityFocusCost(state, abilityId);
+  if (!Number.isFinite(cost)) return false;
+  if (state.resources.energy < cost) {
+    addLog(state, template(t.abilityFocusTooExpensive, {
+      ability: abilityName(state, abilityId),
+      cost,
+      energy: state.resources.energy
+    }));
+    return false;
+  }
+
+  state.resources.energy -= cost;
+  if (!state.round.abilityFocus || typeof state.round.abilityFocus !== "object") {
+    state.round.abilityFocus = {};
+  }
+  state.round.abilityFocus[abilityId] = abilityFocusPurchases(state, abilityId) + 1;
+
+  // Clamped down, not left to overshoot: an ability already mid-cooldown when this is bought
+  // would otherwise sit above the new, shorter maximum until the next cast, which is a
+  // purchase that visibly does nothing for as long as a whole cooldown.
+  const slot = state.abilities[abilityId];
+  if (slot) {
+    slot.cooldownRemaining = Math.min(slot.cooldownRemaining, abilityCooldownSeconds(state, abilityId));
+  }
+
+  addLog(state, template(t.abilityFocused, {
+    ability: abilityName(state, abilityId),
+    cost,
+    pct: Math.round((1 - abilityFocusMultiplier(state, abilityId)) * 100)
+  }));
+  return true;
 }
 
 function tickCooldowns(state, dt) {
@@ -4799,6 +4930,7 @@ function startRound(state) {
   state.resources.energy = totals.startingEnergy;
   state.round.purchasedAbilityIds = [];
   state.round.abilityTiers = {};
+  state.round.abilityFocus = {};
 
   state.invaders = createInvaderCounts();
   state.invaderDamage = createInvaderDamage();
@@ -5217,7 +5349,10 @@ function createInitialState() {
       // startingAbilityIds - those are not bought - so it is precisely the record of what
       // this round spent. `abilityTiers` maps a tiered ability id to its zero-based tier.
       purchasedAbilityIds: [],
-      abilityTiers: {}
+      abilityTiers: {},
+      // Focus purchases, per ability - see abilityFocusPurchases. Round-scoped like the two
+      // fields above, and reset the same way: what Energy bought this round dies with it.
+      abilityFocus: {}
     },
     invader: { build: [], explore: [] },
     invaders: createInvaderCounts(),
@@ -5440,6 +5575,18 @@ function normalizeState(raw) {
     if (tier > 0) tiers[id] = tier;
   }
   merged.round.abilityTiers = tiers;
+
+  // Same rule as abilityTiers just above: an unknown ability id is dropped, and a purchase
+  // count is only ever a non-negative integer. No upper clamp against FOCUS_FLOOR_MULT is
+  // needed - abilityFocusMultiplierForPurchases already stops moving once it reaches the
+  // floor, so a doctored save with an absurd count reads exactly like one that stopped there.
+  const focus = {};
+  for (const [id, value] of Object.entries(merged.round.abilityFocus || {})) {
+    if (!ABILITIES[id]) continue;
+    const purchases = Math.max(0, Math.floor(Number(value) || 0));
+    if (purchases > 0) focus[id] = purchases;
+  }
+  merged.round.abilityFocus = focus;
 
   merged.round.number = Math.max(1, Math.floor(merged.round.number || 1));
   merged.round.status = merged.round.status === "ended" ? "ended" : "running";
@@ -5830,6 +5977,13 @@ const ENGINE_EXPORTS = {
   abilityUpgradeCost,
   upgradeAbility,
   abilityCooldownSeconds,
+  FOCUS_FLOOR_MULT,
+  abilityFocusUnlocked,
+  abilityFocusPurchases,
+  abilityFocusMultiplierForPurchases,
+  abilityFocusMultiplier,
+  abilityFocusCost,
+  purchaseAbilityFocus,
   abilityIsReady,
   abilityLegalLand,
   abilityLegalLands,

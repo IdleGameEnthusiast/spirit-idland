@@ -648,15 +648,76 @@ A failure logs "no valid target" and leaves the cooldown unspent, per
 ### Cooldown scaling
 
 ```txt
-abilityCooldownSeconds(id) = max(1, ABILITIES[id].cooldownSeconds * round.abilityCooldownMult)
+abilityCooldownSeconds(id) = max(1, ABILITIES[id].cooldownSeconds
+                                     * round.abilityCooldownMult
+                                     * abilityFocusMultiplier(id))
 ```
 
 `ABILITIES[id].cooldownSeconds` is already `beats * TIME_SCALE`, so this returns real seconds
-and the multiplier is a pure percentage on top of it. Nothing here scales again.
+and each multiplier is a pure percentage on top of it. Nothing here scales again.
 
-Deliberately not rounded to whole seconds: one `swift_currents` tier is worth 5% of the Boon's
-12 beats, a bit over half a beat, and rounding would flatten the diminishing curve into equal
-steps. The ability bar rounds up for display.
+Deliberately not rounded to whole seconds: at a 5% cut, one Boon-of-Vigor purchase is worth a
+bit over half of its 12 beats' first second, and rounding would flatten the diminishing curve
+into equal steps. The ability bar rounds up for display.
+
+`round.abilityCooldownMult` is the permanent, shop-bought half — frozen at round setup, see
+[Round Reset Formula](#round-reset-formula) below. `abilityFocusMultiplier` is the live,
+mid-round half, bought with Energy while the round is running — see
+[Focus](#focus-spending-energy-mid-round-to-shorten-a-cooldown) just below. Nothing today buys
+the first one (`cooldownReductionPct` is a stub read as `0`); the second is fully wired.
+
+### Focus: spending Energy mid-round to shorten a cooldown
+
+```txt
+purchases            = round.abilityFocus[id] or 0
+rate(mult)            = 0.95 if mult > 0.70
+                       = 0.97 if 0.50 < mult <= 0.70
+                       = 0.98 if FOCUS_FLOOR_MULT < mult <= 0.50
+abilityFocusMultiplier(id) =
+    fold `purchases` applications of `mult *= rate(mult)` over an initial mult of 1,
+    each result clamped to at least FOCUS_FLOOR_MULT (0.3)
+
+focusBaseCost(id)     = ABILITIES[id].unlockCost, if nonzero
+                       = ABILITIES[id].focusBaseCost, if the record carries one (only
+                         innate_power: 25 — see below)
+                       = FOCUS_BASE_COST_FALLBACK (3), otherwise (only boon_of_vigor)
+abilityFocusCost(id)  = round(focusBaseCost(id) * FOCUS_COST_GROWTH^purchases)
+                       = Infinity once abilityFocusMultiplier(id) has reached the floor
+```
+
+A purchase is a live, mid-round spend against the ability's own cooldown — not the same
+mechanism as `round.abilityCooldownMult` above, which is a shop purchase frozen at round setup.
+Focus is closer in shape to buying an Innate tier: it spends the round's own Energy, while the
+round is running, and the result is visible immediately.
+
+The rate a purchase buys depends on where the multiplier **already stands**, not on how many
+purchases came before it — read live off the current value each time, the same "read live"
+idiom `DIFFICULTY_RUNGS` uses for the wave ladder, rather than a fixed table indexed by count. A
+purchase made exactly at a threshold (say, at 0.70 precisely) uses the cheaper zone's rate for
+that one purchase and can land past the next threshold — the zone is decided once, on entry,
+never split into a partial step.
+
+The three rates soften as the multiplier falls, so the cut is felt hardest at the very first
+purchases and tapers on its own approaching `FOCUS_FLOOR_MULT` — no cooldown Focus buys can ever
+fall under 30% of what the round froze it at, however much Energy a deep, idle-scaled round
+produces. That cap is deliberately **tighter** than `dahan_remember`'s own 50% haste ceiling
+(the only other cooldown-shortening mechanic in the game, [above](#the-interval-and-the-one-thing-that-shortens-it)):
+Focus is a per-ability, per-round toy the player can lean on hard early, not a second permanent
+haste source, and the floor is what keeps it from becoming one.
+
+Cost anchors to what the ability already costs to reach: `abilityUnlockCost`, when the ability
+has one, so a dearer ability's Focus costs more from the first purchase. Two abilities carry no
+unlock price at all (`unlockCost: 0`, both in the opening hand) and need a base of their own.
+`boon_of_vigor` falls through to the flat `FOCUS_BASE_COST_FALLBACK`. `innate_power` does not:
+it is the one ability that keeps growing stronger *after* it is bought — three tiers, each a
+bigger swing than the last — so a flat floor would make it the cheapest ability in the kit to
+Focus despite being the strongest, and its catalogue record carries its own `focusBaseCost: 25`
+instead. Growth per purchase (`FOCUS_COST_GROWTH`, 1.5x) is deliberately gentler than the Fear
+shop's `UPGRADE_COST_GROWTH` (1.6x): this is a same-round repeatable spend, not a permanent
+tier, and it resets to nothing every round along with the Energy that bought it.
+
+`presence_current_quickens` (5 Presence) is what makes any of this purchasable at all — see
+[Presence prices, and why they are not on this curve](#presence-prices-and-why-they-are-not-on-this-curve).
 
 ## Round Reset Formula
 
@@ -828,11 +889,21 @@ checked against how much Fear a round actually earns at depth.
 ### Presence prices, and why they are not on this curve
 
 ```txt
-presence_tide_returns   2 Presence   unlocks auto_start_round   (500 Fear, still owed)
-presence_river_knows    3 Presence   unlocks auto_buy_abilities (200 Fear, still owed)
+presence_tide_returns      2 Presence   unlocks auto_start_round   (500 Fear, still owed)
+presence_river_knows       3 Presence   unlocks auto_buy_abilities (200 Fear, still owed)
+presence_current_quickens  5 Presence   unlocks Focus directly - no Fear row to still owe
 ```
 
-Flat prices, no curve, because neither row is repeatable and there is nothing yet to shape.
+Flat prices, no curve, because none of the three rows is repeatable and there is nothing yet to
+shape.
+
+`presence_current_quickens` breaks the pattern the first two set: it does not open a row in the
+Fear shop, it flips `abilityFocusUnlocked` directly (see
+[Focus](#focus-spending-energy-mid-round-to-shorten-a-cooldown) above). There is no second price
+still owed after buying it — the Energy Focus spends afterward is priced per purchase, not as a
+lump the Presence row unlocked. This is also the first Presence row to touch the board rather
+than gate a Fear row; see [05-progression.md](./05-progression.md#the-two-layers) for how that
+sits against "Presence never touches the board."
 
 The thing to get right when a repeatable Presence row is added: **Presence income is
 root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth would outrun it
@@ -861,9 +932,9 @@ reason to ever spend.
 
 - `essence` accumulates nothing and has no reader; it is inert scaffolding for a possible
   future system, not active economy.
-- The unlock ladder (5 / 10 / 20) and the Innate's tier prices (40 / 150) are shaped against a
-  rough estimate of a round's income — 20 to 40 Energy over 60 to 120 beats — not against a
-  played measurement. `ENERGY_PER_POWER` is a placeholder on the same footing.
+- The unlock ladder (5 / 10 / 20) and the Innate's tier prices (40 / 150) were shaped against a
+  rough, unplayed guess at a round's income — one that played runs have since shown undershoots
+  actual income by a wide margin. `ENERGY_PER_POWER` is a placeholder on the same footing.
 
 ## Acceptance
 

@@ -43,13 +43,24 @@ rows — but it is no longer true that Presence "touches nothing but permission.
 holds now costs something to keep holding, on purpose, so that spending it is a real trade-off
 and not a pure unlock with no downside to delaying.
 
+**Focus is the second exception, and it is a bigger one.** `presence_current_quickens` (5
+Presence) does not open a Fear row at all — it flips `abilityFocusUnlocked` straight on, and
+once it is bought the player spends **Energy**, mid-round, to shorten an ability's own cooldown
+(see [Focus](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown)).
+That is Presence buying a *capability* rather than permission to spend Fear, and once bought it
+is the board a click away from being touched by a currency that was never supposed to touch it
+directly. The two-currency separation still holds in the sense that matters — Presence itself
+never buys a stat, a purchase always costs Energy, not Presence, at the point it actually
+shortens something — but "Presence touches the board never" is no longer literally true of the
+whole catalogue, only of the two rows that came before this one.
+
 | | Fear | Presence |
 | --- | --- | --- |
 | earned by | rounds, continuously | ascending, once per cycle |
 | spent on | the upgrade catalogue | which rows the catalogue has |
 | survives a round | yes | yes |
 | survives an ascension | **no** | yes |
-| touches the board | yes | never |
+| touches the board | yes | only via what it unlocks (Focus) |
 | held (not spent) does something | no | yes — +1% Fear a point, uncapped |
 
 ## Meta State
@@ -318,35 +329,44 @@ reads better than a run that remembers every attempt.
 
 ### The Presence catalogue
 
-First draft, and deliberately small. Both rows unlock a Fear row that already exists and is
-currently behind nothing at all.
+The first two rows unlock a Fear row that already exists and is currently behind nothing at
+all. The third unlocks a capability directly, with no Fear row behind it.
 
 | Presence id | Unlocks | Presence cost |
 | --- | --- | --- |
 | `presence_tide_returns` | `auto_start_round` in the Fear shop (500 Fear) | 2 |
 | `presence_river_knows` | `auto_buy_abilities` in the Fear shop (200 Fear) | 3 |
+| `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | 5 |
 
-A first Reclaim pays about 5, so it buys exactly both. That is deliberate: the first ascension
-should read as an unambiguous win rather than a dilemma. Dilemmas belong to the third and
-fourth rows, which are not designed yet.
+A first Reclaim pays about 5, so it buys exactly the first two — that is deliberate, and it is
+the reason `presence_current_quickens` is priced *past* that first payout rather than inside
+it: the first ascension should still read as an unambiguous win, and the third row is the first
+real dilemma the catalogue asks, not a freebie that rides along with the other two.
 
-**The Fear price is still owed, every cycle.** Unlocking *The Tide Returns* does not hand the
-player an automated round; it puts a 500 Fear row in the shop. So each cycle opens hand-played
-and the player buys their way back to idle, and 500 Fear is a real decision against the five
-tiers of `rising_dread` it would otherwise buy. **That is the trade the layer is for: play
-this cycle actively, or pay to idle it.** A later Presence row will buy that price down; there
-is none today, and the two unlocks alone are the first draft.
+**The Fear price is still owed, every cycle** — for the first two rows. Unlocking *The Tide
+Returns* does not hand the player an automated round; it puts a 500 Fear row in the shop. So
+each cycle opens hand-played and the player buys their way back to idle, and 500 Fear is a real
+decision against the five tiers of `rising_dread` it would otherwise buy. **That is the trade
+those two rows are for: play this cycle actively, or pay to idle it.** `presence_current_quickens`
+is a different shape of purchase — see [The two layers](#the-two-layers) for why, and
+[04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown)
+for what it actually costs to use once bought.
 
 ## What Is Not Yet Progression
 
 - No additional spirit unlocks.
-- No Presence rows beyond the two unlocks above — no automation discount, no cap extension,
-  no power cards. All of them are wanted; none is designed. (A Fear multiplier now exists, but
+- No Presence rows beyond the three above — no automation discount, no cap extension, no power
+  cards. All of them are wanted; none is designed. (A Fear multiplier now exists, but
   it is not a Presence-shop row: it is the passive +1%-a-point bonus unspent Presence itself
   carries — see [Presence](#presence) — and it is exactly the gap a repeatable row would fill,
   since spending is currently the only way to give that number a ceiling.)
 - No content unlocks beyond the placeholder ability-unlock row above.
-- No mid-round progression of any kind — everything in-round resets at round setup.
+- Focus (`round.abilityFocus`, gated by `presence_current_quickens`) is the one exception to
+  "everything in-round resets at round setup" — see
+  [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown).
+  It is still round-scoped, though: what it buys is gone at the next `startRound` exactly like
+  every unlock and tier Energy pays for, it is the *unlock* of the capability that is
+  permanent, not any purchase made with it.
 
 ## Current Design Constraint
 
