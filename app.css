@@ -6,6 +6,9 @@
   --ink-1: #d4cfbe;
   --accent-energy: #f2c45a;
   --accent-fear: #c26b8a;
+  /* Presence, and deliberately nowhere near the Fear rose. The two currencies are not
+     interchangeable, so their numbers must not be mistakable for each other at a glance. */
+  --accent-presence: #a68fd8;
   --accent-pressure: #e76755;
   --accent-calm: #78c9b3;
   /* Token inks, taken from the physical components: the Invaders are white plastic, the
@@ -1084,6 +1087,49 @@ button.reset {
 
 .upgrade-divider.is-sold-out::after { opacity: 0.45; }
 
+/* The same heading, made into the handle that folds the half below it. Stripped back to the
+   divider it already was - no button chrome, no box - so the list keeps its shape whether the
+   record is open or shut, and only the caret and the pointer say it can be clicked. */
+.upgrade-fold {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--panel-border);
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.upgrade-divider.is-sold-out.upgrade-fold {
+  padding: 0.85rem 0 0.1rem;
+}
+
+.upgrade-fold:hover { color: var(--ink-0); }
+.upgrade-fold:focus-visible { outline: 2px solid #8ed3e6; outline-offset: 2px; }
+
+/* A triangle pointing at what it will do: right while the half is shut, down once it is open. */
+.upgrade-fold-caret {
+  width: 0;
+  height: 0;
+  border-top: 0.3rem solid transparent;
+  border-bottom: 0.3rem solid transparent;
+  border-left: 0.36rem solid currentColor;
+  transition: transform 120ms ease;
+}
+
+.upgrade-fold[aria-expanded="true"] .upgrade-fold-caret { transform: rotate(90deg); }
+
+/* The rows behind the fold. Its own grid, because it is one item of the list's grid and would
+   otherwise stack its rows flush against each other. */
+.upgrade-fold-body {
+  display: grid;
+  gap: 0.45rem;
+}
+
+/* Needed, and not redundant: `display: grid` above outranks the browser's own rule for the
+   hidden attribute, so without this the folded half would stay on screen. */
+.upgrade-fold-body[hidden] { display: none; }
+
 /* Owned rows are kept legible - they are the record of what you bought - but drained of the
    contrast the buyable ones use to ask for attention. */
 .upgrade.is-sold-out {
@@ -1107,23 +1153,9 @@ button.reset {
   opacity: 0.85;
 }
 
-/* Not for sale yet, and not because of the price. The row stays fully readable - what is
-   behind the gate is the reason to finish the catalogue, so hiding it would hide the goal -
-   but it is drained of the warm border the affordable rows wear, and its price reads as a
-   label rather than as an offer. */
-.upgrade.is-locked {
-  border-style: dashed;
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(13, 34, 43, 0.35);
-}
-
-.upgrade-locked {
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--ink-1);
-  opacity: 0.9;
-}
+/* A row still waiting on its Presence unlock has no styling here because it has no row: the
+   shop leaves it out entirely rather than drawing a dead one (renderShop). Gone with it,
+   `.upgrade.is-locked` and `.upgrade-locked`. */
 
 .upgrade-buy {
   margin: 0;
@@ -1215,6 +1247,127 @@ button.reset {
   text-align: center;
   border-color: rgba(120, 201, 179, 0.55);
   background: linear-gradient(150deg, rgba(31, 84, 80, 0.95), rgba(23, 55, 60, 0.95));
+}
+
+/* ------------------------------------------------------------------ *
+ * The ascension panel                                                  *
+ *                                                                      *
+ * Everything here is in the Presence violet rather than the shop's rose. The two currencies
+ * are not interchangeable, so the two catalogues must not be mistakable for one another at a
+ * glance - which is the whole reason Presence has a hue of its own.
+ * ------------------------------------------------------------------ */
+
+.ascension-purse {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgba(166, 143, 216, 0.4);
+  border-radius: 10px;
+  background: rgba(166, 143, 216, 0.12);
+  font-size: 0.78rem;
+  color: var(--ink-1);
+}
+
+.ascension-purse strong {
+  font-family: "Cinzel", "Times New Roman", serif;
+  font-size: 1.35rem;
+  color: var(--accent-presence);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+/* The payout is the whole of the decision, so it gets the panel's largest number - larger than
+   the purse above it, which is only the standing balance. */
+.ascension-payout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.6rem 0 0.15rem;
+  font-size: 0.78rem;
+  color: var(--ink-1);
+}
+
+.ascension-payout strong {
+  font-family: "Cinzel", "Times New Roman", serif;
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--accent-presence);
+  font-variant-numeric: tabular-nums;
+}
+
+/* How far the next Presence still is. It sits directly under the payout, tight against it,
+   because it is the same figure read forward - the gap, not a second reading of the purse.
+   Presence-tinted rather than plain hint grey, so it is legible as belonging to the number
+   above it, but small enough that it never competes with it. */
+.ascension-next {
+  display: block;
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  color: rgba(166, 143, 216, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What will be lost, and it wears the page's warning colour because it is the only text on the
+   page describing something that cannot be undone. Above the button, never below it. */
+.ascension-loss {
+  display: block;
+  margin: 0.5rem 0 0.6rem;
+  padding: 0.4rem 0.55rem;
+  border-left: 2px solid rgba(231, 103, 85, 0.6);
+  background: rgba(231, 103, 85, 0.08);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--ink-1);
+}
+
+.ascend-btn {
+  width: 100%;
+  border-color: rgba(166, 143, 216, 0.55);
+  background: linear-gradient(150deg, rgba(64, 51, 104, 0.95), rgba(38, 33, 62, 0.95));
+}
+
+/* Armed: one click in, one click from committing. It changes colour rather than only text,
+   because the text is the same length in both states and a word alone is easy to click past. */
+.ascend-btn.is-armed {
+  border-color: rgba(231, 103, 85, 0.85);
+  background: linear-gradient(150deg, rgba(120, 45, 40, 0.95), rgba(74, 32, 34, 0.95));
+  color: var(--ink-0);
+}
+
+.ascension-shop {
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--panel-border);
+}
+
+.ascension-shop h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  opacity: 0.75;
+}
+
+/* A Presence row reads like a shop row on purpose - same shape, same weights - and differs
+   only in hue. It is the same kind of decision, in the other currency. */
+.upgrade.is-presence.is-affordable {
+  border-color: rgba(166, 143, 216, 0.5);
+}
+
+.upgrade.is-presence .upgrade-buy {
+  border-color: rgba(166, 143, 216, 0.45);
+  color: var(--accent-presence);
+}
+
+.upgrade.is-presence .upgrade-buy:not(:disabled):hover {
+  border-color: rgba(166, 143, 216, 0.85);
+  background: rgba(166, 143, 216, 0.18);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1840,6 +1993,9 @@ button.reset {
      motion. Only the knob's slide goes. */
   .auto-switch,
   .auto-switch::after,
+  /* The caret still turns to say which way the fold is set - which way it points is the cue,
+     and a state is not motion. Only the sweep between the two states goes. */
+  .upgrade-fold-caret,
   .ability-sweep { transition: none; animation: none; }
 
   /* The payout still has to be readable without the pop, so it holds at full opacity for as
@@ -1952,6 +2108,15 @@ footer {
 .redeem-input:focus-visible {
   outline: 2px solid rgba(142, 211, 230, 0.6);
   outline-offset: 1px;
+}
+
+/* The cycle's Fear ledger, in the shop's rose because Fear is what it counts. Tabular figures
+   so the numbers do not jitter sideways while a round pays out. */
+.playtest-tally {
+  font-size: 0.72rem;
+  color: var(--accent-fear);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* One line that says what the last attempt did. It holds its height whether or not it has

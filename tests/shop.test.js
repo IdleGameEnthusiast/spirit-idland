@@ -1,7 +1,7 @@
 /* Fear and shop checks - docs/spec/08-acceptance-tests.md#fear-and-shop-checks */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities, grantUpgrade } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities, grantUpgrade, grantPresence } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   test("shop: Fear earned mid-round is still there when the round ends", () => {
     const ctx = newGame();
@@ -427,69 +427,57 @@
   });
 
   /* ------------------------------------------------------------------ *
-   * The gate on the last two purchases                                   *
+   * The two rows Fear alone cannot reach                                 *
+   *                                                                      *
+   * They used to be behind a completion gate - refused until every other row in the catalogue
+   * was maxed. They are behind Presence now, which is a question asked of a different
+   * currency, and the checks below are the ones that break if the two ever get confused.
    * ------------------------------------------------------------------ */
 
-  // Buys out the whole catalogue except the two behind the gate. Fear is granted rather than
-  // played for: what these checks are about is the gate, not the grind up to it.
-  //
-  // Skips every row the gate does not count, for the same reason gatedUpgradesUnlocked does:
-  // a soft-capped ladder has no top tier to reach, so "buy it out" is not a thing that can
-  // happen to one, and the pool's top is 10000 Fear of sink rather than a rung. Without the
-  // skip this loop just climbs the cost curve until 1e9 Fear runs out and then reports a
-  // failed purchase as if the shop were broken.
-  function buyEverythingButTheGated(state) {
-    state.meta.fear = 1e9;
-    for (const id of engine.UPGRADE_IDS) {
-      if (!engine.upgradeRequiredForGate(id)) continue;
-      while (engine.upgradeTier(state, id) < engine.upgradeMaxTier(id)) {
-        if (!engine.purchaseUpgrade(state, id)) throw new Error(`could not buy ${id}`);
-      }
-    }
-    return state;
-  }
+  const PRESENCE_LOCKED = [
+    ["auto_start_round", "presence_tide_returns"],
+    ["auto_buy_abilities", "presence_river_knows"]
+  ];
 
-  test("shop: the last two purchases are sealed while anything else is still for sale", () => {
+  test("shop: the two automations are sealed until Presence opens them", () => {
     const { state } = newGame();
     state.meta.fear = 1e9;
 
-    for (const id of engine.GATED_UPGRADE_IDS) {
-      assert(engine.upgradeIsLocked(state, id), `${id} is locked on a fresh save`);
-      assert(!engine.purchaseUpgrade(state, id), "and all the Fear in the world does not buy it");
-      assertEqual(engine.upgradeTier(state, id), 0, "still unowned");
+    for (const [upgradeId] of PRESENCE_LOCKED) {
+      assert(engine.upgradeNeedsPresence(state, upgradeId), `${upgradeId} is locked on a fresh save`);
+      assert(!engine.purchaseUpgrade(state, upgradeId), "and all the Fear in the world does not buy it");
+      assertEqual(engine.upgradeTier(state, upgradeId), 0, "still unowned");
     }
 
-    assert(!engine.upgradeIsLocked(state, "auto_boon"), "nothing else in the shop is gated");
+    assert(!engine.upgradeNeedsPresence(state, "auto_boon"), "nothing else in the shop is locked");
     assert(engine.purchaseUpgrade(state, "auto_boon"), "and the rest sells as it always did");
   });
 
-  test("shop: one unbought ladder rung is enough to keep the gate shut", () => {
-    const state = buyEverythingButTheGated(newGame().state);
-    assert(engine.gatedUpgradesUnlocked(state), "the catalogue is finished");
+  // The regression the deleted gate would have caused if it had been left in: finishing the
+  // catalogue used to be the thing that opened these two, and now it means nothing at all.
+  test("shop: maxing the whole catalogue does not open them", () => {
+    const { state } = newGame();
+    state.meta.fear = 1e9;
 
-    // One rung handed back. The gate reads what is owned, so it shuts again.
-    state.upgrades.purchased.blight_resilience = engine.upgradeMaxTier("blight_resilience") - 1;
-    assert(!engine.gatedUpgradesUnlocked(state), "a single missing tier closes it");
-    assert(!engine.purchaseUpgrade(state, "auto_start_round"), "and the purchase is refused again");
-  });
+    for (const id of engine.UPGRADE_IDS) {
+      if (engine.upgradePresenceUnlock(id)) continue;
+      state.upgrades.purchased[id] = engine.upgradeMaxTier(id);
+    }
 
-  test("shop: finishing the catalogue opens both of them", () => {
-    const state = buyEverythingButTheGated(newGame().state);
-
-    for (const id of engine.GATED_UPGRADE_IDS) {
-      assert(!engine.upgradeIsLocked(state, id), `${id} is for sale now`);
-      assert(engine.purchaseUpgrade(state, id), "and it sells");
-      assertEqual(engine.upgradeTier(state, id), 1, "owned");
+    for (const [upgradeId] of PRESENCE_LOCKED) {
+      assert(engine.upgradeNeedsPresence(state, upgradeId), `${upgradeId} is still Presence's to open`);
     }
   });
 
-  test("shop: the gated pair does not gate itself", () => {
-    // The rule reads "everything else", and the pair is excluded from it on purpose: read the
-    // other way each would be waiting on the other and neither would ever open.
-    const state = buyEverythingButTheGated(newGame().state);
+  test("shop: the two locks are independent of each other", () => {
+    const { state } = newGame();
+    state.meta.fear = 1e9;
+    grantPresence(state, "presence_tide_returns");
 
-    assert(engine.purchaseUpgrade(state, "auto_buy_abilities"), "one of the pair lands");
-    assert(!engine.upgradeIsLocked(state, "auto_start_round"), "the other did not lock behind it");
+    assert(!engine.upgradeNeedsPresence(state, "auto_start_round"), "the one it opened is open");
+    assert(engine.purchaseUpgrade(state, "auto_start_round"), "and it sells");
+    assert(engine.upgradeNeedsPresence(state, "auto_buy_abilities"), "the other is untouched");
+    assert(!engine.purchaseUpgrade(state, "auto_buy_abilities"), "and still refused");
   });
 
   test("shop: a locked row is refused for being locked, not for being unaffordable", () => {

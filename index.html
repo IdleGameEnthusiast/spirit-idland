@@ -169,7 +169,11 @@
           <div class="board-hud-tile hud-round">
             <h3 id="roundLabel">Welle</h3>
             <p id="roundValue" class="value">1</p>
+            <!-- Two high scores, and the cycle one only appears once it can differ from the
+                 all-time one. Before the first ascension they are always equal, and a second
+                 identical number on the strip would be noise. -->
             <small><span id="bestWaveLabel">Hoechste Welle</span>: <span id="bestWaveValue">0</span></small>
+            <small id="cycleBestWaveRow" hidden><span id="cycleBestWaveLabel">Dieser Zyklus</span>: <span id="cycleBestWaveValue">0</span></small>
           </div>
         </div>
       </div>
@@ -255,6 +259,45 @@
         <div id="upgradeList" class="upgrade-list"></div>
       </section>
 
+      <!-- Below the shop, not above it: the shop is what the player does every round and this
+           is what they do once per cycle, so the rarer control goes further down. Absent
+           rather than dimmed until a Reclaim would pay its five Presence - every other locked
+           thing on the page is something that can be worked toward buying, and this one is not
+           for sale at any price, so a panel sitting there dead through a whole first cycle
+           would teach the wrong lesson about what a lock means here. From the first Reclaim on
+           it stays drawn even while the next payout is short, because it is where the Presence
+           already earned is held. -->
+      <section class="panel ascension" id="ascensionPanel" hidden>
+        <h2 id="ascensionTitle">Aszension</h2>
+
+        <div class="ascension-purse">
+          <span id="ascensionPresenceLabel">Praesenz</span>
+          <strong id="ascensionPresenceValue">0</strong>
+        </div>
+
+        <!-- The payout is the whole of the decision, so it is the panel's centre of gravity
+             and is patched every frame rather than left to the panel's rebuild. -->
+        <p class="ascension-payout">
+          <span id="ascensionPayoutLabel">Zurueckziehen bringt</span>
+          <strong id="ascensionPayoutValue">0</strong>
+        </p>
+        <!-- How far the next Presence still is. The payout is a root, so the figure above
+             cannot say that on its own. -->
+        <small id="ascensionNextPresence" class="ascension-next"></small>
+        <small id="ascensionGenerated" class="hint"></small>
+
+        <!-- What will be lost, stated before the button rather than after it. -->
+        <small id="ascensionLoss" class="ascension-loss"></small>
+
+        <button type="button" id="ascendBtn" class="primary-btn ascend-btn">Zurueckziehen</button>
+        <small id="ascensionHint" class="hint"></small>
+
+        <div class="ascension-shop">
+          <h3 id="ascensionShopLabel">Was Praesenz freischaltet</h3>
+          <div id="presenceList" class="upgrade-list"></div>
+        </div>
+      </section>
+
       <section class="panel log">
         <h2 id="logTitle">Spielprotokoll</h2>
         <ol id="eventLog"></ol>
@@ -290,6 +333,10 @@
       <input id="redeemInput" class="redeem-input" type="text" autocomplete="off" spellcheck="false" placeholder="Code eingeben">
       <button type="submit" id="redeemBtn" class="small-btn">Einloesen</button>
       <button type="button" id="playtestHideBtn" class="small-btn playtest-tool" hidden>Playtest-Werkzeuge ausblenden</button>
+      <!-- The cycle's Fear ledger. Unlike the grants it changes no number, so it has no purse
+           to live inside: it spans two of them - what the rounds banked and what the shop took
+           - and belongs with the tools rather than in either. -->
+      <span id="playtestFearTally" class="playtest-tally playtest-tool" hidden></span>
       <span id="redeemStatus" class="redeem-status" role="status"></span>
     </form>
   </footer>

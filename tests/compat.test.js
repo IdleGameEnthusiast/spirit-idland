@@ -63,6 +63,40 @@
     assertEqual(engine.activeUpgradeTier(state, "dahan_remember"), 2, "the round's snapshot agrees");
   });
 
+  /* Grandfathering, against a save actually captured from the build that predates ascension.
+   *
+   * This fixture owns `auto_start_round`, bought for 500 Fear under the old completion gate.
+   * The change put that row behind a currency the save has none of, so without the grant on
+   * load the player would open the game to find a purchase they had made taken away and a
+   * price in Presence they cannot pay. The grant is what makes the change additive rather than
+   * a quiet confiscation. */
+  test("compat: an older save's automations bring their Presence unlocks with them", () => {
+    pinClock();
+    const { state } = engine.migrateSave(oldSave());
+
+    assert(
+      engine.presenceUpgradeOwned(state, "presence_tide_returns"),
+      "the Presence row that now opens auto_start_round is granted"
+    );
+    assert(
+      !engine.upgradeNeedsPresence(state, "auto_start_round"),
+      "so the row it owns is not locked out from under it"
+    );
+    assertEqual(state.meta.presence, 0, "and the grant is the row itself, never spendable Presence");
+  });
+
+  // The layer is additive: a save written before it existed has ascended zero times and holds
+  // no Presence, and nothing about it may be inferred from what the save did have.
+  test("compat: an older save starts the ascension layer at zero", () => {
+    pinClock();
+    const { state } = engine.migrateSave(oldSave());
+
+    assertEqual(state.meta.presence, 0, "no Presence");
+    assertEqual(state.meta.ascensionCount, 0, "no ascensions");
+    assertEqual(state.meta.cycleBestWave, 0, "and no cycle best, despite a best wave of 11");
+    assertEqual(state.meta.bestWaveReached, 11, "which the all-time record keeps");
+  });
+
   test("compat: an older save keeps the preferences it carries", () => {
     pinClock();
     const { state } = engine.migrateSave(oldSave());

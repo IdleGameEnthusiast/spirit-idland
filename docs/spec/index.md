@@ -113,14 +113,22 @@ What is left:
 
 - The exact ability kit's effects and numbers (cooldowns, damage, reinforcement amounts) —
   implemented as specified, but never balanced.
-- The permanent upgrade shop's cost curve, and whether the three Fear ladders
-  (`rising_dread`, `mounting_terror`, `high_water_mark`) should stay soft-capped or cap at
-  tier 10. Shipped uncapped **to be playtested**, not as a settled decision — see
-  [04-economy-formulas.md](./04-economy-formulas.md#soft-caps).
-- **The shop still terminates**, and an ascension layer is the intended answer. Not designed,
-  not implemented. See [05-progression.md](./05-progression.md#the-shop-still-terminates) —
-  this is the largest open question in the design, not a balance detail. `dahan_remember`
-  (10000 Fear of linear sink) buys time against it and does not answer it: the pool fills.
+- The permanent upgrade shop's cost curve. The three Fear ladders (`rising_dread`,
+  `mounting_terror`, `high_water_mark`) are capped at tier 10, which closes the older open
+  question about whether they should be — see
+  [04-economy-formulas.md](./04-economy-formulas.md#the-ladders-are-capped-at-ten).
+- **`PRESENCE_FEAR_DIVISOR` is the least-measured number in the game**, and the pacing of the
+  whole ascension layer rides on it. 100 is a guess anchored to "a first Reclaim should pay
+  about 5"; no cycle has been played to read the real figure. The measurement is one line in
+  the playtest tally — see
+  [04-economy-formulas.md](./04-economy-formulas.md#both-constants-are-placeholders-and-one-of-them-badly-so).
+- **Whether shallow rounds out-earn deep ones per real minute.** The payout has no depth term,
+  on the argument that Fear income already grows steeply with depth. If a player with
+  `auto_start_round` earns faster farming wave 1–10 loops than by pushing, the fix is a wave
+  floor on what banks toward the payout, not a depth term.
+- **The Presence catalogue is two rows.** No Fear multiplier, no automation discount, no cap
+  extension, no power cards — all wanted, none designed. See
+  [05-progression.md](./05-progression.md#the-presence-catalogue).
 - **Whether 10000 Fear is the right price for a full Dahan Remember**, and whether 100% haste
   is the right cap now that it is the only cooldown the shop touches. Both are first numbers,
   shipped to be played against — see

@@ -43,55 +43,48 @@
     }
   });
 
-  /* ---------- Soft caps and the gate ---------- */
+  /* ---------- The three ladders, and their cap ---------- */
 
-  const SOFT_CAPPED = ["rising_dread", "mounting_terror", "high_water_mark"];
+  const FEAR_LADDERS = ["rising_dread", "mounting_terror", "high_water_mark"];
 
-  test("fear: the three ladders are soft-capped, so they never max out", () => {
-    for (const id of SOFT_CAPPED) {
-      assert(engine.upgradeIsSoftCapped(id), `${id} should be soft-capped`);
-      assertEqual(engine.upgradeMaxTier(id), Infinity, `${id} should have no top tier`);
+  // They were soft-capped - no maxTier at all - for as long as the Fear shop was the game's
+  // only progression axis and had to absorb income forever. Ascension is that axis now, so all
+  // three are finishable, and the matched set is the point: one number, three rows.
+  test("fear: the three ladders stop at ten tiers", () => {
+    for (const id of FEAR_LADDERS) {
+      assertEqual(engine.upgradeMaxTier(id), 10, `${id} should stop at ten`);
+      assertEqual(engine.upgradeMaxTier(id), engine.FEAR_LADDER_MAX_TIER, `${id} reads the shared constant`);
     }
   });
 
-  // The regression the flag exists for. An uncapped repeatable can never satisfy
-  // `tier >= maxTier`, so a gate that asked about every row would stay shut forever and the
-  // last two upgrades in the game would be permanently unbuyable with no way to find out why.
-  test("fear: a soft-capped ladder does not hold the gate shut", () => {
-    const { state } = newGame();
-
+  // The structural claim the cap buys, and the one worth guarding: every row in the catalogue
+  // now has a top, so every row can reach the shop's sold-out half. A row with no maxTier would
+  // sit in the buyable list showing a price forever.
+  test("fear: every row in the catalogue is finishable", () => {
     for (const id of engine.UPGRADE_IDS) {
-      if (!engine.upgradeRequiredForGate(id)) continue;
-      grantUpgrade(state, id, engine.upgradeMaxTier(id));
-    }
-
-    assert(
-      engine.gatedUpgradesUnlocked(state),
-      "finishing every finishable row must open the gate, soft-capped ladders at tier 0 or not"
-    );
-    for (const id of engine.GATED_UPGRADE_IDS) {
-      assert(!engine.upgradeIsLocked(state, id), `${id} should be buyable now`);
+      assert(Number.isFinite(engine.upgradeMaxTier(id)), `${id} has no top tier`);
     }
   });
 
-  test("fear: the gate is still shut while a finishable ladder is unfinished", () => {
+  test("fear: the eleventh tier of a ladder is refused", () => {
     const { state } = newGame();
-    for (const id of engine.UPGRADE_IDS) {
-      if (!engine.upgradeRequiredForGate(id)) continue;
-      grantUpgrade(state, id, engine.upgradeMaxTier(id));
-    }
-    grantUpgrade(state, "dahan_reinforcement", engine.upgradeMaxTier("dahan_reinforcement") - 1);
-
-    assert(!engine.gatedUpgradesUnlocked(state), "one unfinished ladder is enough to hold it");
-  });
-
-  test("fear: a soft-capped ladder can always be bought one more time", () => {
-    const { state } = newGame();
-    grantUpgrade(state, "rising_dread", 40);
+    grantUpgrade(state, "rising_dread", 10);
     state.meta.fear = Number.MAX_SAFE_INTEGER;
 
-    assert(engine.purchaseUpgrade(state, "rising_dread"), "tier 41 must still be for sale");
-    assertEqual(engine.upgradeTier(state, "rising_dread"), 41, "and it lands");
+    assert(!engine.purchaseUpgrade(state, "rising_dread"), "tier 11 is past the top");
+    assertEqual(engine.upgradeTier(state, "rising_dread"), 10, "and the tier does not move");
+  });
+
+  // Free by construction rather than by migration code: normalizeState already clamps every
+  // tier to upgradeMaxTier, so shortening a ladder cannot strand a save above its end.
+  test("fear: a save above the new cap clamps down to it", () => {
+    const loaded = engine.normalizeState({
+      schemaVersion: engine.VERSION,
+      upgrades: { purchased: { rising_dread: 14, mounting_terror: 40 } }
+    });
+
+    assertEqual(loaded.upgrades.purchased.rising_dread, 10, "clamped, not stranded");
+    assertEqual(loaded.upgrades.purchased.mounting_terror, 10, "however far above it was");
   });
 
   /* ---------- rising_dread ---------- */

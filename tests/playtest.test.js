@@ -5,7 +5,7 @@
  * look, and that a state which has never seen the code cannot be handed one of their effects. */
 
 (function () {
-  const { engine, test, assert, assertEqual, newGame, advance } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, newGame, advance, runUntilRoundEnds } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   /* --- Redeeming ------------------------------------------------------ */
 
@@ -98,6 +98,80 @@
     assertEqual(state.round.fearEarned, 0, "not into what the round has earned");
   });
 
+  /* --- The cycle's Fear ledger ----------------------------------------- */
+
+  test("cycle: a fresh game has generated, granted and spent nothing", () => {
+    const { state } = newGame();
+    const totals = engine.cycleFearTotals(state);
+    assertEqual(totals.generated, 0, "nothing generated");
+    assertEqual(totals.granted, 0, "nothing granted");
+    assertEqual(totals.spent, 0, "nothing spent");
+  });
+
+  test("cycle: what a round banks is what the ledger counts as generated", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+
+    runUntilRoundEnds(ctx);
+    const first = Math.floor(state.round.fearEarned);
+    assert(first > 0, "the round should have earned something");
+    assertEqual(engine.cycleFearTotals(state).generated, first, "one round's worth");
+
+    engine.startNextRound(state);
+    runUntilRoundEnds(ctx);
+    assertEqual(
+      engine.cycleFearTotals(state).generated,
+      first + Math.floor(state.round.fearEarned),
+      "and the second round adds to it rather than replacing it"
+    );
+  });
+
+  test("cycle: the ledger does not reset between rounds, and spending does not lower it", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    runUntilRoundEnds(ctx);
+
+    const generated = engine.cycleFearTotals(state).generated;
+    state.meta.fear = 500;
+    const cost = engine.upgradeCost(state, "dahan_reinforcement");
+    assert(engine.purchaseUpgrade(state, "dahan_reinforcement"), "bought");
+
+    const totals = engine.cycleFearTotals(state);
+    assertEqual(totals.spent, cost, "the shop's price is what was spent");
+    assertEqual(totals.generated, generated, "and generated is a total, not a balance");
+  });
+
+  test("cycle: a refused purchase spends nothing", () => {
+    const { state } = newGame();
+    assertEqual(engine.purchaseUpgrade(state, "dahan_reinforcement"), false, "no Fear to buy with");
+    assertEqual(engine.cycleFearTotals(state).spent, 0, "so nothing is on the ledger");
+  });
+
+  test("cycle: a playtest grant is counted apart from what the game generated", () => {
+    const { state } = newGame();
+    engine.redeemCode(state, "playtester");
+    engine.grantPlaytestFear(state);
+
+    const totals = engine.cycleFearTotals(state);
+    assertEqual(totals.granted, engine.PLAYTEST_GRANT, "granted");
+    assertEqual(totals.generated, 0, "and never counted as income");
+    assertEqual(totals.banked, engine.PLAYTEST_GRANT, "but spendable all the same");
+  });
+
+  test("cycle: generated plus granted, less spent, is the bank", () => {
+    const ctx = newGame();
+    const { state } = ctx;
+    engine.redeemCode(state, "playtester");
+
+    runUntilRoundEnds(ctx);
+    engine.grantPlaytestFear(state);
+    engine.purchaseUpgrade(state, "dahan_reinforcement");
+
+    const totals = engine.cycleFearTotals(state);
+    assert(totals.spent > 0, "something was bought");
+    assertEqual(totals.generated + totals.granted - totals.spent, totals.banked, "the ledger balances");
+  });
+
   /* --- Through a save ------------------------------------------------- */
 
   test("playtest: the code and its speed survive a save together", () => {
@@ -113,6 +187,38 @@
   test("playtest: a save at 8x without the code loads at the shipped speed", () => {
     const loaded = engine.normalizeState({ ui: { gameSpeed: 8 } });
     assertEqual(loaded.ui.gameSpeed, engine.DEFAULT_GAME_SPEED, "no button, no speed");
+  });
+
+  test("cycle: the ledger round-trips a save", () => {
+    const { state } = newGame();
+    state.meta.cycleFearGenerated = 400;
+    state.meta.cycleFearGranted = 100;
+    state.meta.cycleFearSpent = 250;
+    state.meta.fear = 250;
+
+    const loaded = engine.normalizeState(JSON.parse(JSON.stringify(state)));
+    const totals = engine.cycleFearTotals(loaded);
+    assertEqual(totals.generated, 400, "generated");
+    assertEqual(totals.granted, 100, "granted");
+    assertEqual(totals.spent, 250, "spent");
+  });
+
+  test("cycle: a save from before the ledger reads its bank as generated", () => {
+    const loaded = engine.normalizeState({ meta: { fear: 320 } });
+    const totals = engine.cycleFearTotals(loaded);
+    assertEqual(totals.generated, 320, "the bank was earned somehow");
+    assertEqual(totals.granted, 0, "nothing granted");
+    assertEqual(totals.spent, 0, "nothing spent, so the ledger still balances");
+  });
+
+  test("cycle: nonsense on the ledger loads as whole, non-negative numbers", () => {
+    const loaded = engine.normalizeState({
+      meta: { fear: 10, cycleFearGenerated: 12.7, cycleFearGranted: -5, cycleFearSpent: "x" }
+    });
+    const totals = engine.cycleFearTotals(loaded);
+    assertEqual(totals.generated, 12, "floored, and present means present even when fractional");
+    assertEqual(totals.granted, 0, "clamped");
+    assertEqual(totals.spent, 0, "and unreadable means zero");
   });
 
   test("playtest: a migration reset carries the code, and the speed with it", () => {

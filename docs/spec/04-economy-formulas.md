@@ -28,6 +28,8 @@ DAHAN_PER_ROUND_START_BASE = 6
 DAHAN_MAX_SPREAD = 2
 DEFEAT_FX_MS = 1200
 MAX_TICK_SECONDS = 5 * TIME_SCALE  = 10
+ASCENSION_UNLOCK_PRESENCE = 5          (what a Reclaim must pay before it is offered)
+PRESENCE_FEAR_DIVISOR = 100            (placeholder, and the least measured number here)
 ```
 
 ## Beats and TIME_SCALE
@@ -307,13 +309,102 @@ including `round.fearEarned`, which is shown as the whole Fear it would bank.
 
 ### The two pools
 
-Fear accumulates in `meta.fear`, which persists across rounds; nothing in this design resets
-it. `round.fearEarned` tracks the current round only and banks at round end.
+Fear accumulates in `meta.fear`, which persists across rounds. One thing resets it, and only
+one: ascension. `round.fearEarned` tracks the current round only and banks at round end.
 
 All three ladders are read through `activeUpgradeTier`, not `upgradeTier` — they are read
 every time Fear is earned, which makes them exactly the class the round snapshot exists for.
 A tier bought mid-round is owned immediately and pays nothing until the next round starts.
 See [02-core-loop.md](./02-core-loop.md#between-rounds).
+
+## The Ascension Payout
+
+```txt
+presence = floor( sqrt( meta.cycleFearGenerated / PRESENCE_FEAR_DIVISOR ) )
+
+PRESENCE_FEAR_DIVISOR = 100
+```
+
+| cycle Fear generated | 2,500 | 10,000 | 40,000 | 250,000 | 1,000,000 |
+| --- | --- | --- | --- | --- | --- |
+| Presence paid | 5 | 10 | 20 | 50 | 100 |
+
+### The gap to the next Presence
+
+```txt
+gap = (presence + 1)^2 * PRESENCE_FEAR_DIVISOR - meta.cycleFearGenerated
+```
+
+`fearToNextPresence` inverts the payout exactly: the division comes before the root and the
+floor only ever rounds down, so `(presence + 1)^2 * PRESENCE_FEAR_DIVISOR` is the smallest
+generated total that pays one more. Generating the gap raises the payout by one; one Fear less
+does not.
+
+It exists because the payout figure alone cannot say how close the next rung is, and under the
+root the rungs get further apart the whole way up: the first Presence wants 100 Fear, the
+sixth 1,100, the twenty-first 4,100. That is the number the "should I Reclaim now?" decision
+actually turns on, so the ascension panel prints it under the payout
+([06-ui-contract.md](./06-ui-contract.md#required-screen-sections)). Like the payout it reads
+`cycleFearGenerated`, so a round still in progress counts for neither.
+
+### Why a square root
+
+The root is the whole mechanism, and a linear payout would break the layer outright. At
+`fear / 100` a cycle twice as long pays exactly twice as much, so waiting is never worse than
+Reclaiming and the answer to "should I ascend now?" is *no, later*, forever — which is a
+decision the player is asked to make and can only get wrong.
+
+Under the root, doubling a cycle's Fear pays 1.41×. **Two short cycles beat one long one**,
+which is what makes ascending early a real strategy rather than a mistake, and what stops the
+optimal line from being a single cycle that never ends.
+
+It also absorbs the compounding. The payout reads *banked* Fear, which the three Fear ladders
+multiply — a maxed `rising_dread` and `mounting_terror` are +100% each on their half of the
+income, and `high_water_mark` is quadratic in depth on top. A linear payout on top of that
+would be quadratic-on-quadratic. The root pulls the whole thing back to something a fixed
+Presence price list can stand in front of.
+
+### What the input is, exactly
+
+`meta.cycleFearGenerated` — the ledger described in
+[03-state-contract.md](./03-state-contract.md), incremented in `endRound` by the same floored
+figure that lands in `meta.fear`. Three things follow, all of them properties the
+implementation must not lose:
+
+- **Spending does not reduce it.** It counts income, not balance, so a player who spent
+  everything and one who spent nothing get the same payout. There is no hoarding incentive,
+  and the shop and the ascension panel never want opposite things from the player.
+- **Granted Fear is not in it.** The playtest grant increments `cycleFearGranted` instead. The
+  tools must not be a way of progressing, and keeping the two apart is what guarantees it —
+  see [06-ui-contract.md](./06-ui-contract.md#playtest-tools).
+- **A round in progress is not in it.** Fear enters the ledger at the bank, and ascension is
+  offered only between rounds, so the question of a part-finished round never arises.
+
+### No depth term, and the measurement that would change that
+
+There is no wave term in the payout. Depth is already priced in: kill Fear rides the invader
+damage ladder, and `high_water_mark` pays `tier * m(m+1)/2` over a run to wave `10m`, so a
+deep cycle generates far more Fear than a shallow one without anyone having to say so twice.
+Depth does not enter the design a second time: the unlock is priced in Presence, not waves, so
+the only thing the layer ever asks of the player is the payout itself.
+
+The risk that argument carries: if Fear *per real minute* is higher at wave 5 than at wave 50,
+a player with `auto_start_round` maximises Presence by farming short rounds and never pushing.
+Nobody has measured it. If it turns out that way the fix is to count only Fear banked past
+some wave floor — not to add a depth multiplier back, which would pay for depth twice.
+
+### One constant is a placeholder, and the other is derived from it
+
+`ASCENSION_UNLOCK_PRESENCE = 5` is the figure `PRESENCE_FEAR_DIVISOR` was anchored to, used as
+the gate: Reclaiming is offered from the moment it would pay what a first Reclaim was always
+meant to pay. In generated Fear that is `5^2 * 100 = 2500`, but the constant is written in
+Presence on purpose — retuning the divisor moves the Fear cost of the gate and leaves what the
+player is promised alone.
+
+`PRESENCE_FEAR_DIVISOR = 100` is a **guess**, anchored only to "a first Reclaim should pay
+about 5". The pacing of the entire layer rides on it and no cycle has been played to read the
+real figure. The measurement is one line in the playtest tally: play a cycle to the point where
+a Reclaim feels earned, read `cycleFearGenerated`, and the divisor is that number over 25.
 
 ## Energy Formula
 
@@ -575,11 +666,23 @@ cost(nextTier) = round(baseCost * growth ^ tiersAlreadyOwned)     growth = 1.6 u
 dahan_reinforcement  baseCost 10   10, 16, 26, 41, 66, ...    (max tier 8)
 blight_resilience    baseCost 3     3,  5,  8, 12, 20         (max tier 5)
 headwaters           baseCost 8     8, 13, 20, 33, 52, ...    (max tier 9)
-rising_dread         baseCost 6     6, 10, 15, 25, 39, ...    (soft-capped)
-mounting_terror      baseCost 6     6, 10, 15, 25, 39, ...    (soft-capped)
-high_water_mark      baseCost 12   12, 19, 31, 49, 79, ...    (soft-capped)
+rising_dread         baseCost 6     6, 10, 15, 25, 39, ...    (max tier 10, 1089 total)
+mounting_terror      baseCost 6     6, 10, 15, 25, 39, ...    (max tier 10, 1089 total)
+high_water_mark      baseCost 12   12, 19, 31, 49, 79, ...    (max tier 10, 2179 total)
 dahan_remember       baseCost 1     1,  1,  1,  1,  1, ...    (growth 1, max tier 10000)
+auto_boon            baseCost 25   one-off
+auto_innate          baseCost 100  one-off
+auto_bounty          baseCost 200  one-off
+auto_flash_floods    baseCost 300  one-off
+auto_wash_away       baseCost 400  one-off
+auto_buy_abilities   baseCost 200  one-off, Presence-locked
+auto_start_round     baseCost 500  one-off, Presence-locked
 ```
+
+A cycle's whole catalogue, pool aside, is **7,031 Fear**: 699 + 47 + 903 for the three capped
+ladders, 1089 + 1089 + 2179 for the Fear ladders, and 1,025 + 700 for the seven automations.
+That figure is worth knowing because it is what a cycle is measured against — and because
+every Fear purchase in it is given back at the next ascension.
 
 Buying more than one rung at a time goes through `upgradeCostFor(state, id, count)`, which
 sums the individual rounded prices rather than rounding a sum: what a bulk button spends must
@@ -624,22 +727,29 @@ none of the unlock prices, so it is worth about three Boon ticks off the opening
 entry fee on a ladder whose top is very strong.
 
 The ceiling is exactly `5 + 10 + 20`, the whole unlock kit. A tier 9 round paired with
-`auto_buy_abilities` opens with the entire kit bought and no Energy spare. That is why this
-ladder is capped where the three Fear ladders are not: what it buys genuinely runs out, and
-past 35 it would only be pre-banking toward the Innate's 50.
+`auto_buy_abilities` opens with the entire kit bought and no Energy spare. Every other capped
+ladder stops at a round number; this one stops where what it buys runs out, and past 35 it
+would only be pre-banking toward the Innate's 50.
 
-Cumulative cost is **903 Fear**, the dearest row in the catalogue — above `auto_start_round`
-(500). It is also the only upgrade whose worth *shrinks* with depth, the exact inverse of
-`high_water_mark`: a run to wave 100 barely notices its first thirty seconds. This one pays
-for playing; the Mark pays for pushing. Because it is finishable it counts toward the gate
-below, so the catalogue's last two purchases now sit 903 Fear further out.
+Cumulative cost is **903 Fear**, the dearest single row in the catalogue — above
+`auto_start_round` (500). It is also the only upgrade whose worth *shrinks* with depth, the
+exact inverse of `high_water_mark`: a run to wave 100 barely notices its first thirty seconds.
+This one pays for playing; the Mark pays for pushing.
 
-### Soft caps
+### The ladders are capped at ten
 
-A **soft-capped** ladder carries no `maxTier`, so `upgradeMaxTier` reports `Infinity` and it
-is never "maxed" — `upgradeIsSoftCapped` derives the fact from the record rather than the
-record declaring it twice. Nothing stops it but the curve — and the curve is
-enough. Each tier costs 60% more than the one under it while paying the same flat +10%, so the
+`rising_dread`, `mounting_terror` and `high_water_mark` each stop at `maxTier: 10` — ten tiers,
++10% a tier, +100% at the top. One matched set, one number, three rows.
+
+They were **soft-capped** before: no `maxTier` at all, so `upgradeMaxTier` reported `Infinity`
+and they were never "maxed". The reason was structural rather than numeric — the Fear shop was
+the game's only progression axis, so it had to keep absorbing income forever or the game ran
+out of progression (see
+[05-progression.md](./05-progression.md#the-shop-no-longer-terminates)). Ascension is that
+axis now, and a Fear catalogue whose size Presence grows does not need a row with no top.
+
+What capping buys is that a cycle's shop is a **readable, finite thing**. The curve alone was
+already the real limit — each tier costs 60% more while paying the same flat +10%, so the
 price pulls away from the payoff on its own:
 
 | tier | 1 | 5 | 10 | 12 |
@@ -647,36 +757,51 @@ price pulls away from the payoff on its own:
 | `rising_dread` cost | 6 | 39 | 412 | 1056 |
 | payback, at ~30 Fear/round | ~2 rounds | ~13 | ~137 | ~350 |
 
-Reaching +100% costs about 1090 cumulative; tier 12 alone costs more than that. The ceiling
-also **floats**: payback is measured against the current Fear rate, so tiers that were absurd
-at wave 40 come back into range at wave 150 instead of sitting maxed and dead.
+Tier 12 alone costs more than the whole ten-tier ladder (1089). So the cap removes rungs
+nobody was going to buy and turns "this ladder has no end" into "this ladder ends at +100%",
+which is a sentence a player can plan against.
 
-This is a playtest decision, not a settled one. If the uncapped tail reads as noise rather
-than as depth, a `maxTier: 10` on each of the three turns them into finishable ladders — the
-matched set would then be ten tiers, +10% each, +100% at the top — and nothing else has to
-move except the gate below.
+`upgradeIsSoftCapped` is gone with them. Every row in the catalogue now has a `maxTier` —
+including the pool, whose top is 10000 — so the predicate had no callers left, and a predicate
+that can only answer `false` is a rule that no longer exists.
 
-### Which rows the gate counts
+### There is no gate
 
-`gatedUpgradesUnlocked` asks whether every other row is finished, and the row itself says
-whether it is one of those — `requiredForGate: false` opts out, and the default is in.
+`GATED_UPGRADE_IDS`, `gatedUpgradesUnlocked`, `upgradeIsLocked` and the `requiredForGate` field
+are all **deleted**. `auto_buy_abilities` and `auto_start_round` used to be refused until every
+other row in the catalogue was finished; they are now refused until the matching Presence row
+is bought, which is a different question asked of a different currency.
 
-Two kinds of row opt out, for two different reasons:
+The old gate was the answer to "what does finishing the shop pay for", and the shop is not
+finished any more — that is the point of
+[05-progression.md](./05-progression.md#the-shop-no-longer-terminates). A test for a state
+that never arrives is not a gate, it is a wall, and the two rows behind it would have been
+unreachable rather than merely late.
 
-- **Soft-capped ladders**, which can never finish. One would hold the gate shut forever,
-  taking `auto_buy_abilities` and `auto_start_round` off the table permanently while the shop
-  displayed a price the player could afford and a refusal that never lifted.
-- **`dahan_remember`**, which *can* finish, but only after 10000 Fear. That is a wall rather
-  than a gate, and what stands behind it was meant to be what finishing the shop pays for.
-
-So "you have finished the shop" means every row the gate counts. The flag used to be
-`softCapped`, which was the shape of a ladder standing in for a decision about the gate — fine
-while the two coincided, wrong the moment a capped row needed the same exemption. Asserted in
-`tests/fear.test.js` and `tests/haste.test.js`, including the structural check that no
-soft-capped row is ever required for the gate.
+What replaces it is one predicate, `upgradeNeedsPresence(state, id)`, and it reads the
+Presence catalogue rather than the Fear one. A row is locked when its Presence unlock is
+unbought, and nothing about the Fear purse changes that — the same shape the old lock had, and
+`purchaseUpgrade` still refuses before it looks at the price. The shop reads the same predicate
+to decide the row is not drawn at all, so the refusal is a guard on the engine side rather than
+something a player can walk into.
 
 The growth rate is what keeps the shop from being a flat checklist, and it has not been
 checked against how much Fear a round actually earns at depth.
+
+### Presence prices, and why they are not on this curve
+
+```txt
+presence_tide_returns   2 Presence   unlocks auto_start_round   (500 Fear, still owed)
+presence_river_knows    3 Presence   unlocks auto_buy_abilities (200 Fear, still owed)
+```
+
+Flat prices, no curve, because neither row is repeatable and there is nothing yet to shape.
+
+The thing to get right when a repeatable Presence row is added: **Presence income is
+root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth would outrun it
+inside three tiers and every rung past the third would be dead. A Presence ladder wants
+something nearer 1.3–1.5, or a flat price, and the check is whether a tier stays buyable a
+cycle or two after the one below it.
 
 ## Offline Handling
 

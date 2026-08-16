@@ -7,7 +7,7 @@
  * sold-out half - it does here unchanged. */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, newGame, advance, clearBoard, setLand, healthOf, grantUpgrade, memoryStorage } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, assertClose, newGame, advance, clearBoard, setLand, healthOf, grantUpgrade, grantPresence, memoryStorage } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   const FULL = engine.DAHAN_HASTE_FEAR_FOR_FULL;
   const BASE = engine.DAHAN_ATTACK_INTERVAL_SECONDS;
@@ -129,29 +129,24 @@
     assertEqual(engine.upgradeTier(state, "dahan_reinforcement"), 1, "buys one, as it always did");
   });
 
-  /* ---------- The gate ---------- */
+  /* ---------- The pool is behind nothing ---------- */
 
-  test("haste: the pool is not required for the gate", () => {
-    assert(!engine.upgradeRequiredForGate("dahan_remember"), "10000 Fear is a wall, not a gate");
-
+  // It used to carry `requiredForGate: false`, because 10000 Fear standing between the player
+  // and the last two purchases was a wall rather than a gate. There is no gate now: the two
+  // rows are behind Presence, which the pool has nothing to do with. This is the check that an
+  // empty pool leaves them exactly as reachable as a full one.
+  test("haste: the pool does not stand in front of anything", () => {
     const { state } = newGame();
-    for (const id of engine.UPGRADE_IDS) {
-      if (!engine.upgradeRequiredForGate(id)) continue;
-      grantUpgrade(state, id, engine.upgradeMaxTier(id));
-    }
-    assert(engine.gatedUpgradesUnlocked(state), "an empty pool does not hold the last two purchases shut");
-    for (const id of engine.GATED_UPGRADE_IDS) {
-      assert(!engine.upgradeIsLocked(state, id), `${id} is for sale`);
-    }
-  });
+    grantPresence(state, "presence_tide_returns");
+    grantPresence(state, "presence_river_knows");
 
-  // The invariant the old `softCapped` flag was standing in for, now that the flag is about
-  // the gate rather than about the shape of the ladder: a row with no top tier can never
-  // satisfy the gate, so it must never be asked to.
-  test("haste: no row without a top tier is required for the gate", () => {
-    for (const id of engine.UPGRADE_IDS) {
-      if (!engine.upgradeIsSoftCapped(id)) continue;
-      assert(!engine.upgradeRequiredForGate(id), `${id} has no top tier and would seal the gate forever`);
+    for (const id of ["auto_start_round", "auto_buy_abilities"]) {
+      assert(!engine.upgradeNeedsPresence(state, id), `${id} is for sale with an empty pool`);
+    }
+
+    grantUpgrade(state, "dahan_remember", FULL);
+    for (const id of ["auto_start_round", "auto_buy_abilities"]) {
+      assert(!engine.upgradeNeedsPresence(state, id), `${id} is no more for sale with a full one`);
     }
   });
 

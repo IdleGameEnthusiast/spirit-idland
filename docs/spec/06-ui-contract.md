@@ -30,7 +30,11 @@ island board, and the between-round shop.
   the two halves of one judgement — how fast a land is losing, and how close Blight is to
   ending the round — on separate screens, and made the player scroll between them
 - The strip must not take pointer events: the lands beneath it stay clickable
-- Round number, and best round reached
+- The current wave, and **two best-wave figures beneath it**: this cycle's, and the run's
+  all-time. Before the first ascension they are always equal, so only the all-time figure is
+  drawn — a second identical number would be noise. From the first Reclaim on, both are shown,
+  because that is exactly when they part company and when the cycle figure is the only one
+  that moves. See [05-progression.md](./05-progression.md#round-tracking-and-the-two-high-scores)
 - Blight meter: current value against `round.blightThreshold`, always visible, not hidden
   in a panel
 - Wave timer: seconds remaining until the next wave, in **real** seconds rather than game
@@ -249,14 +253,20 @@ island board, and the between-round shop.
 5. The shop (always in the rail; its summary is what changes with `round.status`)
 - The round just lost: its number and the Fear it earned
 - The upgrade catalogue: each entry's effect, its current tier if repeatable, and its cost
+- **Everything sold out sinks below everything still for sale, under its own heading, and that
+  half is folded shut.** A maxed ladder or a bought one-off is a record, not an offer, and the
+  panel's job is the part still being shopped. The heading is the handle and carries the count,
+  so shut it still answers "how much have I bought" in one line; clicking it unfolds. It starts
+  shut on every load: the fold is a view preference, not game state, and never enters the save.
+  Within each half the catalogue order stands, repeatables before one-offs
 - **A row whose per-tier gain is not constant describes its next rung, not its whole shape.**
   That is `headwaters`, `high_water_mark` and `dahan_remember`: everywhere else "+1 Dahan, per
   tier" already answers what the next price buys, while a table of nine numbers and a percentage
   of a wave number do not. So those rows read as the next purchase — the Energy the next
   tier adds and what a round would then open with, the Fear the next tier adds to the milestone
   the player is heading for — with the tier chip beside the text saying which rung they are on.
-  `headwaters` at its top tier states what it ends up paying instead; `high_water_mark` is
-  soft-capped and so always has a next rung to describe. `dahan_remember` has no next rung at
+  A ladder at its top tier states what it ends up paying instead, which both `headwaters` and
+  `high_water_mark` now need. `dahan_remember` has no next rung at
   all, so it describes where it stands: Fear invested against the full pool, and the strike
   interval that buys — quoted in the same real seconds every countdown on the page uses, so it
   moves with the speed dial
@@ -272,12 +282,62 @@ island board, and the between-round shop.
   the row reads `42.71% faster`, to two decimals, because one Fear is a hundredth of a percent
   and a readout that printed the same number for `+1` and `+10` would say a purchase did
   nothing (`upgradeStatusText`)
-- A gated row (see [07-content-registry.md](./07-content-registry.md#permanent-upgrades)) stays
-  on the list, fully readable, with its price shown and its button dead, and says that it opens
-  once everything else is bought. It is not hidden: what is behind the gate is the reason to
-  finish the catalogue, so hiding it would hide the goal. The row wears the lock instead of the
-  "takes effect next round" note — a locked row cannot have been bought, so the two never
-  collide
+- A **Presence-locked** row (see
+  [07-content-registry.md](./07-content-registry.md#permanent-upgrades)) **is not drawn at
+  all** until its Presence purchase is made. The shop lists what Fear can buy; a row Fear
+  cannot buy at any price is not part of that list
+- It used to stay on the list, dead, wearing a note naming the Presence row that opens it, on
+  the argument that a row nobody can see is not a reason to ascend. The ascension panel makes
+  that argument better: its catalogue is headed *what Presence unlocks* and every row there
+  names what it opens, so the reason to ascend is already stated where the player can act on
+  it. The dead row only put a price they could not pay in the middle of the list they were
+  shopping from
+- **The lock itself is unchanged** — `purchaseUpgrade` still refuses a locked row before it
+  looks at the price. Only the drawing of it is gone, along with `shopLockedHint`,
+  `.upgrade.is-locked` and `.upgrade-locked`
+- Because a Presence purchase now decides which rows *exist*, what the Presence catalogue owns
+  is part of the shop's render signature. Nothing else in the Fear list moves when one is
+  bought, so without it the newly opened row would not appear until the next purchase
+
+5a. The ascension panel — in the rail, below the shop
+- Drawn **once ascension is unlocked** (`ascensionPayout >= ASCENSION_UNLOCK_PRESENCE`) **or
+  once the player has Reclaimed at least once** (`meta.ascensionCount > 0`). Before the first
+  of those it is absent rather than dimmed: every other locked thing on the page is something
+  the player can work toward buying, and this one is not for sale at any price. A panel that sat
+  there dead through a whole first cycle would be teaching the wrong lesson about what locks
+  mean here
+- **It does not disappear again** when a fresh cycle's payout is back under the threshold. The
+  unlock is per cycle, but the panel is where Presence held and the Presence catalogue are
+  drawn, and those do not go away. In that state the Reclaim button is disabled and the hint
+  under it reads `ascensionLockedHint`, which names the 5 Presence the payout has to reach.
+  A short payout outranks a running round in that hint: the round ends on its own, and a player
+  told to wait for the round who then finds the button still dead has been misled
+- Below the shop, not above it. The shop is what the player does every round; this is what
+  they do once per cycle, and the rarer control goes further down
+- It shows, in this order: **Presence held**, **what Reclaiming would pay right now**, **how
+  much further this cycle has to go before that pays one more**, and **the Presence catalogue**
+- The payout figure is the panel's centre of gravity — it is the whole of the decision. It
+  moves as the cycle earns, so it is patched per frame rather than left to the panel's rebuild
+- **The gap to the next Presence rides directly under the payout**, small and in the Presence
+  hue, because it is the same figure read forward rather than a second reading of the purse.
+  The payout is a square root: the number alone cannot say whether one more Presence is a round
+  away or six, and the rungs grow further apart with every one taken. It counts
+  `cycleFearGenerated` for the same reason the payout does, which is also what keeps the two
+  from ever disagreeing about a round in progress
+- **What will be lost is stated before the button, not after it.** Fear banked, and the number
+  of upgrade tiers about to be given back. Reclaiming is the one irreversible action in the
+  game, and the only one that can undo hours
+- **The Reclaim button confirms.** One click arms it, a second commits, and anything else on
+  the page disarms it. Not a modal — the numbers it is asking about are on the panel behind it,
+  and a dialog would cover the one thing worth reading
+- **Disabled while a round runs**, like the round controls, and for the same reason ascension
+  is a between-rounds action. It stays visible rather than hidden, so the panel does not change
+  height at every round boundary
+- A Presence row reads like a shop row and deliberately so — name, what it unlocks, price,
+  buy — but in the Presence colour rather than the Fear one. The two catalogues must not be
+  mistakable for each other at a glance, because the currencies are not interchangeable
+- A bought Presence row stays on the list, sold out, exactly as a bought one-off does in the
+  Fear shop
 
 6. Log and utility controls
 - Event log
@@ -514,6 +574,18 @@ carry: `ui.playtest` is the one flag in the state no rule reads.
   is also why it sits in the shop's purse rather than in the HUD's Fear tile. That tile shows
   what the running round has earned, a number the grant never touches, so pressing it there read
   as doing nothing
+- **The cycle's Fear ledger**, one quiet line in the redeem bar: what the whole cycle has
+  generated and what has been spent out of it. The bank in the shop's purse is a *balance* and
+  answers a different question — a player who earned ten thousand and spent ten thousand reads
+  there exactly like one who earned nothing. It sits in the bar rather than inside a purse
+  because, unlike the grants, it changes no number: it spans two of them, the rounds' income
+  and the shop's outgoings, and belongs in neither. A *cycle* is the span between ascensions,
+  so today it is the whole save — nothing resets it, because nothing ascends yet.
+  - Fear from the **grant button is counted apart**, and shown as a third figure only once some
+    has been granted. It is not income, and folding it into "generated" would spoil the one
+    number a balance pass reads. It is still counted, because it is still spendable:
+    `generated + granted - spent` is the bank, and a reader can check the line against the
+    purse
 - **A "hide playtest tools" button** beside the redeem input, and only while the tools are on.
   It puts the page back the way it plays; typing the code again brings them back. It lives in
   the redeem bar rather than travelling to whichever panel it hides, because that bar is where
@@ -543,10 +615,10 @@ Implemented as a twelve-column grid over three regions:
 - **HUD**, laid over the board: five tiles (Blight, next wave with its controls, Dahan
   strike, Fear, round).
 - **Board**, eight columns: map hint, island, land detail panel.
-- **Rail**, four columns: ability bar, then the round controls, then the shop when a round
-  has ended, then the log. A single flex column, so the shop appearing pushes the log down
-  rather than displacing the board — and so the round controls keep their place whatever the
-  catalogue below them grows to.
+- **Rail**, four columns: ability bar, then the round controls, then the shop, then the
+  ascension panel once it is unlocked, then the log. A single flex column, so a panel appearing
+  pushes the log down rather than displacing the board — and so the round controls keep their
+  place whatever the catalogue below them grows to.
 - **Footer**, full width: the save controls, and under them the redeem bar. Nothing in the
   round is played through either, which is what puts them below everything that is.
 
@@ -575,7 +647,7 @@ four tiles to two, because a Blight meter narrower than its own label stops bein
   what lets the suite assert it.
 - Three render caches gate the expensive work: the board rebuilds only when its own
   signature changes, the ability bar only when the unlocked set or language changes, the shop
-  only when Fear or a tier changes. The HUD, the map hint, the Energy purse, the ability
+  only when Fear, a tier, or a Presence unlock changes. The HUD, the map hint, the Energy purse, the ability
   countdowns and each locked card's affordability are patched in place on every tick instead
   — no node is created ten times a second. Affordability is deliberately *not* in the ability
   bar's signature: Energy moves on every kill, and putting it there would rebuild the bar

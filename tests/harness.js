@@ -187,6 +187,15 @@ function grantUpgrade(state, upgradeId, tier) {
   return state;
 }
 
+/* Grants a Presence row without going through the purse.
+ *
+ * No round-snapshot half to this one: a Presence purchase unlocks a Fear row rather than
+ * changing anything a running round reads, so there is nothing for a snapshot to defer. */
+function grantPresence(state, presenceId) {
+  state.presenceUpgrades.purchased[presenceId] = 1;
+  return state;
+}
+
 function clearBoard(state) {
   state.invaders = engine.createInvaderCounts();
   state.invaderDamage = engine.createInvaderDamage();
@@ -214,7 +223,8 @@ const HARNESS = {
   clearBoard,
   unlockAllAbilities,
   setAbilityTier,
-  grantUpgrade
+  grantUpgrade,
+  grantPresence
 };
 
 if (typeof module !== "undefined" && module.exports) {
