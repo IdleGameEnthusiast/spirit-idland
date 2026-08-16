@@ -517,7 +517,7 @@
   });
 
   test("auto-buy: unlocks come before tiers, whatever the purse could stretch to", () => {
-    // 50 Energy is exactly one Innate tier. Spending it there would leave the three cast
+    // 40 Energy is exactly one Innate tier. Spending it there would leave the three cast
     // automations idling all round on abilities that were never bought.
     const { state } = newGame();
     grantUpgrade(state, "auto_buy_abilities");
@@ -533,7 +533,7 @@
   test("auto-buy: raises the Innate once the kit is bought and the Energy is there", () => {
     const { state } = fullKit();
     grantUpgrade(state, "auto_buy_abilities");
-    state.resources.energy = 50;
+    state.resources.energy = 40;
 
     engine.resolveAutoBuyAbilities(state);
 
@@ -554,7 +554,7 @@
 
     engine.resolveAutoBuyAbilities(state);
     assertEqual(engine.abilityTier(state, "innate_power"), 2, "and it stops at the top of the ladder");
-    assertEqual(state.resources.energy, 1000 - 50 - 250, "spending only the two rungs it climbed");
+    assertEqual(state.resources.energy, 1000 - 40 - 150, "spending only the two rungs it climbed");
   });
 
   test("auto-buy: the tick runs it, and what it buys can fire the same round", () => {

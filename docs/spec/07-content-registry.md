@@ -79,8 +79,8 @@ a whole record of its own:
   "id": "innate_power",
   "unlockCost": 0,
   "tiers": [
-    { "cooldownSeconds": 16, "needsTarget": true, "effect": "push_invaders", "pushCount": 1, "upgradeCost": 50 },
-    { "cooldownSeconds": 32, "needsTarget": true, "effect": "damage_and_push", "damage": 2, "pushCount": 3, "upgradeCost": 250 },
+    { "cooldownSeconds": 16, "needsTarget": true, "effect": "push_invaders", "pushCount": 1, "upgradeCost": 40 },
+    { "cooldownSeconds": 32, "needsTarget": true, "effect": "damage_and_push", "damage": 2, "pushCount": 3, "upgradeCost": 150 },
     { "cooldownSeconds": 48, "needsTarget": true, "effect": "damage_each_invader", "damage": 2 }
   ]
 }
@@ -102,10 +102,10 @@ shared damage rule, and the shared push rule.
 - Unlock: free, in every round's opening hand
 - Needs target: yes, at every tier
 - Tier 1 (8 beats): push 1 explorer/town.
-- Tier 2 (16 beats, 50 Energy): 2 damage, then push up to 3 explorers/towns. The two halves are
+- Tier 2 (16 beats, 40 Energy): 2 damage, then push up to 3 explorers/towns. The two halves are
   independent — if the damage cleared the land, or every neighbour is occupied, the cast still
   counts.
-- Tier 3 (24 beats, 250 Energy): 2 damage to **each** invader in the land, individually. This is the
+- Tier 3 (24 beats, 150 Energy): 2 damage to **each** invader in the land, individually. This is the
   effect that per-unit health exists for: against 4 explorers, 2 towns and 2 cities it kills
   everything but the cities and leaves both of those at 1 health, which the old per-type damage
   model could not describe.
@@ -144,7 +144,7 @@ shared damage rule, and the shared push rule.
 #### `wash_away`
 
 - Unlock: 20 Energy
-- Cooldown: 35 beats
+- Cooldown: 30 beats
 - Needs target: yes — one land holding at least one Explorer or Town. Where they go is never in
   doubt, so unlike an earlier draft this reads only the clicked land.
 - Effect, **inland**: push up to 3 explorers/towns into an adjacent land. Towns first, each unit

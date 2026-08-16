@@ -839,18 +839,18 @@
     const ok = engine.upgradeAbility(state, "innate_power");
 
     assert(ok, "the upgrade should succeed");
-    assertEqual(state.resources.energy, 10, "50 spent");
+    assertEqual(state.resources.energy, 20, "40 spent");
     assertEqual(engine.abilityTier(state, "innate_power"), 1, "now at tier 2");
     assertEqual(engine.abilityRecord(state, "innate_power").effect, "damage_and_push", "a different ability entirely");
     assert(engine.abilityIsReady(state, "innate_power"), "and ready, not still cooling");
   });
 
-  test("innate: the tier ladder is 50 then 250, and stops there", () => {
+  test("innate: the tier ladder is 40 then 150, and stops there", () => {
     const { state } = fullKit();
 
-    assertEqual(engine.abilityUpgradeCost(state, "innate_power"), 50, "tier 2 costs 50");
+    assertEqual(engine.abilityUpgradeCost(state, "innate_power"), 40, "tier 2 costs 40");
     setAbilityTier(state, "innate_power", 1);
-    assertEqual(engine.abilityUpgradeCost(state, "innate_power"), 250, "tier 3 costs 250");
+    assertEqual(engine.abilityUpgradeCost(state, "innate_power"), 150, "tier 3 costs 150");
     setAbilityTier(state, "innate_power", 2);
     assert(!Number.isFinite(engine.abilityUpgradeCost(state, "innate_power")), "and there is no tier 4");
     assert(!engine.upgradeAbility(state, "innate_power"), "the top of the ladder refuses");
@@ -858,10 +858,10 @@
 
   test("innate: too little Energy buys no tier", () => {
     const { state } = fullKit();
-    state.resources.energy = 49;
+    state.resources.energy = 39;
 
     assert(!engine.upgradeAbility(state, "innate_power"), "the upgrade must refuse");
-    assertEqual(state.resources.energy, 49, "Energy untouched");
+    assertEqual(state.resources.energy, 39, "Energy untouched");
     assertEqual(engine.abilityTier(state, "innate_power"), 0, "still tier 1");
   });
 

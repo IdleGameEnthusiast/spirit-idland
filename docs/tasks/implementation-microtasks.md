@@ -345,12 +345,14 @@ once that's landed, rather than starting both at once.
 ### 6. Invaders that scale with the player — *the next real feature*
 
 Energy income is flat within a round while the kit's prices are not: the ladder tops out at
-250 and a round earns roughly 20-40, so a long round has nothing left to spend on but time.
-The intended answer is invaders that grow stronger as the player does, which turns a long
-round into more income rather than only more waves. Nothing of it is implemented.
+150 (cut from 250 - see item 9) and a round earns roughly 20-40, so a long round still has
+little left to spend on but time. The intended answer is invaders that grow stronger as the
+player does, which turns a long round into more income rather than only more waves. Nothing of
+it is implemented.
 
-Until it exists, the Innate's third tier is effectively unreachable and `blight_resilience`
-is the only thing that moves it — which is a progression gate by accident rather than design.
+Until it exists, the Innate's third tier stays a stretch goal and `blight_resilience` is the
+only thing that reliably moves it — a progression gate by accident rather than design, even at
+the lower price.
 
 ### 7. Keyboard shortcuts for the ability bar
 
@@ -367,8 +369,9 @@ same treatment: nothing currently asserts that they patch in place rather than r
 ### 9. Price the Energy economy
 
 **Answered, not tuned.** Energy has a writer (1 per point of defeated invader power) and five
-readers: the unlock ladder at 5 / 10 / 20 and the Innate's tiers at 50 / 250. It is also
-round-local now, so every one of those prices has to be payable inside a single round.
+readers: the unlock ladder at 5 / 10 / 20 and the Innate's tiers at 40 / 150 (cut from 50 / 250
+- tier 3 was effectively unreachable against a round's income). It is also round-local now, so
+every one of those prices has to be payable inside a single round.
 
 None of it has been checked against a played round. The ladder is shaped against an estimate —
 20 to 40 Energy over 60 to 120 beats — not a measurement, so "the three unlocks are about one
@@ -428,8 +431,8 @@ is not a line down here.
 
 ### Balance questions
 
-- Innate tiers 2 and 3 maybe too expensive
-- Wash Away: too expensive and/or cooldown too long for what it actually does
+- Innate tiers 2 and 3 cut 50/250 -> 40/150; still unmeasured against a played round
+- Wash Away: cooldown cut 35 -> 30 beats; still 20 Energy to unlock, unchanged
 - general balancing pass
 
 ---

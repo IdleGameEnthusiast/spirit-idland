@@ -222,7 +222,7 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 29. Tier 3 (24 beats) deals 2 to **each** invader individually: against 4 explorers, 2 towns and 2
     cities it clears everything but the cities and leaves both of those at 1 health.
 30. Buying a tier spends its Energy, swaps the ability wholesale, and hands it back **ready**.
-31. The ladder is 50 then 250, and refuses past the top.
+31. The ladder is 40 then 150, and refuses past the top.
 32. Once `auto_innate` is bought, the Innate casts itself on cooldown at whichever tier is
     currently owned - tiering up never needs a second purchase - picking its own land from
     that tier's priority list. A tick where no priority is satisfied spends nothing and leaves

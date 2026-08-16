@@ -369,7 +369,7 @@ const ENERGY_PER_POWER = 1;
  * `auto_buy_abilities` opens with the entire kit bought and not one Energy spare, which is
  * the most this is ever meant to be worth. That is why it is capped and the Fear ladders are
  * not - what it buys genuinely runs out, and past 35 it would only be pre-banking toward the
- * Innate's tier 2 (50).
+ * Innate's tier 2 (40).
  */
 const STARTING_ENERGY_BY_TIER = [0, 1, 2, 3, 5, 8, 13, 19, 26, 35];
 
@@ -507,7 +507,7 @@ const ABILITIES = {
         needsTarget: true,
         effect: "push_invaders",
         pushCount: 1,
-        upgradeCost: 50
+        upgradeCost: 40
       },
       {
         cooldownSeconds: 16 * TIME_SCALE,
@@ -515,7 +515,7 @@ const ABILITIES = {
         effect: "damage_and_push",
         damage: 2,
         pushCount: 3,
-        upgradeCost: 250
+        upgradeCost: 150
       },
       {
         cooldownSeconds: 24 * TIME_SCALE,
@@ -564,7 +564,7 @@ const ABILITIES = {
     // every rung of the invader health ladder, and a drowning buys the same thing on wave 40
     // as it did on wave 1.
     unlockCost: 20,
-    cooldownSeconds: 35 * TIME_SCALE,
+    cooldownSeconds: 30 * TIME_SCALE,
     needsTarget: true,
     effect: "wash_invaders",
     pushCount: 3,
@@ -3286,7 +3286,7 @@ function startCooldown(state, abilityId) {
  *
  * Unlocks first and tiers after, which is not kit order and not price order across the whole
  * bar. Two reasons, and they point the same way: an unlock is the cheaper claim on the Energy
- * (5 / 10 / 20 against the Innate's 50 / 250), and it is what the three cast automations are
+ * (5 / 10 / 20 against the Innate's 40 / 150), and it is what the three cast automations are
  * waiting on - each of them sits idle all round on an ability that was never bought. Saving
  * toward a tier while Wash Away stays locked is the one order no player actually plays.
  *

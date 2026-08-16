@@ -495,8 +495,8 @@ the same slot rather than the previous one with a modifier:
 
 ```txt
 tier 1   free       cooldown  8 beats   push 1 explorer/town
-tier 2    50 Energy cooldown 16 beats   2 damage, then push up to 3 explorers/towns
-tier 3   250 Energy cooldown 24 beats   2 damage to each invader in the land
+tier 2    40 Energy cooldown 16 beats   2 damage, then push up to 3 explorers/towns
+tier 3   150 Energy cooldown 24 beats   2 damage to each invader in the land
 ```
 
 Cooldowns rise with the tier deliberately. Throughput still improves at every step — tier 2 is
@@ -504,9 +504,9 @@ three pushes and 2 damage per 16 beats against tier 1's one push per 8 — so th
 bigger swing rather than taxing the upgrade. The tier is held in `round.abilityTiers` and, like
 every other purchase, resets when the round does.
 
-250 is knowingly out of reach of an early round. It is gated on round *length*, which is what
-`blight_resilience` buys — so the third tier is a late-progression sight rather than a
-mid-round one.
+150 sits above a single round's baseline income (roughly 20-40 Energy), so it still leans on
+round *length*, which is what `blight_resilience` buys — the third tier stays a late-progression
+sight rather than a mid-round one, just no longer an effectively unreachable one.
 
 ## Ability Formulas
 
@@ -516,7 +516,7 @@ boon_of_vigor   cooldown 12 beats   +1 Energy
 rivers_bounty   cooldown 15 beats   +1 Dahan to the land with the fewest Dahan and invaders if
                                     possible - the thinnest land outright when nothing is contested
 flash_floods    cooldown 25 beats   1 damage in a clicked land, +1 more if that land is coastal
-wash_away       cooldown 35 beats   push up to 3 explorers/towns out of a clicked land - or,
+wash_away       cooldown 30 beats   push up to 3 explorers/towns out of a clicked land - or,
                                     from a coastal land, carry up to 2 of them out to sea,
                                     removing them from the island outright
 ```
@@ -766,7 +766,7 @@ entry fee on a ladder whose top is very strong.
 The ceiling is exactly `5 + 10 + 20`, the whole unlock kit. A tier 9 round paired with
 `auto_buy_abilities` opens with the entire kit bought and no Energy spare. Every other capped
 ladder stops at a round number; this one stops where what it buys runs out, and past 35 it
-would only be pre-banking toward the Innate's 50.
+would only be pre-banking toward the Innate's 40.
 
 Cumulative cost is **903 Fear**, the dearest single row in the catalogue — above
 `auto_start_round` (500). It is also the only upgrade whose worth *shrinks* with depth, the
@@ -861,7 +861,7 @@ reason to ever spend.
 
 - `essence` accumulates nothing and has no reader; it is inert scaffolding for a possible
   future system, not active economy.
-- The unlock ladder (5 / 10 / 20) and the Innate's tier prices (50 / 250) are shaped against a
+- The unlock ladder (5 / 10 / 20) and the Innate's tier prices (40 / 150) are shaped against a
   rough estimate of a round's income — 20 to 40 Energy over 60 to 120 beats — not against a
   played measurement. `ENERGY_PER_POWER` is a placeholder on the same footing.
 

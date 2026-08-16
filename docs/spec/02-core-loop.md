@@ -88,7 +88,7 @@ ability bar rather than on individual casts:
   and a second scale would only be a second thing to learn. Whole numbers, unlike Fear.
 - **Cost.** Casting is still free of everything but its cooldown. What Energy buys is
   *access*: the spirit opens every round with two abilities and the rest priced at 5, 10 and
-  20, plus the Innate's own tier ladder at 50 and 250.
+  20, plus the Innate's own tier ladder at 40 and 150.
 - **When.** Purchases are mid-round by nature. The Energy came from the fight and does not
   outlive it, so that fight is the only one it can pay for.
 - **Persistence — none.** `resources.energy`, `round.purchasedAbilityIds` and
