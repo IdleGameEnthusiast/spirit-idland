@@ -336,8 +336,8 @@ island board, and the between-round shop.
 - A Presence row reads like a shop row and deliberately so — name, what it unlocks, price,
   buy — but in the Presence colour rather than the Fear one. The two catalogues must not be
   mistakable for each other at a glance, because the currencies are not interchangeable
-- A bought Presence row stays on the list, sold out, exactly as a bought one-off does in the
-  Fear shop
+- A bought Presence row sinks into its own sold-out block, folded shut behind a count, exactly
+  as a bought one-off does in the Fear shop
 
 6. Log and utility controls
 - Event log

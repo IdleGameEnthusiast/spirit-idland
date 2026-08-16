@@ -1023,6 +1023,7 @@ function presenceShopSignature(state) {
  * every time something was bought.
  */
 let soldOutOpen = false;
+let presenceSoldOutOpen = false;
 
 function renderShop(state) {
   const t = locale(state);
@@ -1207,13 +1208,13 @@ function renderPresenceShop(state) {
   const t = locale(state);
   dom.presenceList.innerHTML = "";
 
-  for (const presenceId of PRESENCE_UPGRADE_IDS) {
+  function renderRow(presenceId, soldOutRow, parent) {
     const owned = presenceUpgradeOwned(state, presenceId);
     const cost = presenceUpgradeCost(presenceId);
     const affordable = !owned && state.meta.presence >= cost;
 
     const row = document.createElement("div");
-    row.className = `upgrade is-one-off is-presence${affordable ? " is-affordable" : ""}${owned ? " is-sold-out" : ""}`;
+    row.className = `upgrade is-one-off is-presence${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${presenceUpgradeName(state, presenceId)}</span>
@@ -1223,7 +1224,36 @@ function renderPresenceShop(state) {
         ${owned ? t.presenceOwnedBtn : template(t.presenceCostLabel, { cost })}
       </button>
     `;
-    dom.presenceList.appendChild(row);
+    (parent || dom.presenceList).appendChild(row);
+  }
+
+  // Same split and fold as the Fear shop's sold-out section (see renderShop): a bought
+  // Presence row sinks below what is still worth a look instead of cluttering the list
+  // it was just bought out of.
+  const buyable = PRESENCE_UPGRADE_IDS.filter((id) => !presenceUpgradeOwned(state, id));
+  const soldOut = PRESENCE_UPGRADE_IDS.filter((id) => presenceUpgradeOwned(state, id));
+
+  for (const presenceId of buyable) renderRow(presenceId, false);
+
+  if (soldOut.length) {
+    const fold = document.createElement("button");
+    fold.type = "button";
+    fold.className = "upgrade-divider is-sold-out upgrade-fold";
+    fold.dataset.fold = "presence-sold-out";
+    fold.setAttribute("aria-expanded", String(presenceSoldOutOpen));
+    fold.setAttribute("aria-controls", "presenceSoldOut");
+    fold.innerHTML = `
+      <span class="upgrade-fold-caret" aria-hidden="true"></span>
+      <span>${t.shopSoldOutLabel} (${soldOut.length})</span>
+    `;
+    dom.presenceList.appendChild(fold);
+
+    const box = document.createElement("div");
+    box.id = "presenceSoldOut";
+    box.className = "upgrade-fold-body";
+    box.hidden = !presenceSoldOutOpen;
+    dom.presenceList.appendChild(box);
+    for (const presenceId of soldOut) renderRow(presenceId, true, box);
   }
 }
 
@@ -1910,6 +1940,16 @@ dom.startNextRoundBtn.addEventListener("click", () => {
 dom.presenceList.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  const fold = target.closest("button[data-fold]");
+  if (fold) {
+    presenceSoldOutOpen = !presenceSoldOutOpen;
+    fold.setAttribute("aria-expanded", String(presenceSoldOutOpen));
+    const body = document.getElementById("presenceSoldOut");
+    if (body) body.hidden = !presenceSoldOutOpen;
+    return;
+  }
+
   const button = target.closest("button[data-presence]");
   if (!button) return;
   purchasePresenceUpgrade(state, button.getAttribute("data-presence") || "");
