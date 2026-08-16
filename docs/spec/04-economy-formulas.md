@@ -690,6 +690,12 @@ equal what the same number of clicks would have spent, or it is a discount or a 
 asked for. `upgradeTiersAffordable` is the same walk against the purse, and is what the pool's
 **Max** button buys.
 
+Both are one function: `upgradeCostFromTier(id, from, count)` is the sum itself, and
+`upgradeCostFor` is it with `from` filled in from what the player owns. The other end of it —
+rungs `0..n-1`, what a set of owned tiers has *already* cost — is read on load to rebuild the
+Fear ledger of a save written before it existed, which is the one caller that has no state to
+ask (see [03-state-contract.md](./03-state-contract.md#fields-added-during-implementation)).
+
 ### The Fear pool
 
 `dahan_remember` is the one row that is not a ladder. `costGrowth: 1` makes every unit cost

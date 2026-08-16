@@ -208,7 +208,54 @@
     const totals = engine.cycleFearTotals(loaded);
     assertEqual(totals.generated, 320, "the bank was earned somehow");
     assertEqual(totals.granted, 0, "nothing granted");
-    assertEqual(totals.spent, 0, "nothing spent, so the ledger still balances");
+    assertEqual(totals.spent, 0, "nothing bought, so there is nothing to rebuild");
+  });
+
+  /* The half of that seed the bank cannot see. Fear leaves the bank only in the shop, so a
+   * save's owned tiers are a receipt: priced back off the catalogue they say what was earned
+   * and spent before the ledger existed. Without this the ascension payout would read a
+   * long-played save as a nearly empty one. */
+  test("cycle: a save from before the ledger rebuilds what its upgrades cost", () => {
+    const rising = engine.upgradeCostFromTier("rising_dread", 0, 4);
+    const boon = engine.upgradeCostFromTier("auto_boon", 0, 1);
+
+    const loaded = engine.normalizeState({
+      meta: { fear: 320 },
+      upgrades: { purchased: { rising_dread: 4, auto_boon: 1 } }
+    });
+    const totals = engine.cycleFearTotals(loaded);
+
+    assertEqual(totals.spent, rising + boon, "every owned rung is priced back off the catalogue");
+    assertEqual(totals.generated, 320 + rising + boon, "and generated is the bank plus that");
+    assertEqual(
+      totals.generated + totals.granted - totals.spent,
+      loaded.meta.fear,
+      "the ledger identity still holds after the rebuild"
+    );
+  });
+
+  // The rebuild is a seed, not a recomputation: it fires on the absent key and writes it. A
+  // player who ascends holds upgrades bought in the cycle before, and recomputing on every load
+  // would hand those back as generated Fear the current cycle never earned.
+  test("cycle: a save that carries the ledger is never rebuilt from its upgrades", () => {
+    const loaded = engine.normalizeState({
+      meta: { fear: 100, cycleFearGenerated: 0, cycleFearGranted: 0, cycleFearSpent: 0 },
+      upgrades: { purchased: { rising_dread: 4, auto_boon: 1 } }
+    });
+    const totals = engine.cycleFearTotals(loaded);
+    assertEqual(totals.generated, 0, "a present zero is a real zero");
+    assertEqual(totals.spent, 0, "and so is this one");
+  });
+
+  // Tiers are capped before they are priced, so a doctored ladder cannot mint generated Fear.
+  test("cycle: the rebuild prices the tiers that survived normalization, not the ones claimed", () => {
+    const capped = engine.upgradeCostFromTier("rising_dread", 0, engine.upgradeMaxTier("rising_dread"));
+    const loaded = engine.normalizeState({
+      meta: { fear: 0 },
+      upgrades: { purchased: { rising_dread: 40, not_an_upgrade: 9 } }
+    });
+    const totals = engine.cycleFearTotals(loaded);
+    assertEqual(totals.spent, capped, "clamped to the ladder's end, and an unknown id is worth nothing");
   });
 
   test("cycle: nonsense on the ledger loads as whole, non-negative numbers", () => {

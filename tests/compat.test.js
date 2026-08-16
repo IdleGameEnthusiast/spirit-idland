@@ -97,6 +97,27 @@
     assertEqual(state.meta.bestWaveReached, 11, "which the all-time record keeps");
   });
 
+  /* The ascension payout is priced in Fear *generated*, and this save predates the field. Read
+   * off its bank alone it would claim 4820, which is only what it had left after a shop trip -
+   * so the one number the Reclaim button pays out on would be short by everything the player
+   * had already bought. Priced back off the catalogue, the purchases are a receipt. */
+  test("compat: an older save's generated Fear counts what it already spent", () => {
+    pinClock();
+    const { state } = engine.migrateSave(oldSave());
+
+    assert(!("cycleFearGenerated" in FIXTURE.meta), "the fixture must predate the ledger or this proves nothing");
+
+    let spent = 0;
+    for (const [id, tier] of Object.entries(FIXTURE.upgrades.purchased)) {
+      spent += engine.upgradeCostFromTier(id, 0, tier);
+    }
+    assert(spent > 0, "the fixture owns upgrades, so the rebuild has something to find");
+
+    assertEqual(state.meta.cycleFearSpent, spent, "what the fixture's tiers cost");
+    assertEqual(state.meta.cycleFearGenerated, 4820 + spent, "bank plus spend, not bank alone");
+    assertEqual(state.meta.cycleFearGranted, 0, "nothing granted");
+  });
+
   test("compat: an older save keeps the preferences it carries", () => {
     pinClock();
     const { state } = engine.migrateSave(oldSave());

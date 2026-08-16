@@ -118,6 +118,12 @@ exists to be read by them, and it is the one place a grant is allowed to leave a
 9. The ledger round-trips a save. A save written before it existed reads its bank as generated,
    so the identity above holds across the upgrade; fractional, negative and unreadable values
    load as whole non-negative ones.
+10. A save written before the ledger has its spend **rebuilt from what it owns**: every purchased
+    tier priced back off the catalogue becomes `spent`, and `bank + spent` becomes `generated`,
+    with the identity above still holding. The rebuild fires on the absent key only — a save
+    carrying a genuine `0` is left at `0`, which is what keeps a post-ascension load from being
+    handed the previous cycle's shopping — and it prices the tiers that survived normalization,
+    so a doctored ladder is worth its cap and an unknown id is worth nothing.
 
 ## Blight Checks
 
@@ -421,6 +427,10 @@ before the auto-cast toggle existed. The rule they enforce is in
 14. It keeps what the player earned: `meta.fear` and `meta.bestWaveReached` both survive.
 15. It keeps every purchase, including a laddered tier, and the round's frozen `upgradeTiers`
     snapshot agrees with `upgrades.purchased`.
+15b. Its **generated Fear counts what it already spent**. The fixture predates the ledger, so
+    the figure is rebuilt on load: its five purchases priced off the catalogue are `spent`, and
+    `meta.fear` plus that is `generated`. Read off the bank alone, a save that had been shopping
+    would arrive at the Reclaim button short by everything it had bought.
 16. It keeps the preferences it carries — language, auto-proceed, auto-start-round.
 17. **Every `ui` field added since the file was written loads at its fresh default.** Asserted
     against `createInitialState()`'s own keys rather than a list, so the check covers the next

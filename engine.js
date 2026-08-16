@@ -2500,12 +2500,23 @@ function upgradeCost(state, upgradeId) {
  * asks about thousands.
  */
 function upgradeCostFor(state, upgradeId, count) {
+  return upgradeCostFromTier(upgradeId, upgradeTier(state, upgradeId), count);
+}
+
+/* The same sum without a state to read the starting rung from.
+ *
+ * upgradeCostFor is this function with `from` filled in from what the player owns, which is
+ * every caller in the game. The one caller that needs the other end of it is the migration in
+ * normalizeState, which asks what a save's owned tiers *have already cost* - a question about
+ * rungs 0..n-1, with no state to ask because the state is still being built.
+ */
+function upgradeCostFromTier(upgradeId, from, count) {
   const record = UPGRADES[upgradeId];
   if (!record) return Infinity;
   const want = Math.max(0, Math.floor(Number(count) || 0));
   if (want === 0) return 0;
 
-  const tier = upgradeTier(state, upgradeId);
+  const tier = Math.max(0, Math.floor(Number(from) || 0));
   const growth = upgradeCostGrowth(upgradeId);
   if (growth === 1) return Math.round(record.baseCost) * want;
 
@@ -5203,6 +5214,27 @@ function createFreshGameState() {
   return state;
 }
 
+/* What a set of owned tiers cost to buy, at the catalogue's current prices.
+ *
+ * Takes the normalized `purchased` map rather than a state, because its one caller runs while
+ * the state is still being assembled. See the ledger note in normalizeState for why the answer
+ * is exact rather than an estimate, and for the two ids it deliberately skips.
+ *
+ * "At the catalogue's current prices" is the one honest caveat: a save bought its rungs at
+ * whatever the prices were then, and a retune moves what this reads back. That is the right
+ * trade - the alternative is storing a price history no other part of the game needs - and it
+ * only ever affects the single load that seeds the field.
+ */
+function rebuildSpentFear(purchased) {
+  let spent = 0;
+  for (const [id, tier] of Object.entries(purchased || {})) {
+    if (!UPGRADES[id]) continue;
+    const cost = upgradeCostFromTier(id, 0, tier);
+    if (Number.isFinite(cost)) spent += cost;
+  }
+  return Math.max(0, Math.floor(spent));
+}
+
 function normalizeState(raw) {
   const base = createInitialState();
   const input = raw && typeof raw === "object" ? raw : {};
@@ -5258,17 +5290,10 @@ function normalizeState(raw) {
   // Floored, not just clamped: a save written while Fear was fractional loads as the whole
   // number the shop can actually spend, and never as 6.3.
   merged.meta.fear = Math.max(0, Math.floor(Number(merged.meta.fear) || 0));
-  // The cycle ledger, whole and never negative for the same reason the bank is. Generated is
-  // the one field an absent value cannot honestly call zero: a save from before the ledger
-  // existed still has a bank, and that bank was earned somehow. Seeding it from `meta.fear`
-  // keeps generated + granted - spent = bank true across the upgrade, the same way an absent
-  // `round.fearEarnedBase` means "all base" rather than "no base".
-  const hadGenerated = Boolean(input.meta) && "cycleFearGenerated" in input.meta;
-  merged.meta.cycleFearGenerated = hadGenerated
-    ? Math.max(0, Math.floor(Number(merged.meta.cycleFearGenerated) || 0))
-    : merged.meta.fear;
   merged.meta.cycleFearGranted = Math.max(0, Math.floor(Number(merged.meta.cycleFearGranted) || 0));
-  merged.meta.cycleFearSpent = Math.max(0, Math.floor(Number(merged.meta.cycleFearSpent) || 0));
+  // The other two fields of the ledger are seeded further down, after the catalogue has told
+  // us what the save's purchases cost - see the note above rebuiltCycleSpend.
+  //
   // A save from before the ladder tracked waves has no best wave to carry. The old best round
   // is not a substitute - it counted attempts, not depth - so the record simply restarts at 0
   // and the first finished round writes a true one.
@@ -5301,6 +5326,48 @@ function normalizeState(raw) {
     purchased[id] = Math.min(tier, upgradeMaxTier(id));
   }
   merged.upgrades.purchased = purchased;
+
+  /* ---------- The cycle ledger, and the one-time rebuild that seeds it ----------
+   *
+   * Whole and never negative for the same reason the bank is. `cycleFearGenerated` is the one
+   * field an absent value cannot honestly call zero: a save from before the ledger existed
+   * still has a bank, and that bank was earned somehow - and so was everything already spent
+   * out of it. Seeding generated from `meta.fear` alone was the first answer and it was the
+   * wrong one: a player who had earned ten thousand and spent nine of it loaded as a player who
+   * had earned a thousand, and the ascension payout reads this field, so the whole of that
+   * player's shopping was quietly deducted from the Presence their first Reclaim would pay.
+   *
+   * Fear leaves the bank in exactly one place - purchaseUpgrade - so what was spent is not
+   * guesswork: it is the sum of the catalogue's own price curve over the rungs the save owns,
+   * read back with upgradeCostFromTier. generated = bank + spent, which is the ledger identity
+   * turned around, and it is exact for any save that never had the playtest grant (i.e. every
+   * save old enough to be missing the field, since the grant and the ledger landed together).
+   *
+   * Three things make it safe to run on load:
+   *
+   * - It only fires when the key is absent, and it writes the key. That is what makes it
+   *   one-time rather than a recomputation every load - a save written after this change
+   *   carries its own generated figure and is never touched again, so a player who ascends and
+   *   spends their way back down does not get their pre-ascension shopping handed back.
+   * - It reads `purchased` above rather than the raw save: normalized ids, tiers already capped
+   *   to the ladder. A doctored row that was dropped on the way past cannot mint Fear here, and
+   *   a tier clamped from 14 to 10 is priced as the 10 it now is.
+   * - An id with no catalogue price (the `unlock_` ability path, which no row uses today) is
+   *   skipped rather than counted as Infinity. Undercounting a row nobody owns beats an
+   *   ascension payout of NaN.
+   */
+  const hadGenerated = Boolean(input.meta) && "cycleFearGenerated" in input.meta;
+  const hadSpent = Boolean(input.meta) && "cycleFearSpent" in input.meta;
+  const rebuiltCycleSpend = hadGenerated && hadSpent ? 0 : rebuildSpentFear(purchased);
+  merged.meta.cycleFearGenerated = hadGenerated
+    ? Math.max(0, Math.floor(Number(merged.meta.cycleFearGenerated) || 0))
+    : merged.meta.fear + rebuiltCycleSpend;
+  // Seeded from the same figure, so generated + granted - spent = bank still holds after the
+  // rebuild and the playtest tally stays self-checking. Reconstructing one and zeroing the
+  // other would have made the readout lie by exactly the amount it had just discovered.
+  merged.meta.cycleFearSpent = hadSpent
+    ? Math.max(0, Math.floor(Number(merged.meta.cycleFearSpent) || 0))
+    : rebuiltCycleSpend;
 
   // Rebuilt from the Presence registry, never merged over it - the same rule upgrades.purchased
   // and ui.autoCast follow, so a save cannot smuggle in a row the catalogue no longer has.
@@ -5695,6 +5762,7 @@ const ENGINE_EXPORTS = {
   upgradeMaxTier,
   upgradeCost,
   upgradeCostFor,
+  upgradeCostFromTier,
   upgradeCostGrowth,
   upgradeTiersAffordable,
   upgradeIsPool,

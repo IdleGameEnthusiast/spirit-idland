@@ -270,10 +270,30 @@ Fields the first draft of this contract did not have. Each earns its place:
   still counted, because it is still spendable: `generated + granted - spent` is `meta.fear`,
   and that identity is what makes the readout self-checking. A *cycle* is the span between
   ascensions, and `ascend()` is what zeroes all three. Read through `cycleFearTotals()`.
-  **On load, an absent `cycleFearGenerated` means "the bank was earned"**, not zero — it seeds
-  from `meta.fear`, so the identity survives a save written before the ledger existed, the same
-  way an absent `round.fearEarnedBase` means "all base". Absent `granted` and `spent` are
-  honestly zero.
+  **On load, an absent `cycleFearGenerated` means "the bank was earned, and so was what it has
+  already bought"**, not zero — and not `meta.fear` either, which was the first answer and was
+  wrong by exactly the size of the player's shopping. Fear leaves the bank in one place only
+  (`purchaseUpgrade`), so a save's owned tiers are a receipt: `normalizeState` prices them back
+  off the catalogue with `upgradeCostFromTier(id, 0, tier)`, seeds `cycleFearSpent` with that
+  sum and `cycleFearGenerated` with `meta.fear + sum`. The identity holds across the upgrade,
+  the same way an absent `round.fearEarnedBase` means "all base". Absent `granted` is honestly
+  zero.
+
+  Four properties of that rebuild are load-bearing, and
+  [08-acceptance-tests.md](./08-acceptance-tests.md#older-save-files-keep-working) holds each:
+
+  - **One-time.** It fires on the *absent key* and writes the key, so it is a seed rather than
+    a recomputation. A save written after the change carries its own figure and is never
+    touched again — which is what stops a post-ascension load from handing back Fear the
+    previous cycle spent.
+  - **Post-normalization.** It reads the rebuilt `upgrades.purchased` — known ids, tiers
+    already capped to the ladder — never the raw save, so a doctored row cannot mint Fear.
+  - **Priced today.** A save bought its rungs at whatever the prices were then; a retune moves
+    what the rebuild reads back. Accepted deliberately: the alternative is a price history no
+    other part of the game needs, and it only ever affects the one load that seeds the field.
+  - **Exact where it matters.** A save old enough to be missing the field predates the playtest
+    grant (the two landed together), so `granted` is genuinely 0 and `bank + spent` is the
+    whole of what was generated.
 
   `cycleFearGenerated` has a second reader now, and it is the important one: the ascension
   payout is a function of it alone (see
@@ -394,7 +414,7 @@ game** when it does not, carrying a handful of preferences through and nothing e
 no field-by-field translation layer and none is planned. That puts the whole burden of
 compatibility on normalization, which is exactly where a new field is easiest to get wrong.
 
-Three requirements on anyone adding a field:
+Four requirements on anyone adding a field:
 
 1. **`VERSION` does not move for an additive change.** A field added to `ui`, `round` or `meta`
    that older saves simply lack is not a version bump, because a bump is a wipe — `migrateSave`
@@ -411,6 +431,17 @@ Three requirements on anyone adding a field:
    reads the save per key, dropping keys the registry does not carry. A save then cannot
    smuggle in an id that no longer exists, and a save written before an id was added gets that
    id's default without anyone having to list it a second time.
+4. **A field that is a *history* is reconstructed from what the save still shows, not defaulted
+   away.** Rule 2 covers preferences, where absent honestly means "no answer". A total is
+   different: a save from before `cycleFearGenerated` existed did earn Fear, and defaulting the
+   field to `0` — or to the leftover bank — hands the player a wrong number rather than no
+   number, which the ascension payout then pays out on. Look for the record the history left
+   behind. Fear leaves the bank only in the shop, so owned tiers priced off the catalogue *are*
+   the spend, and `bank + spend` is the earnings. Three rules keep such a rebuild honest: run it
+   on the **absent key** and write the key, so it seeds once rather than recomputing on every
+   load; read the **already-normalized** copy of whatever it derives from, so a doctored save
+   cannot mint currency through it; and say in the code what the reconstruction is exact about
+   and what it only approximates.
 
 This is tested rather than asserted. `tests/compat.test.js` runs against
 `tests/fixtures/save-5.0.0-pre-autocast.js`, a real save **captured** out of an earlier build
