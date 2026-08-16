@@ -90,10 +90,11 @@ What is left:
 - **The Dahan strike got stronger and has not been repriced.** Kill-first damage means two
   Dahan take a town where they used to scratch a city, across every land at once. That is the
   intended direction, but nothing has been re-measured against it.
-- **Innate tier 3 costs 150 and a round earns roughly 20-40.** Cut from 250 (tier 2 also cut,
-  50 → 40) because 250 was effectively unreachable inside a round. It still leans on round
-  *length*, which `blight_resilience` buys, so it stays a late-progression sight rather than a
-  mid-round one. Deliberate, but unmeasured: nobody has played to it.
+- **Innate tier 3 costs 150, priced against a round-income guess that has since proven far too
+  low.** Cut from 250 (tier 2 also cut, 50 → 40) because 250 was effectively unreachable inside
+  a round. It still leans on round *length*, which `blight_resilience` buys, so it stays a
+  late-progression sight rather than a mid-round one — but played runs clear 150 well before
+  that, so the guess needs revisiting rather than trusting.
 - **`rivers_bounty` no longer fails, and pushes no longer roll.** The Bounty falls back to the
   thinnest land on the board when nothing is contested, so it banks Dahan on a quiet island
   instead of refusing; and a push now always takes the lowest-numbered free neighbour. Both
