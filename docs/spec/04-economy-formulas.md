@@ -32,8 +32,8 @@ ASCENSION_UNLOCK_PRESENCE = 5          (what a Reclaim must pay before it is off
 PRESENCE_FEAR_DIVISOR = 100            (placeholder, and the least measured number here)
 ```
 
-Power cards add the block below. **None of it is implemented**, and every figure in it is a
-first pass — see [10-power-cards.md](./10-power-cards.md) for what each one buys and the
+Power cards add the block below. Every figure in it is a first pass and none has been played
+against — see [10-power-cards.md](./10-power-cards.md) for what each one buys and the
 arithmetic behind it.
 
 ```txt
@@ -165,9 +165,9 @@ runs whenever the round is `running` and no gate is held, and it deals no damage
 
 Continuous, per land, every tick. No terrain is selected and no phase is involved.
 
-Power cards add one term in front of this, not implemented: a land carrying **Defense** has its
+Power cards add one term in front of this: a land carrying **Defense** has its
 `gross` reduced by the ward before any of the below runs, and a ward covering the whole of
-`gross` zeroes the land outright — the one exception to `BLIGHT_FLOOR_FRACTION` in the design.
+`gross` zeroes the land outright — the one exception to `BLIGHT_FLOOR_FRACTION` there is.
 See [10-power-cards.md](./10-power-cards.md#defense).
 
 ```txt
@@ -593,8 +593,8 @@ no open ground?     an adjacent land that already holds invaders, ranked the sam
                     want of a destination
 ```
 
-Power cards extend that ranking without changing its shape, and this is designed rather than
-built: a land holding **Dahan and Defense** outranks one holding Dahan, which outranks one
+Power cards extend that ranking without changing its shape: a land holding
+**Dahan and Defense** outranks one holding Dahan, which outranks one
 holding Defense alone, which outranks a bare coastal land. Shoving a unit onto a warded land is
 strictly good for the player, so the water prefers it — and it stays under the Dahan preference,
 because Dahan kill what arrives where a ward only absorbs it. See

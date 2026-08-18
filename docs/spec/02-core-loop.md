@@ -243,9 +243,8 @@ permanent stat: a pool that waits on the land, cancels invader attack when attac
 lapses one wave interval after it first does anything. Defense at or above the land's gross
 stops that land's Blight and casualties **entirely**, floor included — which is the one thing no
 number of Dahan can do — and below that it is read as a plain reduction of gross in both
-formulas above. It is designed and not implemented; the full rule, and why it is the one
-exception to `BLIGHT_FLOOR_FRACTION`, is in
-[10-power-cards.md](./10-power-cards.md#defense).
+formulas above. The full rule, and why it is the one exception to `BLIGHT_FLOOR_FRACTION`, is
+in [10-power-cards.md](./10-power-cards.md#defense).
 
 ### Dahan strike back
 
@@ -267,7 +266,7 @@ see [04-economy-formulas.md](./04-economy-formulas.md#the-interval-and-the-one-t
 
 Blight is the round's clock. Nothing **in the fight** ever takes it back: no rate, no defence
 and no cleared land reduces a Blight already taken. What can is a power card, four of the first
-seven of which remove 1 — designed, not built, and specified in
+seven of which remove 1 — specified in
 [10-power-cards.md](./10-power-cards.md#blight-can-fall). Removal is preventive rather than a
 rescue: the threshold check runs inside the tick that raised the bar, so there is no moment at
 which a card can pull a round back from its end.

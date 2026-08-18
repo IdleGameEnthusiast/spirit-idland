@@ -444,11 +444,11 @@ for the formulas these checks hold.
 8. Both locales name `presence_current_quickens` and carry the Focus button label and its two
    log lines.
 
-## Power Card Checks — *not written, feature not built*
+## Power Card Checks
 
-Planned suites `tests/cards.test.js` and `tests/defense.test.js`. The checks are the acceptance
-list in [10-power-cards.md](./10-power-cards.md#acceptance); the ones worth naming here are the
-three a careless implementation passes by accident:
+`tests/cards.test.js` and `tests/defense.test.js`. The checks are the acceptance list in
+[10-power-cards.md](./10-power-cards.md#acceptance); the ones worth naming here are the three a
+careless implementation passes by accident:
 
 1. **The offer is state.** Roll an offer, save, load, re-render — the same three ids. Only a paid
    re-roll changes them. A test that only reads the offer once cannot catch a render-time roll.

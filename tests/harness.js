@@ -198,6 +198,28 @@ function grantPresence(state, presenceId, tier) {
   return state;
 }
 
+/* Puts power cards into `powerCards.owned` without going through the Presence purse, the same
+ * shape grantUpgrade has for Fear. The offer is re-rolled afterwards because owning a card is
+ * exactly what makes an offer holding it stale - which is the engine's own rule, not a test
+ * convenience. */
+function ownCards(state, cardIds) {
+  state.powerCards.owned = (Array.isArray(cardIds) ? cardIds : [cardIds]).slice();
+  state.powerCards.draw = { offerIds: [], rerollCount: 0 };
+  engine.ensurePowerCardOffer(state);
+  return state;
+}
+
+/* Owns a card *and* puts it in the round's hand, which in a real game is what a draw wave does.
+ * It goes through the engine's own grantPowerCard, so a test card and a drawn one are the same
+ * card: same ability slot, same cooldown of zero, same place in the bar. */
+function handCards(state, cardIds) {
+  const ids = Array.isArray(cardIds) ? cardIds : [cardIds];
+  const owned = engine.ownedPowerCardIds(state);
+  ownCards(state, owned.concat(ids.filter((id) => !owned.includes(id))));
+  for (const id of ids) engine.grantPowerCard(state, id);
+  return state;
+}
+
 function clearBoard(state) {
   state.invaders = engine.createInvaderCounts();
   state.invaderDamage = engine.createInvaderDamage();
@@ -226,7 +248,9 @@ const HARNESS = {
   unlockAllAbilities,
   setAbilityTier,
   grantUpgrade,
-  grantPresence
+  grantPresence,
+  ownCards,
+  handCards
 };
 
 if (typeof module !== "undefined" && module.exports) {

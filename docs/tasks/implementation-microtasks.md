@@ -501,11 +501,13 @@ keeps the "play this cycle actively, or pay to idle it" trade intact at the bott
 ladder — what a fully-discounted run buys is that the toll stops being a *decision*, not that it
 disappears.
 
-### 14. Power cards — *designed 2026-08-18, not built*
+### 14. Power cards — *designed and built 2026-08-18*
 
 **Read [10-power-cards.md](../spec/10-power-cards.md) first.** It is the design and the source of
-every number below; this item is the build order and the notes an implementer needs that a spec
-should not carry. Nothing here is implemented — no state field, no constant, no card.
+every number below; this item is the build order and the notes an implementer needed that a spec
+should not carry. All ten tasks landed together, covered by `tests/cards.test.js` and
+`tests/defense.test.js`. **Every number in it is still a first pass and none has been played
+against** — see the flagged guesses below, which is the part of this item that is still live.
 
 Three parts in one feature: cards bought with **Presence** (three offered, one kept, on a 1.6
 ladder), handed to a round by **depth** (first at wave 25, then every 20), and cast like
@@ -550,10 +552,14 @@ nothing about round depth or cycle income has been measured yet either.
   `tests/harness.js` the same way the existing suites are. `setRng` is what makes the draw
   testable; use it rather than asserting on distributions.
 
-#### Build order
+#### Build order — *all ten landed together*
 
-Ten tasks. Each is meant to land and be tested on its own; the order puts the two risky mechanics
-alone in their own step rather than arriving under a pile of cards.
+Ten tasks, written to land one at a time with the two risky mechanics alone in their own steps.
+They were built in one pass instead, which is worth naming honestly: T4 and T7 were meant to be
+measured on their own before the rest arrived on top of them, and they were not. The measuring
+still has to happen — see the flagged guesses above — it just has more moving at once now.
+
+The task list is left below as written, because it is still the map of where each piece lives.
 
 **T1 — The card framework, and one card.**
 `POWER_CARDS` registry with `pull_beneath` only. The effect-step resolver (`fear_flat` and
@@ -609,14 +615,34 @@ empties a land), coastal-only targeting, the secondary-lands pass in ascending l
 **T10 — `power_card_interval`.** The Fear row. Reads through the round's upgrade snapshot like
 every other tier, so buying it mid-round pays off next round.
 
-#### The trap worth naming before it is built
+#### The trap worth naming — *avoided*
 
 Defense expiring at the **next wave boundary** rather than one interval after first use makes the
 cast time against the visible wave clock decide whether a ward is worth twenty seconds or one.
-That was the first draft and it is rejected: it is a rule a HUD countdown teaches good players to
-exploit and never teaches anyone else at all. Store the deadline in `round.defenseExpiry[land]`
-off `elapsedSeconds` — the speed dial and the wave gate then need no special case, since both
-already move that clock.
+That was the first draft and it was rejected: it is a rule a HUD countdown teaches good players to
+exploit and never teaches anyone else at all. The deadline is stored in
+`round.defenseExpiry[land]` off `elapsedSeconds` as planned, and the speed dial and the wave gate
+did indeed need no special case.
+
+#### Three things the build changed about the design
+
+Each is a correction to [10-power-cards.md](../spec/10-power-cards.md), and each is now written
+into it.
+
+- **The Dahan-loss formula under Defense.** The design's pseudocode divided the attack by the
+  survivors against a `DAHAN_CONCENTRATION_CAP` — the *concentrated* rate that
+  [02](../spec/02-core-loop.md#the-fight) replaced with a flat one long before this feature was
+  written. Defense reads `effective` in place of `gross` in whichever rate is live, and adds
+  nothing of its own.
+- **`terrain:desert,wetlands` needed splitting.** `terrainList` takes a list, and handing it the
+  whole comma-joined string matched nothing and failed *silently* — the Desert bonus simply never
+  fired. `conditionTerrains` splits it. Worth knowing because nothing about the failure was
+  visible: the card cast, paid, and quietly skipped its second clause.
+- **The offer rolls on first look, not at setup.** Rolling it in `createFreshGameState` costs an
+  RNG draw, which shifts every roll the island makes after it — a given seed would land on a
+  different board purely because power cards exist, and one existing test noticed. It is rolled
+  the first time it is read instead, and the boot path in `ui.js` reads and **saves** it, which
+  is what keeps a reload from being a free re-roll.
 
 ---
 

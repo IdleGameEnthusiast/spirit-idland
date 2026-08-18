@@ -208,7 +208,7 @@ So every row can sink into the shop's sold-out half, and none shows a bare price
 [04-economy-formulas.md](./04-economy-formulas.md#the-ladders-are-capped-at-ten).
 - `power_card_interval` — *The Island Remembers Sooner*, repeatable, max tier 10, `baseCost` 30.
   Each tier shortens the gap between power-card draws by one wave, 20 at tier 0 down to 10 at
-  tier 10; the first draw stays at wave 25. **Designed, not built** — see
+  tier 10; the first draw stays at wave 25. See
   [10-power-cards.md](./10-power-cards.md#the-fear-row) for the cost table and the honest note
   that its rungs are lumpy against a 70-wave round.
 - `unlock_<ability_id>` — one-time, adds an ability the active spirit's kit does not contain.
@@ -387,14 +387,13 @@ Two further properties worth keeping straight:
   catalogue keeps its shape. See
   [05-progression.md](./05-progression.md#the-discount-ladders).
 
-### The row that is designed and not built
+### The row that is not an upgrade
 
 **The power card draw.** A repeatable Presence row that is not an upgrade at all: it offers three
 cards and the player keeps one, at `10 * 1.6^owned` Presence with a re-roll at a quarter of that.
 Cards are cast like abilities, reach a round only through a wave-25 drip, and survive ascension
 like every Presence purchase. The whole feature — records, Defense, Blight removal, the Fear row
-that shortens the drip — is in [10-power-cards.md](./10-power-cards.md). None of it is
-implemented.
+that shortens the drip — is in [10-power-cards.md](./10-power-cards.md).
 
 It is also the catalogue's first row that out-earns *holding* Presence, which is the gap the
 ladders above deliberately do not close.

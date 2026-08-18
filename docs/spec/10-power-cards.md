@@ -94,6 +94,12 @@ that does not make holding foolish.
 - **The offer is stored in state** (`powerCards.draw.offerIds`) the moment it is rolled. It is
   not regenerated on load, on re-render, or on reopening the panel. Without that, a reload is a
   free re-roll and the price is decoration.
+- **It is rolled on the first look, not at setup**, and the boot path saves it immediately.
+  Rolling it in `createFreshGameState` would cost an RNG draw before the opening Discover, so a
+  given seed would land on a different island purely because this feature exists. `ensure` is
+  therefore the read path — `powerCards.draw.offerIds` can be legitimately empty on a game that
+  has never opened the Presence panel, and reading the raw field is the one way to see an offer
+  that is not there yet.
 - A re-roll costs `powerCardRerollCost` and replaces the offer under one guarantee: **at least
   two cards the current offer does not contain, when that many exist.**
 
@@ -218,9 +224,14 @@ if effective == 0:                        # Defense alone covered the attack
 else:
     net             = max(effective - dahanCount * 2, effective * BLIGHT_FLOOR_FRACTION)
     blightPerSecond = net * BLIGHT_PER_DAMAGE_SECOND
-    dahanPerSecond  = effective / min(dahanCount, DAHAN_CONCENTRATION_CAP)
-                      * DAHAN_LOSS_PER_DAMAGE_SECOND
+    dahanPerSecond  = effective * DAHAN_LOSS_PER_DAMAGE_SECOND
 ```
+
+The Dahan line reads `effective` in place of `gross` and nothing else. The first draft of this
+document divided it by the survivors against a `DAHAN_CONCENTRATION_CAP`, which is the
+concentrated rate [02](./02-core-loop.md#the-fight) replaced with a flat one before this
+feature was written — it measured as the opposite of what it read as, and the cap never bound.
+Defense inherits whichever rate is live rather than reintroducing the old one.
 
 Five properties, each deliberate:
 
@@ -325,6 +336,14 @@ kinds   fear_flat        { amount }
 when    invaders_present | explorers_present | coastal
         terrain:<a>,<b>  | else                     `else` pairs with the step above it
 ```
+
+`terrain:<a>,<b>` names its terrains in one comma-joined string and is split before it is
+matched (`conditionTerrains`). Handing the whole string to `terrainList`, which takes a list,
+matches nothing and fails *silently* — the card casts, pays, and skips the clause.
+
+`else` reads the **condition** of the step above it rather than whether that step found anything
+to do. A Destroy that fizzled on a land whose Explorer was already gone is still the Explorer
+mode of the card having been chosen, and the removal must not fire behind it.
 
 `destroy_units` goes through `creditDefeat`, exactly like the sea in `wash_away`, so a removal
 pays Fear and Energy without spending damage. `destroy_dahan` does not pay anything — the Dahan

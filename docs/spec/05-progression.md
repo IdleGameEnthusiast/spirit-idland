@@ -80,7 +80,7 @@ right to hold, and a round that dies at wave 20 holds none of it however much Pr
 That is what keeps the currencies from collapsing into one. There is still no exchange rate —
 Presence cannot be spent to make a round deeper, and Fear cannot be spent to own a card. Each
 buys the other's precondition and neither buys the other's effect. See
-[10-power-cards.md](./10-power-cards.md), which is designed and not built.
+[10-power-cards.md](./10-power-cards.md).
 
 | | Fear | Presence |
 | --- | --- | --- |
@@ -418,9 +418,9 @@ Presence catalogue cost 10 points, and everything a player earned past that had 
 ## What Is Not Yet Progression
 
 - No additional spirit unlocks.
-- No Presence rows beyond the ten above **are implemented**. The eleventh is designed: the
-  **power card draw** in [10-power-cards.md](./10-power-cards.md#buying-the-draw), a repeatable
-  row on the same 1.6 curve, three cards offered and one kept, 432 Presence for all seven.
+- No Presence rows beyond the eleven now implemented. The eleventh is the **power card draw**
+  in [10-power-cards.md](./10-power-cards.md#buying-the-draw), a repeatable row on the same 1.6
+  curve, three cards offered and one kept, 432 Presence for all seven.
 - That row is also the first answer to the gap this list has been carrying. A fixed Fear
   discount cannot beat the passive +1%-a-point bonus unspent Presence returns (see
   [Presence](#presence)), so no existing purchase out-earns holding. A card does: 432 Presence

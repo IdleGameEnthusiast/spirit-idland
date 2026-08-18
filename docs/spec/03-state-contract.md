@@ -154,12 +154,12 @@ would stop matching itself after a save/load round-trip.
 two `invader` track slots. The board registry mapping one to the other lives in
 [09-island-board.md](./09-island-board.md).
 
-## Fields power cards will add
+## Fields power cards add
 
-Specified in [10-power-cards.md](./10-power-cards.md#state) and **not implemented**. Listed here
-so the contract does not have to be read in two places to know what a save may hold: a top-level
-`powerCards` (`owned`, and the stored `draw` offer), `round.defense` and `round.defenseExpiry`
-keyed by land id, `round.cards`, and `ui.cardOptions`.
+Specified in [10-power-cards.md](./10-power-cards.md#state). Listed here so the contract does
+not have to be read in two places to know what a save may hold: a top-level `powerCards`
+(`owned`, and the stored `draw` offer), `round.defense` and `round.defenseExpiry` keyed by land
+id, `round.cards`, and `ui.cardOptions`.
 
 Every one of them is additive, which is the property that matters: a new field is not a schema
 change and must not trigger the wipe — see
@@ -194,7 +194,7 @@ Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
 - `blight` is clamped to `blightThreshold` as its max. Nothing in the fight lowers it; the one
   thing that can is a power card's removal clause, which decrements `blight` and
   `blightByLand[land]` together and leaves `blightProgress[land]` alone. See
-  [10-power-cards.md](./10-power-cards.md#removing-blight) — designed, not built.
+  [10-power-cards.md](./10-power-cards.md#removing-blight).
 - `blightThreshold` is copied from the current permanent-upgrade baseline at round setup, so
   a mid-round upgrade purchase (not currently possible; upgrades only apply between rounds)
   can't retroactively change an already-running round's threshold.

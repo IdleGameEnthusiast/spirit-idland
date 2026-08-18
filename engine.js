@@ -578,6 +578,176 @@ const ABILITIES = {
 
 const ABILITY_IDS = Object.keys(ABILITIES);
 
+/* ------------------------------------------------------------------ *
+ * Power cards (10-power-cards.md)                                      *
+ *                                                                      *
+ * A third source of power beside the kit and the two shops: bought      *
+ * once with Presence, handed to a round by depth, and cast like an      *
+ * ability. Presence buys possibility; the round buys the moment - a     *
+ * card in `powerCards.owned` does nothing at all until a round has      *
+ * survived to a draw wave and been handed it.                          *
+ * ------------------------------------------------------------------ */
+
+// Buying: the draw row in the Presence shop. Three offered, one kept, on the same 1.6 curve
+// every ladder in the game uses. All seven cost 432 Presence together - a mid-cycle sink, and
+// the first Presence row that out-earns simply holding the points.
+const POWER_CARD_DRAW_BASE_COST = 10;
+const POWER_CARD_DRAW_GROWTH = 1.6;
+const POWER_CARD_REROLL_DIVISOR = 4;
+const POWER_CARD_OFFER_SIZE = 3;
+// What a paid re-roll guarantees: this many cards the current offer does not hold, whenever
+// the unowned pool is large enough to promise them. Below that the button goes dead rather
+// than taking Presence for an offer it cannot change - see rerollPowerCardOffer.
+const POWER_CARD_REROLL_GUARANTEE = 2;
+
+// Holding: the drip. 25 / 45 / 65 at tier 0, so the shallow rounds of a fresh cycle draw
+// nothing and a round reaching wave 70 draws three.
+const POWER_CARD_FIRST_DRAW_WAVE = 25;
+const POWER_CARD_DRAW_INTERVAL_BASE = 20;
+const POWER_CARD_INTERVAL_MAX_TIER = 10;
+// The Energy fee for throwing a freshly drawn card back, times the draws taken this round.
+// Flat where Energy income is not, deliberately: it is an early-round constraint, and by the
+// third draw it is nothing. If it should bite all round the lever is the growth, not the base.
+const POWER_CARD_REDRAW_BASE_ENERGY = 10;
+
+/* The seven cards.
+ *
+ * Cooldowns are authored in beats times TIME_SCALE, exactly like the kit, so a card cast rate
+ * is a cast rate at any speed. `focusBaseCost` is each card cooldown in beats: a card carries
+ * no unlockCost for abilityFocusCost to anchor to, and a slow card should cost more to hasten
+ * than a fast one.
+ *
+ * Where a kit ability carries one `effect` string, a card carries an ordered `effects` list -
+ * every one of these is two to four clauses with conditions, and the five kit abilities are
+ * left exactly as they are. See applyCardEffect for the resolver, and cardStepApplies for the
+ * conditions.
+ */
+const POWER_CARDS = {
+  pull_beneath: {
+    id: "pull_beneath",
+    cooldownSeconds: 10 * TIME_SCALE,
+    focusBaseCost: 10,
+    needsTarget: true,
+    target: "invaders",
+    effects: [
+      { kind: "fear_flat", amount: 3 },
+      // The same shape flash_floods uses for `coastalBonus`, deliberately. The +1 is what
+      // keeps it killing Towns past wave 110, where the health rung stops a flat 2.
+      { kind: "damage", amount: 2, terrainBonus: 1, terrains: ["desert", "wetlands"] }
+    ]
+  },
+  // Honestly a two-mode card rather than a conditional one: the `else` is player-controlled,
+  // so targeting a land with no Explorers always takes the removal. Its shape drifts on its
+  // own over a round - Explorers thin out as Builds turn them into Towns, so it starts as a
+  // clearing tool and ends as a removal card without any rule saying so.
+  song_of_sanctity: {
+    id: "song_of_sanctity",
+    cooldownSeconds: 10 * TIME_SCALE,
+    focusBaseCost: 10,
+    needsTarget: true,
+    target: "explorers_or_blight",
+    effects: [
+      { kind: "destroy_units", unitType: "explorers", amount: 1, when: "explorers_present" },
+      { kind: "push_all", unitType: "explorers", when: "explorers_present" },
+      { kind: "remove_blight", amount: 1, when: "else" }
+    ]
+  },
+  // The two clauses are independent: a Desert land with no invaders still gets its removal,
+  // and a Jungle land full of Cities still pays its Fear.
+  uncanny_melting: {
+    id: "uncanny_melting",
+    cooldownSeconds: 12 * TIME_SCALE,
+    focusBaseCost: 12,
+    needsTarget: true,
+    target: "invaders_or_terrain_blight",
+    blightTerrains: ["desert", "wetlands"],
+    effects: [
+      { kind: "fear_per_invader", amount: 3, when: "invaders_present" },
+      { kind: "remove_blight", amount: 1, when: "terrain:desert,wetlands" }
+    ]
+  },
+  // Never fails, since Defend always applies - so it takes any land at all.
+  natures_resilience: {
+    id: "natures_resilience",
+    cooldownSeconds: 12 * TIME_SCALE,
+    focusBaseCost: 12,
+    needsTarget: true,
+    target: "any",
+    effects: [
+      { kind: "defend", amount: 6, scope: "target" },
+      { kind: "remove_blight", amount: 1 }
+    ]
+  },
+  // An early-board card the player cannot own before wave 25, and that is known rather than
+  // overlooked: unused wards accumulate on quiet lands, so it banks value against the spread
+  // of the invaders rather than against the current wave - and it is exactly the card the
+  // Energy re-draw exists to throw back at wave 65.
+  encompassing_ward: {
+    id: "encompassing_ward",
+    cooldownSeconds: 20 * TIME_SCALE,
+    focusBaseCost: 20,
+    needsTarget: false,
+    effects: [
+      { kind: "defend", amount: 2, scope: "all" }
+    ]
+  },
+  // The best-shaped card of the seven and the one to copy: it pays in all three currencies
+  // the round cares about, on a cooldown that makes each payment a decision.
+  accelerated_rot: {
+    id: "accelerated_rot",
+    cooldownSeconds: 30 * TIME_SCALE,
+    focusBaseCost: 30,
+    needsTarget: true,
+    target: "invaders_or_blight",
+    effects: [
+      { kind: "fear_flat", amount: 10 },
+      { kind: "damage", amount: 5 },
+      { kind: "remove_blight", amount: 1 }
+    ]
+  },
+  // The longest cooldown in the game, and dead whenever the pressure has gone inland - only
+  // lands 1, 2 and 3 are coastal. That is its weakness and it is the right kind: positional,
+  // readable off the board, and answered by a kit whose pushes already walk stacks seaward.
+  tsunami: {
+    id: "tsunami",
+    cooldownSeconds: 50 * TIME_SCALE,
+    focusBaseCost: 50,
+    needsTarget: true,
+    target: "coastal_invaders",
+    effects: [
+      { kind: "fear_flat", amount: 10 },
+      { kind: "damage", amount: 8 },
+      { kind: "destroy_dahan", amount: 2 }
+    ],
+    // The optional half, and it costs zero extra clicks: a sliding switch on the card, default
+    // on, remembered across casts and rounds - the same control and the same reasoning as the
+    // auto-cast switches. Two cast buttons would charge a click on every cast for a decision
+    // the player changes twice a round.
+    alsoEachOtherCoastal: [
+      { kind: "fear_flat", amount: 5 },
+      { kind: "damage", amount: 4 },
+      { kind: "destroy_dahan", amount: 1 }
+    ]
+  }
+};
+
+const POWER_CARD_IDS = Object.keys(POWER_CARDS);
+
+// Every card option the UI remembers, with its default. One key today; it is a map rather
+// than a boolean so the second card wanting a switch is content, not code.
+const POWER_CARD_OPTION_DEFAULTS = { tsunami: true };
+
+// A card is an ability in every respect that matters, so everything in the ability runtime
+// reads its record through here rather than out of ABILITIES directly. The kit wins a name
+// clash, which cannot happen today and should stay harmless if it ever does.
+function abilityBaseRecord(abilityId) {
+  return ABILITIES[abilityId] || POWER_CARDS[abilityId] || null;
+}
+
+function isPowerCard(abilityId) {
+  return Boolean(POWER_CARDS[abilityId]);
+}
+
 // Costs scale with the tier already owned, so the shop stays a choice rather than a
 // checklist. 1.6x per tier outruns what a tier is worth: with attrition flat, a Dahan tier
 // buys about 11% more income, so the price pulls away from the payoff instead of chasing it.
@@ -679,6 +849,30 @@ const UPGRADES = {
     // run - which is the point: this is the ladder that pays for pushing rather than for
     // playing, and it should not be the obvious first buy.
     baseCost: 12
+  },
+
+  /* ---------- The row that shortens the drip ----------
+   *
+   * The one thing Fear should buy about power cards: how fast a round rebuilds itself. It buys
+   * no card, multiplies no card, and casts no card - it only moves the wave the next one
+   * arrives on, one wave a tier, from 20 down to 10.
+   *
+   * Its rungs are lumpy, deliberately and unavoidably. Draws land at 25, 25+I, 25+2I against a
+   * round of integer waves, so a tier only pays when it moves a draw under the round ceiling:
+   * at a 70-wave round tier 5 is the first purchase that adds a card and tier 10 is the second,
+   * while at 150 waves nearly every rung is live. That is high_water_mark's shape exactly -
+   * near-worthless to a player dying early, excellent to one pushing deep - and it is this
+   * row's argument for existing. If the ladder reads dead in play the fallback is four tiers of
+   * 20 -> 17 -> 14 -> 11, where every purchase visibly moves something.
+   *
+   * 5,448 Fear for the whole ladder, priced knowing it nearly doubles the catalogue's total.
+   */
+  power_card_interval: {
+    id: "power_card_interval",
+    repeatable: true,
+    maxTier: POWER_CARD_INTERVAL_MAX_TIER,
+    effect: "power_card_interval_per_tier",
+    baseCost: 30
   },
 
   /* ---------- The Dahan Remember: a pool, not a ladder ----------
@@ -1133,7 +1327,18 @@ const I18N = {
       boon_of_vigor: "Boon of Vigor",
       rivers_bounty: "River's Bounty",
       flash_floods: "Flash Floods",
-      wash_away: "Wash Away"
+      wash_away: "Wash Away",
+      // Die sieben Machtkarten stehen in derselben Tabelle wie die Ausrüstung, weil eine Karte
+      // in jeder Hinsicht, die zählt, eine Fähigkeit ist - abilityName fragt nicht nach, was
+      // sie ist. Die deutschen Namen sind Platzhalter für dieses Paket und nicht die
+      // veröffentlichten Kartennamen; liegen die offiziellen vor, ersetzen sie diese hier.
+      pull_beneath: "Hinab in die hungrige Erde",
+      song_of_sanctity: "Lied der Unverletzlichkeit",
+      uncanny_melting: "Unheimliches Schmelzen",
+      natures_resilience: "Widerstandskraft der Natur",
+      encompassing_ward: "Umfassender Schutzwall",
+      accelerated_rot: "Beschleunigte Fäulnis",
+      tsunami: "Tsunami"
     },
     // The Innate carries one text per tier, in tier order. Every other ability carries one.
     abilityTexts: {
@@ -1145,7 +1350,16 @@ const I18N = {
       boon_of_vigor: "+{amount} Energie.",
       rivers_bounty: "+{amount} Dahan im Gebiet mit den wenigsten Dahan und Invasoren, wenn möglich.",
       flash_floods: "{damage} Schaden. Liegt das Ziel an der Küste: +{coastal} Schaden.",
-      wash_away: "Schiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet. An der Küste spült das Wasser stattdessen bis zu {sea} von der Insel ins Meer."
+      wash_away: "Schiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet. An der Küste spült das Wasser stattdessen bis zu {sea} von der Insel ins Meer.",
+      // Die Zahlen einer Karte kommen aus ihrer Schrittliste, nicht aus der Übersetzung -
+      // siehe cardTextVars. Wer in POWER_CARDS eine Zahl ändert, ändert diese Texte mit.
+      pull_beneath: "{fear} Furcht und {damage} Schaden. Liegt das Ziel in {terrains}: +{bonus} Schaden.",
+      song_of_sanctity: "Zerstört {destroy} Entdecker und schiebt alle übrigen Entdecker fort. Ohne Entdecker im Ziel: entfernt stattdessen {blight} Verderbnis.",
+      uncanny_melting: "Stehen Invasoren im Ziel: {fear} Furcht je Invasor. Liegt das Ziel in {terrains}: entfernt {blight} Verderbnis.",
+      natures_resilience: "Schutz {defend}. Entfernt {blight} Verderbnis.",
+      encompassing_ward: "Schutz {defend} in jedem Gebiet.",
+      accelerated_rot: "{fear} Furcht. {damage} Schaden. Entfernt {blight} Verderbnis.",
+      tsunami: "Nur an der Küste: {fear} Furcht, {damage} Schaden, zerstört {dahan} Dahan. Ist der Schalter an, trifft es jede andere Küste mit {alsoFear} Furcht und {alsoDamage} Schaden und zerstört dort {alsoDahan} Dahan."
     },
 
     mapTitle: "Die Insel",
@@ -1252,6 +1466,7 @@ const I18N = {
       rising_dread: "Steigendes Grauen",
       mounting_terror: "Wachsender Schrecken",
       high_water_mark: "Hochwassermarke",
+      power_card_interval: "Die Insel erinnert sich früher",
       dahan_remember: "Die Dahan erinnern sich",
       auto_boon: "Segen von selbst",
       auto_innate: "Angeborener Instinkt",
@@ -1268,6 +1483,7 @@ const I18N = {
       rising_dread: "+10% Furcht aus besiegten Invasoren, pro Stufe.",
       mounting_terror: "+10% Furcht für überstandene Wellen, pro Stufe.",
       high_water_mark: "Jede 10. Welle zahlt zusätzlich 10% ihrer eigenen Nummer als Furcht, pro Stufe. Welle 50 auf Stufe 3 bringt 15 dazu.",
+      power_card_interval: "Der Abstand zwischen zwei Machtkarten sinkt um 1 Welle, pro Stufe. Nur Rückfallebene - der Text der Zeile nennt die Abstände selbst.",
       dahan_remember: "Furcht, in die Erinnerung der Dahan gelegt - 100 je 1%. Sie schlagen früher dafür. Bei 100% schlagen sie doppelt so oft.",
       auto_boon: "Boon of Vigor wirkt sich selbst, sobald es bereit ist.",
       auto_innate: "Die Angeborene Kraft wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt.",
@@ -1282,13 +1498,52 @@ const I18N = {
     upgradeNextTexts: {
       headwaters: "Nächste Stufe: +{gain} Energie zu Rundenbeginn, dann {next} in der Hand.",
       high_water_mark: "Nächste Stufe: +{pct}% der Wellennummer bei jeder 10. Welle - Welle {wave} zahlt dann {next} statt {current}.",
+      power_card_interval: "Die erste Machtkarte kommt in Welle {first}, danach alle {current} Wellen. Nächste Stufe: alle {next}.",
       // Kein Vergleich mit dem Grundwert - siehe die englische Fassung.
       dahan_remember: "{invested} / {full} Furcht erinnert ({pct}%). Die Dahan schlagen alle {seconds}s zu. 100 Furcht bringen 1% mehr."
     },
     upgradeMaxedTexts: {
       headwaters: "Jede Runde beginnt mit {energy} Energie in der Hand: die ganze Ausrüstung, gekauft vor der ersten Welle.",
+      power_card_interval: "Die erste Machtkarte kommt in Welle {first}, danach alle {current} Wellen - schneller erinnert sich die Insel nicht.",
       dahan_remember: "Alle {full} Furcht erinnert. Die Dahan schlagen alle {seconds}s zu - doppelt so oft wie die {base}s, mit denen sie begannen."
     },
+
+    /* ---------- Machtkarten ---------- */
+    // Der Kartenzug im Präsenzladen: drei liegen aus, eine wird behalten.
+    cardShopLabel: "Machtkarten",
+    cardShopHint: "Drei liegen aus, eine gehört dir - für immer, auch über die Aszension hinweg. Auf der Hand liegt sie erst, wenn eine Runde tief genug kommt.",
+    cardDrawCostLabel: "{cost} Präsenz",
+    cardRerollBtn: "Neu mischen ({cost})",
+    cardRerollHint: "Mindestens zwei Karten, die gerade nicht ausliegen.",
+    cardRerollDeadHint: "Nur noch drei Karten - es liegt bereits alles aus.",
+    cardShopSoldOut: "Alle sieben Karten gehören dir.",
+    cardOwnedLabel: "In Besitz: {count} / {total}",
+    // Auf der Karte in der Fähigkeitsleiste.
+    cardTag: "Karte",
+    cardRedrawBtn: "Tauschen: {cost} Energie",
+    cardRedrawHint: "Wirf diese Karte zurück und zieh eine andere. Sobald du sie gewirkt hast, ist sie deine.",
+    cardOptionLabel: "Küsten",
+    cardOptionHint: "Trifft auch jede andere Küste - mit weniger Furcht und Schaden, und es kostet dort ebenfalls Dahan. Aus: nur das gewählte Gebiet.",
+    cardNextDrawHint: "Nächste Karte: Welle {wave}.",
+    // Protokollzeilen.
+    cardBought: "{card} für {cost} Präsenz. Die Insel erinnert sich.",
+    cardTooExpensive: "{card} kostet {cost} Präsenz, du hast {presence}.",
+    cardRerolled: "Neu gemischt für {cost} Präsenz. {presence} übrig.",
+    cardRerollTooExpensive: "Neu mischen kostet {cost} Präsenz, du hast {presence}.",
+    cardRerollRefused: "Es liegen bereits alle übrigen Karten aus - neu mischen bringt nichts.",
+    cardDrawn: "Welle {wave}: {card} kommt auf die Hand.",
+    cardRedrawn: "{card} zurückgelegt für {cost} Energie. Stattdessen: {next}.",
+    cardRedrawTooExpensive: "Tauschen kostet {cost} Energie, du hast {energy}.",
+    cardResolved: "{card} in {land}: {summary}.",
+    cardResolvedNoLand: "{card}: {summary}.",
+    // Die Bausteine der Zusammenfassung oben, in der Reihenfolge, in der sie gesammelt werden.
+    cardPartFear: "{amount} Furcht",
+    cardPartDamage: "{amount} Schaden",
+    cardPartDefeated: "{count} besiegt",
+    cardPartPushed: "{count} geschoben",
+    cardPartBlight: "{amount} Verderbnis entfernt",
+    cardPartDefend: "Schutz {amount}",
+    cardPartDahan: "{count} Dahan gefallen",
 
     logTitle: "Spielprotokoll",
     manualSaveBtn: "Jetzt speichern",
@@ -1347,6 +1602,12 @@ const I18N = {
     pressureChip: "+{rate}% / s - nächste in {eta}",
     pressureDetail: "{gross} Schaden - {defence} Dahan = {net}/s. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
     pressureDetailHeld: "{gross} Schaden gegen {defence} Dahan-Abwehr: aufgehalten, aber {net}/s sickern durch. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
+    // Ein Schutzwall, der den ganzen Angriff auffängt: kein Sickern, kein Verlust an Dahan.
+    pressureDenied: "abgeschirmt - Schutz {defense} deckt {gross} Schaden",
+    pressureDetailDenied: "{gross} Schaden gegen Schutz {defense}: nichts kommt durch. Der Schutzwall vergeht eine Welle, nachdem er zum ersten Mal gewirkt hat.",
+    // Ein Schutzwall, der nur einen Teil auffängt - der Rest trifft das Gebiet als kleinerer Angriff.
+    pressureDetailWarded: "{gross} Schaden - Schutz {defense} = {effective}, davon {defence} durch Dahan = {net}/s. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
+    landDefenseLabel: "Schutz hier",
     buildChip: "+1 {unit}",
     buildChipNone: "nichts hier",
     blightBarLabel: "Verderbnis",
@@ -1492,7 +1753,16 @@ const I18N = {
       boon_of_vigor: "Boon of Vigor",
       rivers_bounty: "River's Bounty",
       flash_floods: "Flash Floods",
-      wash_away: "Wash Away"
+      wash_away: "Wash Away",
+      // The seven power cards sit in the same table as the kit, because a card is an ability
+      // in every respect that matters and abilityName does not ask which it is looking at.
+      pull_beneath: "Pull Beneath the Hungry Earth",
+      song_of_sanctity: "Song of Sanctity",
+      uncanny_melting: "Uncanny Melting",
+      natures_resilience: "Nature's Resilience",
+      encompassing_ward: "Encompassing Ward",
+      accelerated_rot: "Accelerated Rot",
+      tsunami: "Tsunami"
     },
     abilityTexts: {
       innate_power: [
@@ -1503,7 +1773,16 @@ const I18N = {
       boon_of_vigor: "Gain {amount} Energy.",
       rivers_bounty: "+{amount} Dahan to the land with the fewest Dahan and Invaders if possible.",
       flash_floods: "{damage} damage. If the target land is coastal, +{coastal} damage.",
-      wash_away: "Push up to {push} Explorers/Towns to an adjacent land. From a coastal land, up to {sea} are washed out to sea and off the island instead."
+      wash_away: "Push up to {push} Explorers/Towns to an adjacent land. From a coastal land, up to {sea} are washed out to sea and off the island instead.",
+      // A card's numbers come out of its step list rather than out of the translation - see
+      // cardTextVars. Retune a number in POWER_CARDS and these move with it.
+      pull_beneath: "{fear} Fear and {damage} damage. If the target land is {terrains}, +{bonus} damage.",
+      song_of_sanctity: "Destroy {destroy} Explorer, then push all other Explorers. With no Explorer in the target, remove {blight} Blight instead.",
+      uncanny_melting: "If Invaders are present, {fear} Fear per Invader. If the target land is {terrains}, remove {blight} Blight.",
+      natures_resilience: "Defend {defend}. Remove {blight} Blight.",
+      encompassing_ward: "Defend {defend} in each land.",
+      accelerated_rot: "{fear} Fear. {damage} damage. Remove {blight} Blight.",
+      tsunami: "Coastal land only: {fear} Fear, {damage} damage, destroy {dahan} Dahan. With the switch on, each other coastal land takes {alsoFear} Fear and {alsoDamage} damage and loses {alsoDahan} Dahan."
     },
 
     mapTitle: "The Island",
@@ -1609,7 +1888,8 @@ const I18N = {
       rising_dread: "Rising Dread",
       mounting_terror: "Mounting Terror",
       high_water_mark: "High-Water Mark",
-      dahan_remember: "The Dahan Remember",
+      power_card_interval: "The Island Remembers Sooner",
+      dahan_remember:"The Dahan Remember",
       auto_boon: "Boon Unbidden",
       auto_innate: "Innate Instinct",
       auto_wash_away: "The Current Unbidden",
@@ -1625,6 +1905,7 @@ const I18N = {
       rising_dread: "+10% Fear from defeated invaders, per tier.",
       mounting_terror: "+10% Fear from surviving waves, per tier.",
       high_water_mark: "Every 10th wave pays a bonus of 10% of its own number as Fear, per tier. Wave 50 at tier 3 pays 15 more.",
+      power_card_interval: "The gap between two power cards shrinks by 1 wave, per tier. Fallback only - the row prints the intervals themselves.",
       dahan_remember: "Fear poured into the memory of the Dahan, 100 for every 1% - they strike sooner for it. At 100% they strike twice as often.",
       auto_boon: "Boon of Vigor casts itself whenever it is ready.",
       auto_innate: "The Innate casts itself whenever it is ready, at whichever tier you own.",
@@ -1642,12 +1923,51 @@ const I18N = {
       // No comparison against the base here: at zero invested - which is where every player
       // first reads this row - "every 20s, against 20s" is a sentence that says nothing. The
       // maxed text below is where the two numbers are worth putting side by side.
-      dahan_remember: "{invested} / {full} Fear remembered ({pct}%). The Dahan strike every {seconds}s. 100 Fear buys another 1%."
+      dahan_remember: "{invested} / {full} Fear remembered ({pct}%). The Dahan strike every {seconds}s. 100 Fear buys another 1%.",
+      power_card_interval: "The first power card arrives on wave {first}, then one every {current} waves. Next tier: every {next}."
     },
     upgradeMaxedTexts: {
       headwaters: "Every round opens with {energy} Energy in hand: the whole unlock kit, before the first wave.",
+      power_card_interval: "The first power card arrives on wave {first}, then one every {current} waves - the island remembers no sooner than that.",
       dahan_remember: "All {full} Fear remembered. The Dahan strike every {seconds}s - twice as often as the {base}s they began with."
     },
+
+    /* ---------- Power cards ---------- */
+    // The draw row in the Presence shop: three on show, one kept.
+    cardShopLabel: "Power cards",
+    cardShopHint: "Three are offered, one is yours - kept forever, ascension included. It only reaches your hand once a round runs deep enough.",
+    cardDrawCostLabel: "{cost} Presence",
+    cardRerollBtn: "Re-roll ({cost})",
+    cardRerollHint: "At least two cards this offer does not hold.",
+    cardRerollDeadHint: "Three cards left - every one of them is already on show.",
+    cardShopSoldOut: "All seven cards are yours.",
+    cardOwnedLabel: "Owned: {count} / {total}",
+    // On the card itself, in the ability bar.
+    cardTag: "Card",
+    cardRedrawBtn: "Re-draw: {cost} Energy",
+    cardRedrawHint: "Throw this card back and draw another. The moment you cast it, it is yours for the round.",
+    cardOptionLabel: "Coasts",
+    cardOptionHint: "Hits every other coastal land too - less Fear and damage, and it costs Dahan there as well. Off: the chosen land only.",
+    cardNextDrawHint: "Next card: wave {wave}.",
+    // Log lines.
+    cardBought: "{card} for {cost} Presence. The island remembers.",
+    cardTooExpensive: "{card} costs {cost} Presence, you have {presence}.",
+    cardRerolled: "Re-rolled for {cost} Presence. {presence} left.",
+    cardRerollTooExpensive: "A re-roll costs {cost} Presence, you have {presence}.",
+    cardRerollRefused: "Every remaining card is already on show - a re-roll would buy nothing.",
+    cardDrawn: "Wave {wave}: {card} arrives in hand.",
+    cardRedrawn: "{card} thrown back for {cost} Energy. {next} instead.",
+    cardRedrawTooExpensive: "A re-draw costs {cost} Energy, you have {energy}.",
+    cardResolved: "{card} in {land}: {summary}.",
+    cardResolvedNoLand: "{card}: {summary}.",
+    // The pieces of that summary, in the order they are gathered.
+    cardPartFear: "{amount} Fear",
+    cardPartDamage: "{amount} damage",
+    cardPartDefeated: "{count} defeated",
+    cardPartPushed: "{count} pushed",
+    cardPartBlight: "{amount} Blight removed",
+    cardPartDefend: "Defend {amount}",
+    cardPartDahan: "{count} Dahan lost",
 
     logTitle: "Event log",
     manualSaveBtn: "Save now",
@@ -1706,6 +2026,12 @@ const I18N = {
     pressureChip: "+{rate}% / s - next in {eta}",
     pressureDetail: "{gross} damage - {defence} Dahan = {net}/s. +{rate}% Blight per second, next in {eta}.",
     pressureDetailHeld: "{gross} damage against {defence} Dahan defence: held, but {net}/s seeps through. +{rate}% Blight per second, next in {eta}.",
+    // A ward that covered the whole attack: no seep, and no Dahan lost either.
+    pressureDenied: "warded - Defend {defense} covers {gross} damage",
+    pressureDetailDenied: "{gross} damage against Defend {defense}: nothing gets through. The ward lapses one wave after the first moment it did anything.",
+    // A ward that covered part of it - what is left hits the land as a smaller attack.
+    pressureDetailWarded: "{gross} damage - Defend {defense} = {effective}, less {defence} Dahan = {net}/s. +{rate}% Blight per second, next in {eta}.",
+    landDefenseLabel: "Defense here",
     buildChip: "+1 {unit}",
     buildChipNone: "nothing here",
     blightBarLabel: "Blight",
@@ -1896,13 +2222,20 @@ function abilityText(state, abilityId) {
     ? (entry[clamp(record.tier || 0, 0, entry.length - 1)] || "")
     : entry;
 
-  return template(raw, {
-    amount: record.amount || 0,
-    damage: record.damage || 0,
-    coastal: record.coastalBonus || 0,
-    push: record.pushCount || 0,
-    sea: record.seaCount || 0
-  });
+  // A card's numbers live in its step list rather than in fields on the record, so they are
+  // read back out of it - see cardTextVars. Same contract either way: the description is
+  // written from the effect, never beside it.
+  const vars = isPowerCard(abilityId)
+    ? cardTextVars(state, record)
+    : {
+        amount: record.amount || 0,
+        damage: record.damage || 0,
+        coastal: record.coastalBonus || 0,
+        push: record.pushCount || 0,
+        sea: record.seaCount || 0
+      };
+
+  return template(raw, vars);
 }
 
 // Everything a land's fight is doing right now, in one object. The chip, the detail panel,
@@ -1926,11 +2259,23 @@ function landPressure(state, landId) {
   const gross = invaderDamageInLand(state, slot);
   const dahan = Math.max(0, state.dahan[landId] || 0);
   const defence = dahan * UNIT_STATS.dahan.damage;
+
+  // Defense first, and against the raw attack rather than against what the Dahan left of it.
+  // Everything downstream then reads `effective` where it used to read `gross`, so a 6-attack
+  // land behind Defend 2 is a 4-attack land in every formula - which is what makes a ward
+  // protect the Dahan as well as the land, something their own defence never does.
+  const defense = defenseInLand(state, landId);
+  const effective = Math.max(0, gross - defense);
+  // Total denial is measured against Defense alone: Defend 6 covers a 6-attack land whatever
+  // else is standing in it. It is also the one thing that beats BLIGHT_FLOOR_FRACTION - a
+  // ward stops the seep a full stack of Dahan cannot - and that is bounded by the ward being
+  // spent one wave later, so no land is ever permanently safe.
+  const denied = gross > 0 && effective <= 0;
   const held = gross > 0 && defence >= gross;
-  const net = Math.max(gross - defence, gross * BLIGHT_FLOOR_FRACTION);
+  const net = denied ? 0 : Math.max(effective - defence, effective * BLIGHT_FLOOR_FRACTION);
 
   const blightPerSecond = net * BLIGHT_PER_DAMAGE_SECOND;
-  const dahanPerSecond = dahan > 0 ? gross * DAHAN_LOSS_PER_DAMAGE_SECOND : 0;
+  const dahanPerSecond = dahan > 0 ? effective * DAHAN_LOSS_PER_DAMAGE_SECOND : 0;
 
   const blightProgress = (state.round.blightProgress || {})[landId] || 0;
   const dahanProgress = (state.round.dahanProgress || {})[landId] || 0;
@@ -1939,6 +2284,13 @@ function landPressure(state, landId) {
     gross,
     dahan,
     defence,
+    // The ward on this land, what the invaders are left dealing after it, and whether it
+    // covered the attack outright. Three fields rather than one because the board draws the
+    // pool, the formulas read the remainder, and the chip says which of the two stories to
+    // tell.
+    defense,
+    effective,
+    denied,
     // The Dahan are cancelling everything they can. Not the same as safe any more, which is
     // why it is its own flag rather than a `net === 0` test.
     held,
@@ -2005,6 +2357,10 @@ function pressureChipText(state, landId) {
   const t = locale(state);
   const p = landPressure(state, landId);
   if (p.gross <= 0) return t.pressureNoInvaders;
+  // A ward that covered the attack outright replaces the line rather than decorating it:
+  // there is no rate to quote and no next Blight to count down to, which is the whole of what
+  // Defense bought and the one state the chip must not report as "0% / s - next in never".
+  if (p.denied) return template(t.pressureDenied, { defense: p.defense, gross: p.gross });
   const line = template(t.pressureChip, { rate: pctText(p.blightPerSecond), eta: etaText(state, p.blightEta) });
   return p.held ? template(t.pressureHeld, { line }) : line;
 }
@@ -2017,10 +2373,16 @@ function pressureDetailText(state, landId) {
   const parts = {
     gross: p.gross,
     defence: p.defence,
+    defense: p.defense,
+    effective: p.effective,
     net: formatAmount(p.net),
     rate: pctText(p.blightPerSecond),
     eta: etaText(state, p.blightEta)
   };
+  // Three readings, and a ward changes which one is true: it covered everything, it covered
+  // some of it, or there is none and the Dahan are the whole of the answer.
+  if (p.denied) return template(t.pressureDetailDenied, parts);
+  if (p.defense > 0) return template(t.pressureDetailWarded, parts);
   return template(p.held ? t.pressureDetailHeld : t.pressureDetail, parts);
 }
 
@@ -2123,6 +2485,21 @@ const NEXT_TIER_UPGRADE_TEXT = {
       return template((t.upgradeMaxedTexts || {}).dahan_remember, parts);
     }
     return template((t.upgradeNextTexts || {}).dahan_remember, parts);
+  },
+
+  // The drip's row, and the one in the catalogue whose rungs are lumpy by construction: draws
+  // land at 25, 25+I, 25+2I against a round of integer waves, so a tier only pays when it
+  // moves a draw under the round's ceiling. Printing the two intervals is the honest way to
+  // sell that - it says exactly what the next 30 Fear moves, and leaves the player to know
+  // how deep their rounds go.
+  power_card_interval(state, t) {
+    const tier = upgradeTier(state, "power_card_interval");
+    const current = POWER_CARD_DRAW_INTERVAL_BASE - tier;
+    const parts = { first: POWER_CARD_FIRST_DRAW_WAVE, current, next: current - 1 };
+    if (tier >= upgradeMaxTier("power_card_interval")) {
+      return template((t.upgradeMaxedTexts || {}).power_card_interval, parts);
+    }
+    return template((t.upgradeNextTexts || {}).power_card_interval, parts);
   },
 
   high_water_mark(state, t) {
@@ -3059,6 +3436,17 @@ function unlockedAbilityIds(state) {
     if (ABILITIES[abilityId] && !unlocked.includes(abilityId)) unlocked.push(abilityId);
   }
 
+  // The third source, after the kit and the `unlock_` path: the power cards this round has
+  // been handed. Round state like the Energy unlocks above, and last in the list on purpose -
+  // the bar reads as the spirit's own kit first and what the round earned after it, and a
+  // card arriving at wave 45 must not shove the five abilities the player aims at sideways.
+  const hand = Array.isArray(state.round && state.round.cards && state.round.cards.handIds)
+    ? state.round.cards.handIds
+    : [];
+  for (const cardId of hand) {
+    if (POWER_CARDS[cardId] && !unlocked.includes(cardId)) unlocked.push(cardId);
+  }
+
   return unlocked;
 }
 
@@ -3099,7 +3487,10 @@ function abilityTier(state, abilityId) {
 }
 
 function abilityRecord(state, abilityId) {
-  const base = ABILITIES[abilityId];
+  // Cards come through here too - a card is an ability in every respect that matters, and
+  // this is the one door every reader of a record uses. None of them has tiers, so a card
+  // falls straight out of the branch below as its own record.
+  const base = abilityBaseRecord(abilityId);
   if (!base) return null;
   if (!Array.isArray(base.tiers)) return base;
   const tier = abilityTier(state, abilityId);
@@ -3289,8 +3680,12 @@ function abilityFocusMultiplier(state, abilityId) {
 function abilityFocusCost(state, abilityId) {
   if (!abilityRecord(state, abilityId)) return Infinity;
   if (abilityFocusMultiplier(state, abilityId) <= FOCUS_FLOOR_MULT) return Infinity;
-  const record = ABILITIES[abilityId];
-  const base = abilityUnlockCost(state, abilityId) || (record && record.focusBaseCost) || FOCUS_BASE_COST_FALLBACK;
+  const record = abilityBaseRecord(abilityId);
+  // A card carries no unlockCost at all - the Presence was the cost - so it never anchors on
+  // that half. Its own `focusBaseCost` is its cooldown in beats, which makes a slow card
+  // dearer to hasten than a fast one, the same shape the Innate's hand-set 25 has.
+  const unlock = isPowerCard(abilityId) ? 0 : abilityUnlockCost(state, abilityId);
+  const base = unlock || (record && record.focusBaseCost) || FOCUS_BASE_COST_FALLBACK;
   return Math.round(base * Math.pow(FOCUS_COST_GROWTH, abilityFocusPurchases(state, abilityId)));
 }
 
@@ -3352,6 +3747,10 @@ function abilityLegalLand(state, abilityId, landId) {
   const record = abilityRecord(state, abilityId);
   if (!record || !record.needsTarget) return false;
 
+  // A card names its own targeting rule - see cardLegalLand, which is where all six of them
+  // are written out. Everything below is the kit's.
+  if (isPowerCard(abilityId)) return cardLegalLand(state, abilityId, landId);
+
   // A push needs something the water can carry: an Explorer or a Town, never a City. Where it
   // goes is never in doubt any more - open ground, an occupied neighbour, or the sea - so this
   // no longer reads a second land the way it used to. Everything else only needs invaders
@@ -3389,9 +3788,22 @@ function pushableCount(state, landId) {
 // instead of sitting somewhere undefended racking up Blight for free. Failing that, a coastal
 // one wins - pushing toward the water is what this spirit does, and it is also the harder land
 // for the invaders to build back into.
+// Defense joins that ranking now, under the Dahan rather than beside them: shoving a unit onto
+// a warded land is strictly good for the player, so the water should prefer it - and it stays
+// behind the Dahan preference because Dahan kill what arrives while a ward only absorbs it.
+// A land holding both wins outright. The coastal tie-break applies inside whichever tier won.
 function preferredPushLands(state, candidates) {
-  const defended = candidates.filter((other) => (state.dahan[other] || 0) > 0);
-  const pool = defended.length > 0 ? defended : candidates;
+  const hasDahan = (other) => (state.dahan[other] || 0) > 0;
+  const hasWard = (other) => defenseInLand(state, other) > 0;
+
+  const both = candidates.filter((other) => hasDahan(other) && hasWard(other));
+  const dahanOnly = candidates.filter(hasDahan);
+  const wardOnly = candidates.filter(hasWard);
+
+  const pool = both.length > 0 ? both
+    : dahanOnly.length > 0 ? dahanOnly
+    : wardOnly.length > 0 ? wardOnly
+    : candidates;
   const coastal = pool.filter(landIsCoastal);
   return coastal.length > 0 ? coastal : pool;
 }
@@ -3431,14 +3843,20 @@ function pushDestination(state, landId) {
 // Moves up to `maxCount` explorers and towns into one adjacent empty land, carrying each
 // unit's own damage with it. Returns null - so the caller can leave the cooldown unspent -
 // when there is nothing to move or nowhere to move it.
-function applyPushFrom(state, landId, maxCount) {
+// `types` narrows what moves - `push_all { unitType: "explorers" }` on a card asks for the
+// Explorers alone and leaves the Towns standing. It is filtered against PUSH_ORDER rather
+// than trusted, so no caller can talk this into carrying a City.
+function applyPushFrom(state, landId, maxCount, types) {
   const destination = pushDestination(state, landId);
   if (!destination) return null;
 
-  let budget = Math.max(0, Math.floor(maxCount || 0));
+  const order = Array.isArray(types) ? PUSH_ORDER.filter((type) => types.includes(type)) : PUSH_ORDER;
+  // Infinity is a legal budget here - a card that pushes all of something has no count cap -
+  // so this floors only a real number and leaves the unbounded case alone.
+  let budget = maxCount === Infinity ? Infinity : Math.max(0, Math.floor(maxCount || 0));
   let moved = 0;
 
-  for (const type of PUSH_ORDER) {
+  for (const type of order) {
     while (budget > 0 && (state.invaders[landId][type] || 0) > 0) {
       // The most wounded unit of its type leaves first, and its wound travels with it. Under
       // the old per-type model this was an approximation; per-unit health makes it exact.
@@ -3666,6 +4084,11 @@ function applyAbilityEffect(state, abilityId, landId, quiet) {
   const record = abilityRecord(state, abilityId);
   if (!record) return false;
 
+  // A card has a step list where an ability has one `effect` string, so it forks here and
+  // nowhere else. Everything either side of this call - the cooldown, the arming, the land
+  // click, the log - is the same code for both.
+  if (isPowerCard(abilityId)) return applyCardEffect(state, abilityId, landId, quiet);
+
   switch (record.effect) {
     case "gain_energy":
       return applyBoonOfVigor(state, record, quiet);
@@ -3688,6 +4111,10 @@ function applyAbilityEffect(state, abilityId, landId, quiet) {
 
 function startCooldown(state, abilityId) {
   state.abilities[abilityId].cooldownRemaining = abilityCooldownSeconds(state, abilityId);
+  // Casting a card is accepting it. Here rather than in either cast path, because this is the
+  // one line both of them reach and only ever after the effect actually landed - which is what
+  // makes it true that there is no order of clicks that casts a card and then swaps it.
+  acceptPowerCard(state, abilityId);
 }
 
 /* ---------- Auto-buy: the round's Energy spends itself ----------
@@ -4310,7 +4737,7 @@ function resolveAutoFlashFloods(state) {
 // refuse, arm, resolve - lands here so the UI stays a view.
 function triggerAbility(state, abilityId) {
   const t = locale(state);
-  if (!ABILITIES[abilityId] || !state.abilities[abilityId]) return false;
+  if (!abilityBaseRecord(abilityId) || !state.abilities[abilityId]) return false;
   if (state.round.status !== "running") return false;
 
   // Clicking an armed ability again disarms it, without spending the cooldown.
@@ -4354,7 +4781,7 @@ function triggerAbility(state, abilityId) {
 function resolveAbilityTarget(state, landId) {
   const t = locale(state);
   const abilityId = state.pendingAbilityTarget;
-  if (!abilityId || !ABILITIES[abilityId]) return false;
+  if (!abilityId || !abilityBaseRecord(abilityId)) return false;
   if (state.round.status !== "running") return false;
 
   if (!abilityLegalLand(state, abilityId, landId)) {
@@ -4374,6 +4801,861 @@ function resolveAbilityTarget(state, landId) {
 
   startCooldown(state, abilityId);
   return true;
+}
+
+/* ------------------------------------------------------------------ *
+ * Power cards: owning, drawing, and casting (10-power-cards.md)        *
+ *                                                                      *
+ * Three parts, in the order a card travels: bought with Presence out    *
+ * of a three-card offer, handed to a round by depth, then cast through  *
+ * the ability runtime above - the same cooldowns, the same one land     *
+ * click, the same Focus. Nothing here builds a parallel runtime.        *
+ * ------------------------------------------------------------------ */
+
+/* ---------- State factories ---------- */
+
+function createPowerCardsState() {
+  return { owned: [], draw: { offerIds: [], rerollCount: 0 } };
+}
+
+function createRoundCardsState() {
+  return {
+    handIds: [],
+    drawsTaken: 0,
+    nextDrawWave: POWER_CARD_FIRST_DRAW_WAVE,
+    pendingRedrawId: null,
+    rejectedIds: []
+  };
+}
+
+// A ward is a number on a land, and its deadline is stored beside it as the `elapsedSeconds`
+// at which it lapses rather than as a countdown. That is what lets the speed dial and the wave
+// gate need no special case here: both already move that clock, and neither has to know that
+// Defense exists.
+function createDefenseByLand() {
+  return createLandMap(() => 0);
+}
+
+function createDefenseExpiry() {
+  return createLandMap(() => null);
+}
+
+function normalizeDefense(defense) {
+  const raw = defense || {};
+  return createLandMap((landId) => Math.max(0, Math.floor(Number(raw[landId]) || 0)));
+}
+
+function normalizeDefenseExpiry(expiry) {
+  const raw = expiry || {};
+  return createLandMap((landId) => {
+    const value = Number(raw[landId]);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  });
+}
+
+// Unknown ids dropped, duplicates collapsed. Both lists are rebuilt from POWER_CARD_IDS order
+// rather than from the save, so a doctored file cannot smuggle in a card the build does not
+// have and cannot reorder the hand into something the bar would draw twice.
+function normalizeCardIdList(list) {
+  const wanted = Array.isArray(list) ? list : [];
+  const seen = new Set();
+  const out = [];
+  for (const id of wanted) {
+    if (!POWER_CARDS[id] || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function normalizePowerCards(powerCards) {
+  const raw = powerCards && typeof powerCards === "object" ? powerCards : {};
+  const owned = normalizeCardIdList(raw.owned);
+  const draw = raw.draw && typeof raw.draw === "object" ? raw.draw : {};
+  // An offer naming a card that has since been bought is dropped from it rather than left to
+  // sell something twice. ensurePowerCardOffer tops the offer back up afterwards, which is
+  // repair rather than a free re-roll: it only ever runs on an offer that was already short.
+  const offerIds = normalizeCardIdList(draw.offerIds).filter((id) => !owned.includes(id));
+  return {
+    owned,
+    draw: { offerIds, rerollCount: Math.max(0, Math.floor(Number(draw.rerollCount) || 0)) }
+  };
+}
+
+// The hand is round state, so it is normalized against what is owned: a save naming a card in
+// hand that the cycle no longer owns loses it, exactly like an ability id the build dropped.
+function normalizeRoundCards(cards, owned) {
+  const raw = cards && typeof cards === "object" ? cards : {};
+  const handIds = normalizeCardIdList(raw.handIds).filter((id) => owned.includes(id));
+  const rejectedIds = normalizeCardIdList(raw.rejectedIds).filter((id) => owned.includes(id));
+  const pending = raw.pendingRedrawId;
+  return {
+    handIds,
+    drawsTaken: Math.max(0, Math.floor(Number(raw.drawsTaken) || 0)),
+    // At least 1: a doctored 0 would have every wave try to draw. A *missing* field is not a
+    // doctored one though - it is a save from before the drip existed, whose next draw is
+    // honestly the first one - so absent and zero are told apart rather than both falling
+    // through a `||`.
+    nextDrawWave: Number.isFinite(Number(raw.nextDrawWave))
+      ? Math.max(1, Math.floor(Number(raw.nextDrawWave)))
+      : POWER_CARD_FIRST_DRAW_WAVE,
+    // The re-draw offer only means anything for a card actually standing in hand.
+    pendingRedrawId: handIds.includes(pending) ? pending : null,
+    rejectedIds
+  };
+}
+
+function powerCardOptionOn(state, cardId) {
+  const options = (state.ui && state.ui.cardOptions) || {};
+  return options[cardId] !== false;
+}
+
+function setPowerCardOption(state, cardId, on) {
+  if (!(cardId in POWER_CARD_OPTION_DEFAULTS)) return false;
+  if (!state.ui.cardOptions || typeof state.ui.cardOptions !== "object") state.ui.cardOptions = {};
+  state.ui.cardOptions[cardId] = on === true;
+  return true;
+}
+
+/* ---------- Owning: the Presence draw ----------
+ *
+ * The first Presence row that is not an upgrade at all. It draws three and the player keeps
+ * one; what is bought is permanent and survives ascension, like every Presence purchase.
+ */
+
+function ownedPowerCardIds(state) {
+  return normalizeCardIdList(state.powerCards && state.powerCards.owned);
+}
+
+function unownedPowerCardIds(state) {
+  const owned = ownedPowerCardIds(state);
+  return POWER_CARD_IDS.filter((id) => !owned.includes(id));
+}
+
+function powerCardOfferIds(state) {
+  const draw = (state.powerCards && state.powerCards.draw) || {};
+  return normalizeCardIdList(draw.offerIds);
+}
+
+function powerCardDrawCost(state) {
+  return Math.round(POWER_CARD_DRAW_BASE_COST * Math.pow(POWER_CARD_DRAW_GROWTH, ownedPowerCardIds(state).length));
+}
+
+function powerCardRerollCost(state) {
+  return Math.ceil(powerCardDrawCost(state) / POWER_CARD_REROLL_DIVISOR);
+}
+
+function powerCardsSoldOut(state) {
+  return unownedPowerCardIds(state).length <= 0;
+}
+
+// Takes `count` at random out of a pool, without replacement. The same bag-and-splice the
+// invader track draws its terrains with, so both roll off the one injected RNG a test pins.
+function drawFromPool(pool, count) {
+  const bag = pool.slice();
+  const drawn = [];
+  const wanted = Math.max(0, Math.floor(count || 0));
+  while (drawn.length < wanted && bag.length > 0) {
+    drawn.push(bag.splice(Math.floor(rng() * bag.length), 1)[0]);
+  }
+  return drawn;
+}
+
+/* The offer is state, and this is the only thing that ever fills it. Read it through here
+ * rather than off `powerCards.draw.offerIds`, which is the raw field and can be legitimately
+ * empty - on a fresh game that has never opened the shop, most of all.
+ *
+ * It rolls exactly once, when the stored offer is short of what it should hold: the first look
+ * at a fresh game, after a draw is taken, and after normalization dropped a card the player has
+ * since bought. Re-rendering the panel, reloading the save and reopening the shop all find a
+ * full offer and leave it alone - which is what stops a reload from being a free re-roll and
+ * keeps the re-roll price from being decoration.
+ *
+ * Rolling on first look rather than at setup is what keeps the RNG stream where it was: a draw
+ * taken in createFreshGameState would shift every roll the island makes after it, and a given
+ * seed would land on a different board purely because this feature exists.
+ */
+function ensurePowerCardOffer(state) {
+  if (!state.powerCards || typeof state.powerCards !== "object") state.powerCards = createPowerCardsState();
+  if (!state.powerCards.draw || typeof state.powerCards.draw !== "object") {
+    state.powerCards.draw = { offerIds: [], rerollCount: 0 };
+  }
+
+  const unowned = unownedPowerCardIds(state);
+  const current = powerCardOfferIds(state).filter((id) => unowned.includes(id));
+  const wanted = Math.min(POWER_CARD_OFFER_SIZE, unowned.length);
+  if (current.length >= wanted) {
+    state.powerCards.draw.offerIds = current.slice(0, wanted);
+    return state.powerCards.draw.offerIds;
+  }
+
+  const fill = drawFromPool(unowned.filter((id) => !current.includes(id)), wanted - current.length);
+  state.powerCards.draw.offerIds = current.concat(fill);
+  return state.powerCards.draw.offerIds;
+}
+
+/* A paid re-roll, and the guarantee that makes the price honest.
+ *
+ * Paying for a re-roll that could hand back the same three cards is paying for nothing, so the
+ * new offer holds at least two cards the old one did not - whenever that many exist. Once the
+ * unowned pool is down to three every card is already on show, there is nothing left to
+ * guarantee, and the button goes dead rather than taking the Presence.
+ */
+function powerCardRerollAllowed(state) {
+  return unownedPowerCardIds(state).length > POWER_CARD_OFFER_SIZE;
+}
+
+function rerollPowerCardOffer(state) {
+  const t = locale(state);
+  if (!powerCardRerollAllowed(state)) {
+    addLog(state, t.cardRerollRefused);
+    return false;
+  }
+
+  const cost = powerCardRerollCost(state);
+  if (state.meta.presence < cost) {
+    addLog(state, template(t.cardRerollTooExpensive, { cost, presence: state.meta.presence }));
+    return false;
+  }
+
+  const unowned = unownedPowerCardIds(state);
+  const current = powerCardOfferIds(state);
+  const fresh = unowned.filter((id) => !current.includes(id));
+
+  const guaranteed = drawFromPool(fresh, Math.min(POWER_CARD_REROLL_GUARANTEE, fresh.length));
+  const rest = drawFromPool(
+    unowned.filter((id) => !guaranteed.includes(id)),
+    Math.min(POWER_CARD_OFFER_SIZE, unowned.length) - guaranteed.length
+  );
+
+  state.meta.presence -= cost;
+  state.powerCards.draw.offerIds = guaranteed.concat(rest);
+  state.powerCards.draw.rerollCount += 1;
+
+  addLog(state, template(t.cardRerolled, { cost, presence: state.meta.presence }));
+  return true;
+}
+
+// Keeping one of the three. The offer is cleared with the purchase and a fresh one rolled for
+// the next draw, so the price ladder and the offer move together.
+function drawPowerCard(state, cardId) {
+  const t = locale(state);
+  if (!POWER_CARDS[cardId]) return false;
+  if (!powerCardOfferIds(state).includes(cardId)) return false;
+
+  const cost = powerCardDrawCost(state);
+  if (state.meta.presence < cost) {
+    addLog(state, template(t.cardTooExpensive, {
+      card: abilityName(state, cardId),
+      cost,
+      presence: state.meta.presence
+    }));
+    return false;
+  }
+
+  state.meta.presence -= cost;
+  state.powerCards.owned = ownedPowerCardIds(state).concat([cardId]);
+  state.powerCards.draw = { offerIds: [], rerollCount: 0 };
+  ensurePowerCardOffer(state);
+
+  addLog(state, template(t.cardBought, { card: abilityName(state, cardId), cost }));
+  return true;
+}
+
+/* ---------- Holding: the drip ----------
+ *
+ * A round hands the player one owned card at a time, on a wave schedule. Nothing here is
+ * random except which card arrives, and the Energy re-draw below is what the player pays to
+ * argue with that.
+ */
+
+function powerCardDrawInterval(state) {
+  const tier = activeUpgradeTier(state, "power_card_interval");
+  return Math.max(1, POWER_CARD_DRAW_INTERVAL_BASE - tier);
+}
+
+function roundCards(state) {
+  if (!state.round.cards || typeof state.round.cards !== "object") {
+    state.round.cards = createRoundCardsState();
+  }
+  return state.round.cards;
+}
+
+function cardsInHand(state) {
+  return normalizeCardIdList(roundCards(state).handIds);
+}
+
+// What a draw can still reach: owned, and not already standing in this round's hand.
+function drawablePowerCardIds(state) {
+  const hand = cardsInHand(state);
+  return ownedPowerCardIds(state).filter((id) => !hand.includes(id));
+}
+
+// A card arrives ready, not cooling - the same rule a bought unlock follows, and for the same
+// reason: what was paid for is the card, not a wait.
+function grantPowerCard(state, cardId) {
+  const cards = roundCards(state);
+  if (!POWER_CARDS[cardId] || cards.handIds.includes(cardId)) return false;
+  cards.handIds.push(cardId);
+  state.abilities[cardId] = { cooldownRemaining: 0 };
+  return true;
+}
+
+function removeCardFromHand(state, cardId) {
+  const cards = roundCards(state);
+  cards.handIds = cards.handIds.filter((id) => id !== cardId);
+  delete state.abilities[cardId];
+  if (state.pendingAbilityTarget === cardId) state.pendingAbilityTarget = null;
+}
+
+/* The wave that hands a card over. Called at the end of resolveWave, so a card drawn on wave
+ * 25 is castable on the same tick that wave resolved.
+ *
+ * The schedule advances whether or not a card was actually handed over. A round owning nothing
+ * must not bank three draws to spend the moment its first card is bought - the drip is paid for
+ * in waves survived, and a wave that passed is spent.
+ */
+function resolveCardDraw(state) {
+  const cards = roundCards(state);
+  if (state.round.wavesResolved < cards.nextDrawWave) return null;
+  cards.nextDrawWave = state.round.wavesResolved + powerCardDrawInterval(state);
+
+  const pool = drawablePowerCardIds(state);
+  // Nothing owned, or everything owned already in hand: nothing happens, silently.
+  if (pool.length === 0) return null;
+
+  const cardId = drawFromPool(pool, 1)[0];
+  grantPowerCard(state, cardId);
+  cards.drawsTaken += 1;
+  // The re-draw offer belongs to this draw alone: the pool of what it may swap to narrows as
+  // it is used, and the next draw starts that narrowing over.
+  cards.pendingRedrawId = cardId;
+  cards.rejectedIds = [];
+
+  addLog(state, template(locale(state).cardDrawn, {
+    card: abilityName(state, cardId),
+    wave: state.round.wavesResolved
+  }));
+  return cardId;
+}
+
+/* ---------- The re-draw, which does not stop the round ----------
+ *
+ * Nothing inside a round waits for player input, so this is not a prompt. The card lands in
+ * hand ready and immediately castable, with a button on it priced in Energy - and casting is
+ * accepting, so the button is gone from the first cast on. There is no order of clicks that
+ * casts a card and then swaps it for another.
+ */
+
+function powerCardRedrawCost(state) {
+  return POWER_CARD_REDRAW_BASE_ENERGY * Math.max(1, roundCards(state).drawsTaken);
+}
+
+// Narrower with every re-draw: neither already in hand nor already thrown back in this same
+// draw. That is what bounds the fee - when the pool empties the button goes dead and the last
+// card stands.
+function powerCardRedrawPool(state) {
+  const cards = roundCards(state);
+  const rejected = normalizeCardIdList(cards.rejectedIds);
+  return drawablePowerCardIds(state).filter((id) => !rejected.includes(id));
+}
+
+function powerCardRedrawOffered(state, cardId) {
+  return roundCards(state).pendingRedrawId === cardId && powerCardRedrawPool(state).length > 0;
+}
+
+function redrawPowerCard(state, cardId) {
+  const t = locale(state);
+  const cards = roundCards(state);
+  if (state.round.status !== "running") return false;
+  if (!powerCardRedrawOffered(state, cardId)) return false;
+
+  const cost = powerCardRedrawCost(state);
+  if (state.resources.energy < cost) {
+    addLog(state, template(t.cardRedrawTooExpensive, {
+      card: abilityName(state, cardId),
+      cost,
+      energy: state.resources.energy
+    }));
+    return false;
+  }
+
+  const pool = powerCardRedrawPool(state);
+  state.resources.energy -= cost;
+  removeCardFromHand(state, cardId);
+  cards.rejectedIds = normalizeCardIdList(cards.rejectedIds).concat([cardId]);
+
+  const next = drawFromPool(pool, 1)[0];
+  grantPowerCard(state, next);
+  cards.pendingRedrawId = next;
+
+  addLog(state, template(t.cardRedrawn, {
+    card: abilityName(state, cardId),
+    next: abilityName(state, next),
+    cost
+  }));
+  return true;
+}
+
+// Casting is accepting. Called from startCooldown, so it covers both cast paths - the
+// untargeted one and the land click - and only ever after the effect actually landed.
+function acceptPowerCard(state, cardId) {
+  const cards = state.round && state.round.cards;
+  if (!cards || cards.pendingRedrawId !== cardId) return;
+  cards.pendingRedrawId = null;
+  cards.rejectedIds = [];
+}
+
+/* ---------- Defense ----------
+ *
+ * A ward laid on a land: it waits, unspent, for as long as it takes, cancels invader attack
+ * when the attack arrives, and is gone one wave later.
+ *
+ * Five things about it are load-bearing, and every one of them is deliberate:
+ *
+ *  - Total denial is measured against Defense alone, not against Defense plus what the Dahan
+ *    standing there cancel. Otherwise one point of Defense would flip a Dahan-held land from
+ *    seeping to immune and the number printed on the card would stop meaning anything.
+ *  - Total denial ignores BLIGHT_FLOOR_FRACTION. A held land seeps a quarter of its gross and
+ *    no stack of Dahan can stop that; a ward can. The acceptance rule that no land is ever
+ *    permanently safe survives, because a ward is spent after one wave - safety is now
+ *    purchasable by the wave and still never by the round.
+ *  - Below the threshold it is a plain reduction, read by every formula as a smaller attack.
+ *    So Defense protects Dahan, which their own defence does not; the price is that it runs out.
+ *  - It expires one full wave interval after it first does anything, not at the next wave
+ *    boundary. Boundary consumption made the cast time against the visible wave clock decide
+ *    whether a ward was worth twenty seconds or one - a trap a HUD countdown teaches good
+ *    players to exploit and never teaches new ones at all.
+ *  - Any use spends the whole pool, which is what stops a ward from being a stat and why
+ *    stockpiling needs no cap: eight casts on a quiet land do bank Defend 16, and it pays out
+ *    exactly once.
+ */
+
+function defenseInLand(state, landId) {
+  const map = state.round && state.round.defense;
+  return Math.max(0, Math.floor((map && map[landId]) || 0));
+}
+
+function addDefense(state, landId, amount) {
+  const gain = Math.max(0, Math.floor(Number(amount) || 0));
+  if (gain <= 0 || !isLandId(landId)) return 0;
+  if (!state.round.defense) state.round.defense = createDefenseByLand();
+  if (!state.round.defenseExpiry) state.round.defenseExpiry = createDefenseExpiry();
+  // Additive and uncapped, and it does not restart a clock already running: a ward stacked on
+  // top of one that has begun to lapse lapses with it, rather than the second cast quietly
+  // buying the first one more wave.
+  state.round.defense[landId] = defenseInLand(state, landId) + gain;
+  return gain;
+}
+
+// Clears a ward whose wave is up, and returns whether anything is still standing. Run at the
+// top of a land's combat, before the pressure is read, so a lapsed ward cannot cancel one more
+// tick of damage on its way out.
+function expireDefense(state, landId) {
+  if (defenseInLand(state, landId) <= 0) return false;
+  const expiry = (state.round.defenseExpiry || {})[landId];
+  if (expiry !== null && expiry !== undefined && state.round.elapsedSeconds >= expiry) {
+    state.round.defense[landId] = 0;
+    state.round.defenseExpiry[landId] = null;
+    return false;
+  }
+  return true;
+}
+
+// The first tick in which a ward did anything starts its wave. Until then it waits - a quiet
+// land holds its ward indefinitely, which is the whole of what makes Encompassing Ward bank
+// value against where the invaders are going rather than against where they are.
+function markDefenseUsed(state, landId) {
+  if (!state.round.defenseExpiry) state.round.defenseExpiry = createDefenseExpiry();
+  if (state.round.defenseExpiry[landId] !== null && state.round.defenseExpiry[landId] !== undefined) return;
+  state.round.defenseExpiry[landId] = state.round.elapsedSeconds + WAVE_INTERVAL_SECONDS;
+}
+
+/* ---------- Blight that can fall ----------
+ *
+ * 02-core-loop.md said Blight only ever goes up. Four of the seven cards remove it. The
+ * invariant that survives is narrower and is the one that mattered: the round still ends the
+ * instant `round.blight` reaches `round.blightThreshold`, and removal is preventive, never a
+ * rescue. The threshold check runs inside the same tick that raised the bar, so there is no
+ * window in which a card can pull a round back from the end.
+ *
+ * `round.blightProgress[land]` is deliberately not touched: a removal takes whole Blight off
+ * the round's clock and leaves the land's part-filled bar exactly where it stands.
+ */
+function removeBlight(state, land, amount) {
+  const wanted = Math.max(0, Math.floor(Number(amount) || 0));
+  if (wanted <= 0 || !isLandId(land)) return 0;
+
+  const inLand = Math.max(0, state.round.blightByLand[land] || 0);
+  const taken = Math.min(wanted, inLand, state.round.blight);
+  if (taken <= 0) return 0;
+
+  state.round.blight -= taken;
+  state.round.blightByLand[land] -= taken;
+  return taken;
+}
+
+// The untargeted removal's land: the most-blighted one, ties on the lowest land id like every
+// other tie on this board. This is the first thing that has ever read `blightByLand` for a
+// decision rather than for a display.
+function mostBlightedLand(state) {
+  let best = null;
+  for (const landId of LAND_IDS) {
+    const blight = Math.max(0, (state.round.blightByLand || {})[landId] || 0);
+    if (blight <= 0) continue;
+    if (!best || blight > best.blight) best = { landId, blight };
+  }
+  return best ? best.landId : null;
+}
+
+/* ---------- Casting: the effect-step resolver ----------
+ *
+ * A kit ability carries one `effect` string; a card carries an ordered step list, because
+ * every one of the seven is two to four clauses with conditions. Steps resolve in order
+ * against one snapshot of the target land taken before the first step, so a clause cannot be
+ * defeated by an earlier clause's kill.
+ */
+
+function cardLandSnapshot(state, landId) {
+  if (!isLandId(landId)) return null;
+  const slot = state.invaders[landId] || {};
+  return {
+    landId,
+    explorers: Math.max(0, slot.explorers || 0),
+    towns: Math.max(0, slot.towns || 0),
+    cities: Math.max(0, slot.cities || 0),
+    invaders: invaderCountInLand(slot),
+    blight: Math.max(0, (state.round.blightByLand || {})[landId] || 0),
+    terrain: landTerrain(landId),
+    coastal: landIsCoastal(landId)
+  };
+}
+
+// `else` pairs with the step above it, and it reads that step's *condition* rather than
+// whether it found anything to do: a Destroy that fizzled on an empty land is still the
+// Explorer mode of the card having been chosen, and the removal must not fire behind it.
+function cardStepApplies(step, snapshot, lastConditionMet) {
+  const when = step.when;
+  if (!when) return true;
+  if (when === "else") return !lastConditionMet;
+  if (!snapshot) return false;
+  if (when === "invaders_present") return snapshot.invaders > 0;
+  if (when === "explorers_present") return snapshot.explorers > 0;
+  if (when === "coastal") return snapshot.coastal;
+  if (when.startsWith("terrain:")) return conditionTerrains(when).includes(snapshot.terrain);
+  return false;
+}
+
+// `terrain:desert,wetlands` names its terrains in one string, so it is split before it reaches
+// terrainList - which takes a list and would quietly read the whole comma-joined string as one
+// unknown terrain, matching nothing and failing silently.
+function conditionTerrains(when) {
+  return terrainList(String(when).slice("terrain:".length).split(","));
+}
+
+// Fear a card pays: a third source beside kill Fear and wave Fear, multiplied by the Presence
+// bonus only. Not by rising_dread, which multiplies kills, and not by mounting_terror, which
+// multiplies waves - folding it into either would make that ladder's tuning do two jobs, and
+// both are already capped at ten tiers against a fixed income shape.
+function gainFearFromCard(state, amount) {
+  const base = Math.max(0, Math.floor(Number(amount) || 0));
+  if (base <= 0) return 0;
+  const gain = base * presenceFearMultiplier(state);
+  state.round.fearEarned += gain;
+  state.round.fearEarnedBase += base;
+  return gain;
+}
+
+// Removal that pays, exactly as the sea does in wash_away: creditDefeat is the same function
+// the damage path calls, so a destroyed unit pays its Fear and its Energy without any damage
+// having been spent on it. The healthiest of its type goes first - a removal does not care how
+// hurt a unit was, so spending it on the hardest one to kill is what makes it worth more than
+// the damage it replaces.
+function destroyInvaderUnits(state, landId, unitType, amount) {
+  const result = { defeated: emptyDefeatTally(), totalDefeated: 0, spent: 0 };
+  if (!isLandId(landId) || !INVADER_TYPES.includes(unitType)) return result;
+
+  let budget = Math.max(0, Math.floor(Number(amount) || 0));
+  while (budget > 0 && (state.invaders[landId][unitType] || 0) > 0) {
+    const wounds = state.invaderDamage[landId][unitType];
+    removeInvaderUnit(state, landId, unitType, Math.max(0, wounds.length - 1));
+    creditDefeat(state, result, unitType);
+    budget -= 1;
+  }
+  return result;
+}
+
+// A cost, not an effect: the Dahan are allies, so this pays nothing at all. It must reset the
+// land's `dahanProgress` when it empties one, holding the invariant that reinforcements arrive
+// at a full bar.
+function destroyDahan(state, landId, amount) {
+  if (!isLandId(landId)) return 0;
+  const before = Math.max(0, state.dahan[landId] || 0);
+  const lost = Math.min(before, Math.max(0, Math.floor(Number(amount) || 0)));
+  if (lost <= 0) return 0;
+
+  state.dahan[landId] = before - lost;
+  if (state.dahan[landId] <= 0) state.round.dahanProgress[landId] = 0;
+  markDefeatFx(state, landId, "dahan", lost);
+  return lost;
+}
+
+function emptyCardOutcome() {
+  return {
+    fear: 0,
+    damage: 0,
+    defeated: 0,
+    blightRemoved: 0,
+    defended: 0,
+    pushed: 0,
+    dahanLost: 0,
+    acted: false
+  };
+}
+
+function applyCardStep(state, step, landId, snapshot, out) {
+  switch (step.kind) {
+    case "fear_flat": {
+      const gained = gainFearFromCard(state, step.amount);
+      if (gained > 0) {
+        out.fear += gained;
+        out.acted = true;
+      }
+      return;
+    }
+    // Counts bodies, not power: a City pays the same as an Explorer, which is what makes this
+    // a crowd-clearing payout rather than a second kill-Fear ladder.
+    case "fear_per_invader": {
+      const bodies = snapshot ? snapshot.invaders : 0;
+      const gained = gainFearFromCard(state, step.amount * bodies);
+      if (gained > 0) {
+        out.fear += gained;
+        out.acted = true;
+      }
+      return;
+    }
+    case "damage": {
+      if (invaderCountInLand(state.invaders[landId]) <= 0) return;
+      const bonus = step.terrainBonus && terrainList(step.terrains).includes(landTerrain(landId))
+        ? step.terrainBonus
+        : 0;
+      const amount = Math.max(0, Math.floor(step.amount || 0)) + bonus;
+      if (amount <= 0) return;
+      const result = applyDamage(state, landId, amount);
+      markDefeatFxFromResult(state, landId, result);
+      out.damage += amount;
+      out.defeated += result.totalDefeated;
+      out.acted = true;
+      return;
+    }
+    case "remove_blight": {
+      // A targeted card removes from the clicked land if it has any, and the clause does
+      // nothing otherwise. An untargeted one has no land to read, so it takes the worst.
+      const land = isLandId(landId) ? landId : mostBlightedLand(state);
+      const removed = removeBlight(state, land, step.amount);
+      if (removed > 0) {
+        out.blightRemoved += removed;
+        out.acted = true;
+      }
+      return;
+    }
+    case "defend": {
+      const lands = step.scope === "all" ? LAND_IDS : (isLandId(landId) ? [landId] : []);
+      let laid = 0;
+      for (const land of lands) laid = addDefense(state, land, step.amount) || laid;
+      if (laid > 0) {
+        out.defended += laid;
+        out.acted = true;
+      }
+      return;
+    }
+    case "push_all": {
+      // The shared push rule with no count cap: same destinations, same preferences, same
+      // wounds carried along - only the budget and the unit types differ.
+      const pushed = applyPushFrom(state, landId, Infinity, [step.unitType]);
+      if (pushed) {
+        out.pushed += pushed.moved;
+        out.acted = true;
+      }
+      return;
+    }
+    case "destroy_units": {
+      const result = destroyInvaderUnits(state, landId, step.unitType, step.amount);
+      if (result.totalDefeated > 0) {
+        markDefeatFxFromResult(state, landId, result);
+        out.defeated += result.totalDefeated;
+        out.acted = true;
+      }
+      return;
+    }
+    case "destroy_dahan": {
+      const lost = destroyDahan(state, landId, step.amount);
+      if (lost > 0) {
+        out.dahanLost += lost;
+        out.acted = true;
+      }
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+function runCardSteps(state, steps, landId, out) {
+  const snapshot = cardLandSnapshot(state, landId);
+  let lastConditionMet = false;
+  for (const step of steps || []) {
+    const met = cardStepApplies(step, snapshot, lastConditionMet);
+    lastConditionMet = met;
+    if (met) applyCardStep(state, step, landId, snapshot, out);
+  }
+}
+
+/* What a card's own numbers are, read back out of its steps for its description.
+ *
+ * The same rule the kit follows and for the same reason: a card tuned in POWER_CARDS must
+ * never leave a description promising something the steps no longer do. Amounts of a kind are
+ * summed, which is right for every card here - none of them carries two clauses of one kind
+ * that a player would read as separate numbers - and the terrain list is picked up from
+ * whichever half of the card names one, the damage step's `terrains` or a `terrain:` condition.
+ */
+function cardStepAmounts(steps) {
+  const out = { fear: 0, damage: 0, bonus: 0, blight: 0, defend: 0, destroy: 0, dahan: 0 };
+  for (const step of steps || []) {
+    const amount = Math.max(0, Math.floor(Number(step.amount) || 0));
+    switch (step.kind) {
+      case "fear_flat":
+      case "fear_per_invader":
+        out.fear += amount;
+        break;
+      case "damage":
+        out.damage += amount;
+        out.bonus += Math.max(0, Math.floor(Number(step.terrainBonus) || 0));
+        break;
+      case "remove_blight":
+        out.blight += amount;
+        break;
+      case "defend":
+        out.defend += amount;
+        break;
+      case "destroy_units":
+        out.destroy += amount;
+        break;
+      case "destroy_dahan":
+        out.dahan += amount;
+        break;
+      default:
+        break;
+    }
+  }
+  return out;
+}
+
+function cardBonusTerrains(record) {
+  for (const step of record.effects || []) {
+    if (Array.isArray(step.terrains) && step.terrains.length > 0) return terrainList(step.terrains);
+    if (typeof step.when === "string" && step.when.startsWith("terrain:")) {
+      return conditionTerrains(step.when);
+    }
+  }
+  return terrainList(record.blightTerrains);
+}
+
+function cardTextVars(state, record) {
+  const main = cardStepAmounts(record.effects);
+  const also = cardStepAmounts(record.alsoEachOtherCoastal);
+  return {
+    ...main,
+    alsoFear: also.fear,
+    alsoDamage: also.damage,
+    alsoDahan: also.dahan,
+    terrains: terrainNames(state, cardBonusTerrains(record)),
+    beats: Math.round(record.cooldownSeconds / TIME_SCALE)
+  };
+}
+
+// What a cast is worth, in one line the log can print. Built out of the outcome rather than
+// out of the card, so a card whose Fear clause found no invaders does not claim to have paid.
+function cardOutcomeSummary(state, out) {
+  const t = locale(state);
+  const parts = [];
+  if (out.fear > 0) parts.push(template(t.cardPartFear, { amount: formatFear(out.fear) }));
+  if (out.damage > 0) parts.push(template(t.cardPartDamage, { amount: out.damage }));
+  if (out.defeated > 0) parts.push(template(t.cardPartDefeated, { count: out.defeated }));
+  if (out.pushed > 0) parts.push(template(t.cardPartPushed, { count: out.pushed }));
+  if (out.blightRemoved > 0) parts.push(template(t.cardPartBlight, { amount: out.blightRemoved }));
+  if (out.defended > 0) parts.push(template(t.cardPartDefend, { amount: out.defended }));
+  if (out.dahanLost > 0) parts.push(template(t.cardPartDahan, { count: out.dahanLost }));
+  return parts.join(", ");
+}
+
+/* One cast. Returns false when nothing at all landed, which is what leaves the cooldown
+ * unspent - the same contract every kit effect follows.
+ *
+ * Tsunami's second half runs here rather than as a second ability: the primary land resolves
+ * fully first, then each other coastal land in ascending id, each one independent of the rest.
+ * A coast with no invaders still loses its Dahan, which is exactly the cost the switch exists
+ * to let the player refuse.
+ */
+function applyCardEffect(state, cardId, landId, quiet) {
+  const record = POWER_CARDS[cardId];
+  if (!record) return false;
+
+  const out = emptyCardOutcome();
+  runCardSteps(state, record.effects, landId, out);
+
+  if (Array.isArray(record.alsoEachOtherCoastal) && powerCardOptionOn(state, cardId)) {
+    const others = LAND_IDS
+      .filter((other) => landIsCoastal(other) && other !== landId)
+      .sort((a, b) => Number(a) - Number(b));
+    for (const other of others) runCardSteps(state, record.alsoEachOtherCoastal, other, out);
+  }
+
+  if (!out.acted) return false;
+
+  if (!quiet) {
+    const summary = cardOutcomeSummary(state, out);
+    addLog(state, isLandId(landId)
+      ? template(locale(state).cardResolved, {
+          card: abilityName(state, cardId),
+          land: landName(state, landId),
+          summary
+        })
+      : template(locale(state).cardResolvedNoLand, {
+          card: abilityName(state, cardId),
+          summary
+        }));
+  }
+  return true;
+}
+
+// A card's legal lands. Every card names its own rule because every card's is different, and
+// the seven between them want six of them - so they are written out rather than inferred from
+// the step list, where a condition on step three would silently become a targeting rule.
+function cardLegalLand(state, cardId, landId) {
+  const record = POWER_CARDS[cardId];
+  if (!record || !record.needsTarget || !isLandId(landId)) return false;
+
+  const invaders = invaderCountInLand(state.invaders[landId]);
+  const explorers = Math.max(0, (state.invaders[landId] || {}).explorers || 0);
+  const blight = Math.max(0, (state.round.blightByLand || {})[landId] || 0);
+
+  switch (record.target) {
+    case "any":
+      return true;
+    case "invaders":
+      return invaders > 0;
+    case "invaders_or_blight":
+      return invaders > 0 || blight > 0;
+    case "explorers_or_blight":
+      return explorers > 0 || blight > 0;
+    case "invaders_or_terrain_blight":
+      return invaders > 0 || (blight > 0 && terrainList(record.blightTerrains).includes(landTerrain(landId)));
+    case "coastal_invaders":
+      return landIsCoastal(landId) && invaders > 0;
+    default:
+      return invaders > 0;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -4769,9 +6051,18 @@ function blightReached(state) {
 // One land, one slice of time. Both bars advance from the same snapshot of the land, so a
 // Dahan that falls this slice still defended against Blight for the whole of it.
 function resolveLandCombat(state, land, dt) {
+  // Before the pressure is read, so a ward whose wave is up cannot cancel one more tick of
+  // damage on its way out.
+  expireDefense(state, land);
+
   const p = landPressure(state, land);
   const out = { blightGained: 0, dahanLost: 0 };
   if (p.gross <= 0) return out;
+
+  // The attack arrived, so the ward has now done something and its wave starts here. It keeps
+  // its whole value for that wave and is then gone entirely, unused points and all - which is
+  // what "any use spends the whole pool" means, and why a stockpile needs no cap.
+  if (p.defense > 0) markDefenseUsed(state, land);
 
   if (p.blightPerSecond > 0) {
     let progress = state.round.blightProgress[land] + p.blightPerSecond * dt;
@@ -5085,6 +6376,11 @@ function resolveWave(state) {
   gainFearFromWave(state);
   addLog(state, template(locale(state).waveResolved, { wave: state.round.wavesResolved }));
 
+  // Last, and after the wave's own line: the card is what the round earned by surviving to
+  // here, so it reads as the wave's reward rather than as part of the wave. It arrives ready,
+  // so it is castable on this very tick.
+  resolveCardDraw(state);
+
   // After the wave's own line, so the log reads as "wave 50 resolved, and it paid".
   const milestone = gainFearFromWaveMilestone(state);
   if (milestone > 0) {
@@ -5214,6 +6510,16 @@ function startRound(state) {
   state.round.purchasedAbilityIds = [];
   state.round.abilityTiers = {};
   state.round.abilityFocus = {};
+
+  // Cards die with the round that drew them, exactly like Energy and everything Energy bought.
+  // What survives is `powerCards.owned`, which this never touches - the Presence bought the
+  // card, and the round has to earn the right to hold it all over again. Cleared before
+  // createAbilityState below, so the empty hand is what the new bar is built from.
+  state.round.cards = createRoundCardsState();
+  // Wards go with them. A ward is a thing a card did, so it can no more outlive the round than
+  // the card can.
+  state.round.defense = createDefenseByLand();
+  state.round.defenseExpiry = createDefenseExpiry();
 
   state.invaders = createInvaderCounts();
   state.invaderDamage = createInvaderDamage();
@@ -5572,6 +6878,11 @@ function createInitialState() {
     presenceUpgrades: {
       purchased: {}
     },
+    // Bought with Presence and kept forever, ascension included - listed under *kept* beside
+    // presenceUpgrades.purchased. `draw` is the stored three-card offer: state rather than a
+    // render-time roll, because without that a reload would be a free re-roll and the price
+    // would be decoration.
+    powerCards: createPowerCardsState(),
     ui: {
       language: "de",
       // Both pacing controls are preferences, not run state: they sit beside the language
@@ -5596,6 +6907,10 @@ function createInitialState() {
         wash_away: true,
         flash_floods: true
       },
+      // Per-card switches, one key today: whether Tsunami takes the other coastal lands with
+      // it. A preference like the two above and the five beside them - it survives ascension
+      // with the rest of `ui.*`, because a setting the player put somewhere should stay there.
+      cardOptions: { ...POWER_CARD_OPTION_DEFAULTS },
       // The playtest code, once redeemed. It sits with the other settings rather than in meta
       // because it is the same kind of thing: how the game is being read, not what has been
       // earned inside it. Nothing in the rules reads it - see the playtest section.
@@ -5637,7 +6952,16 @@ function createInitialState() {
       abilityTiers: {},
       // Focus purchases, per ability - see abilityFocusPurchases. Round-scoped like the two
       // fields above, and reset the same way: what Energy bought this round dies with it.
-      abilityFocus: {}
+      abilityFocus: {},
+      // The wards on the board, and the `elapsedSeconds` each one lapses at - null while it is
+      // still unused, which is what lets a ward wait indefinitely on a quiet land. Storing the
+      // deadline rather than a countdown means the speed dial and the wave gate need no
+      // special case: both already move that clock.
+      defense: createDefenseByLand(),
+      defenseExpiry: createDefenseExpiry(),
+      // The hand, and the drip's own bookkeeping. Round-scoped like everything above it: a
+      // card is held by the round that survived to draw it and by nothing else.
+      cards: createRoundCardsState()
     },
     invader: { build: [], explore: [] },
     invaders: createInvaderCounts(),
@@ -5656,6 +6980,10 @@ function createFreshGameState() {
   const state = createInitialState();
   state.abilities = createAbilityState(state);
   startRound(state);
+  // Deliberately no offer rolled here. ensurePowerCardOffer touches the RNG, and a draw taken
+  // at setup would shift every roll the island makes after it - so a given seed would land on
+  // a different board purely because power cards exist. The offer is rolled the first time it
+  // is looked at instead, and stored from then on. See ensurePowerCardOffer.
   return state;
 }
 
@@ -5845,6 +7173,34 @@ function normalizeState(raw) {
 
   merged.presenceUpgrades.purchased = presencePurchased;
 
+  /* ---------- Power cards ----------
+   *
+   * All additive, so the save migration stays a no-op: a file written before any of this
+   * existed loads with nothing owned, an empty hand and an offer rolled on the spot.
+   *
+   * Normalization drops unknown card ids, collapses duplicates, drops a hand entry naming a
+   * card the cycle does not own, and clamps `nextDrawWave` to at least 1 - all of it inside
+   * normalizePowerCards and normalizeRoundCards. It runs here, above the ability block below,
+   * because normalizeAbilities reads the hand through unlockedAbilityIds and would otherwise
+   * be deciding which slots to keep off a list nothing had checked yet.
+   */
+  merged.powerCards = normalizePowerCards(merged.powerCards);
+  merged.round.cards = normalizeRoundCards(merged.round.cards, merged.powerCards.owned);
+  merged.round.defense = normalizeDefense(merged.round.defense);
+  merged.round.defenseExpiry = normalizeDefenseExpiry(merged.round.defenseExpiry);
+  // Rebuilt from the defaults rather than merged over them, the same rule ui.autoCast follows:
+  // a key the registry does not carry is dropped rather than kept as a preference for a card
+  // that has no switch, and a save written before the switch existed loads with it on.
+  const rawCardOptions = merged.ui.cardOptions && typeof merged.ui.cardOptions === "object"
+    ? merged.ui.cardOptions
+    : {};
+  const cardOptions = {};
+  for (const [cardId, fallback] of Object.entries(POWER_CARD_OPTION_DEFAULTS)) {
+    const raw = rawCardOptions[cardId];
+    cardOptions[cardId] = raw === undefined ? fallback : raw !== false;
+  }
+  merged.ui.cardOptions = cardOptions;
+
   // An unknown ability id is dropped rather than carried: a save that names an ability the
   // build no longer has would otherwise show a bar entry nothing can cast. Duplicates are
   // collapsed too, so a double-write cannot make one purchase look like two.
@@ -5871,7 +7227,10 @@ function normalizeState(raw) {
   // floor, so a doctored save with an absurd count reads exactly like one that stopped there.
   const focus = {};
   for (const [id, value] of Object.entries(merged.round.abilityFocus || {})) {
-    if (!ABILITIES[id]) continue;
+    // Cards take Focus too, so the test is "is this castable at all" rather than "is this in
+    // the kit" - a purchase against a card in hand must survive a save the same way one
+    // against the Innate does.
+    if (!abilityBaseRecord(id)) continue;
     const purchases = Math.max(0, Math.floor(Number(value) || 0));
     if (purchases > 0) focus[id] = purchases;
   }
@@ -5949,6 +7308,11 @@ function normalizeState(raw) {
     : null;
 
   merged._log = Array.isArray(merged._log) ? merged._log.slice(0, 24) : [];
+
+  // Last, and the only place an offer is ever rolled outside a purchase. It tops up an offer
+  // that is short - which is a fresh game, or a save whose offer named a card bought since -
+  // and leaves a full one exactly as it was found. That is what makes a reload not a re-roll.
+  ensurePowerCardOffer(merged);
 
   return merged;
 }
@@ -6182,6 +7546,65 @@ const ENGINE_EXPORTS = {
   SPIRITS,
   ABILITIES,
   ABILITY_IDS,
+
+  // Power cards.
+  POWER_CARDS,
+  POWER_CARD_IDS,
+  POWER_CARD_DRAW_BASE_COST,
+  POWER_CARD_DRAW_GROWTH,
+  POWER_CARD_REROLL_DIVISOR,
+  POWER_CARD_OFFER_SIZE,
+  POWER_CARD_REROLL_GUARANTEE,
+  POWER_CARD_FIRST_DRAW_WAVE,
+  POWER_CARD_DRAW_INTERVAL_BASE,
+  POWER_CARD_INTERVAL_MAX_TIER,
+  POWER_CARD_REDRAW_BASE_ENERGY,
+  POWER_CARD_OPTION_DEFAULTS,
+  abilityBaseRecord,
+  isPowerCard,
+  createPowerCardsState,
+  createRoundCardsState,
+  roundCards,
+  createDefenseByLand,
+  createDefenseExpiry,
+  normalizePowerCards,
+  normalizeRoundCards,
+  powerCardOptionOn,
+  setPowerCardOption,
+  ownedPowerCardIds,
+  unownedPowerCardIds,
+  powerCardOfferIds,
+  powerCardDrawCost,
+  powerCardRerollCost,
+  powerCardsSoldOut,
+  ensurePowerCardOffer,
+  powerCardRerollAllowed,
+  rerollPowerCardOffer,
+  drawPowerCard,
+  powerCardDrawInterval,
+  cardsInHand,
+  drawablePowerCardIds,
+  grantPowerCard,
+  resolveCardDraw,
+  powerCardRedrawCost,
+  powerCardRedrawPool,
+  powerCardRedrawOffered,
+  redrawPowerCard,
+  cardLegalLand,
+  applyCardEffect,
+  cardStepApplies,
+  cardLandSnapshot,
+  cardTextVars,
+  gainFearFromCard,
+  destroyInvaderUnits,
+  destroyDahan,
+  defenseInLand,
+  addDefense,
+  expireDefense,
+  markDefenseUsed,
+  removeBlight,
+  mostBlightedLand,
+
   UPGRADES,
   UPGRADE_COST_GROWTH,
   UPGRADE_IDS,

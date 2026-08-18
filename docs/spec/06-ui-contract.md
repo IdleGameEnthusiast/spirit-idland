@@ -437,29 +437,39 @@ from the dev tools, and still is.
   `headwaters` as the one thing that reset does not take to zero, since the shop row is
   otherwise the only place a player could learn that a round can open with Energy at all.
 
-## Power Cards — what the screen will need
+## Power Cards
 
-Designed and not built; the feature is [10-power-cards.md](./10-power-cards.md). Four surfaces,
-each reusing a shape the page already has rather than inventing one:
+The feature is [10-power-cards.md](./10-power-cards.md). Four surfaces, each reusing a shape the
+page already had rather than inventing one:
 
 - **A card in hand is a card in the ability bar**, drawn with the same styling and the same four
-  states as a kit ability. It carries no price row (a card has no unlock cost) and no auto-cast
-  switch (no automation bought it). Cards sit after the kit and in draw order, so the bar still
-  reads top to bottom as the order the round was built in.
+  states as a kit ability, and taking Focus the same way. It carries no unlock price (a card has
+  no unlock cost) and no auto-cast switch (no automation bought it). Cards sit after the kit and
+  in draw order, so the bar still reads top to bottom as the order the round was built in, and a
+  card arriving at wave 45 does not shove the five abilities sideways. The one mark separating
+  the two is hue: a card wears a Presence-coloured left edge and a `Card` tag where a tiered
+  ability wears its tier, because that is the currency that bought it.
 - **The re-draw** is a button inside the freshly drawn card, priced in Energy, disabled while the
   purse is under it — the same treatment a locked ability's price gets. It disappears the moment
-  the card is first cast, because casting is accepting. **It must never block the round**: no
-  modal, no pause, no timer.
+  the card is first cast, because casting is accepting. It never blocks the round: no modal, no
+  pause, no timer.
 - **Tsunami's optional half** is a sliding switch inside its card, exactly the auto-cast control:
-  a setting that stays where it is put, drawn from the moment the card is in hand.
-- **The draw shop** is a row in the Presence panel showing the next draw's price. Taking it opens
-  three cards to choose between, with a re-roll button priced beside them, disabled when three or
-  fewer cards are unowned. The offer is state, not a render — it must survive a reload unchanged.
+  a setting that stays where it is put, drawn from the moment the card is in hand. Its ticked
+  state is patched per frame rather than rebuilt, like every other switch on the bar.
+- **The draw shop** sits at the top of the Presence panel, in a frame of its own rather than as
+  another catalogue row — three cards side by side is a different shape from a price and a tier.
+  The three are stacked, not columned: the panel is a narrow sidebar and three cards across
+  would be four words wide each. A re-roll button sits under them, dead rather than dear once
+  three or fewer cards are unowned. The offer is state, not a render — it survives a reload
+  unchanged, and the boot path rolls and **saves** the first one, since an offer that existed
+  only in the DOM would make the re-roll price decoration.
 
-On the board, a land carrying **Defense** needs the ward's remaining points visible on the land
-itself and in the pressure chip, and a land at total denial has to read differently from a merely
-held one — a held land is still losing, a warded one is not, and that is the distinction the chip
-exists to make.
+On the board a land carrying **Defense** reads it two ways. The pressure chip and the detail
+line say which of three stories is true — no ward, a partial one (spelled out as a reduction),
+or total denial, which replaces the rate line rather than decorating it. A denied land must not
+report "0% / s, next in never": there is no rate to quote, and that is the whole of what the
+ward bought. The land panel carries the ward's remaining points in its own forces block,
+present only while there is a ward to report.
 
 ## Interaction Rules
 

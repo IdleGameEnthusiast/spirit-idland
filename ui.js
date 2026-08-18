@@ -673,6 +673,15 @@ function patchLandMeters(state) {
 
   const detail = dom.landDetail.querySelector("[data-pressure-detail]");
   if (detail) detail.textContent = pressureDetailText(state, detail.getAttribute("data-pressure-detail"));
+
+  // Present only while there is a ward to report. A row reading "Defense here: 0" on seven
+  // lands out of eight would be a line of nothing, every frame.
+  const defenseRow = dom.landDetail.querySelector("[data-defense-row]");
+  if (defenseRow) {
+    const value = defenseInLand(state, defenseRow.getAttribute("data-defense-row"));
+    defenseRow.hidden = value <= 0;
+    defenseRow.querySelector("[data-defense-detail]").textContent = String(value);
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -742,6 +751,10 @@ function renderLandDetail(state) {
         <div class="detail-label">${t.ownForcesLabel}</div>
         <div class="detail-row"><span class="detail-key unit-dahan">${tokenIcon("dahan")}${t.dahanLabel}</span><span class="detail-val">${state.dahan[landId]}</span></div>
         <div class="detail-row"><span class="detail-key">${t.landBlightLabel}</span><span class="detail-val">${state.round.blightByLand[landId] || 0}</span></div>
+        <!-- A ward is laid and spent inside a round without anything rebuilding this panel,
+             so the row is drawn once and both its value and its hidden-ness are patched every
+             frame - the same treatment the pressure line above it gets. -->
+        <div class="detail-row" data-defense-row="${landId}" hidden><span class="detail-key">${t.landDefenseLabel}</span><span class="detail-val" data-defense-detail="${landId}"></span></div>
       </div>
       <div class="detail-block">
         <div class="detail-label">${t.neighboursLabel}</div>
@@ -777,16 +790,30 @@ function abilityBarSignature(state) {
   // ability's upgrade button is in `tiers` above rather than left to the per-frame patch - and
   // whether Focus is unlocked at all can change mid-round, since buying the Presence row
   // carries no round-status check.
-  const focus = spiritAbilityIds(state)
+  // Over everything castable rather than over the kit, because a power card takes Focus too
+  // and its pill carries the same climbing price.
+  const focus = unlockedAbilityIds(state)
     .map((id) => `${id}:${abilityFocusPurchases(state, id)}`)
     .join(",");
+  // What changes a card's shape: which cards are in hand, and whether the one just drawn still
+  // carries its re-draw button - which it loses on its first cast, on the next draw, and when
+  // the pool it could swap into empties. The price is in here too, since it climbs with every
+  // draw the round has taken. The option switch is not: like the auto-cast boxes, its ticked
+  // state is patched per frame, and folding it in would rebuild the bar on every click of it.
+  const cards = [
+    cardsInHand(state).join(","),
+    roundCards(state).pendingRedrawId || "",
+    powerCardRedrawCost(state),
+    powerCardRedrawPool(state).length > 0 ? 1 : 0
+  ].join("~");
   return [
     currentLang(state),
     unlockedAbilityIds(state).join(","),
     tiers,
     automations,
     abilityFocusUnlocked(state) ? 1 : 0,
-    focus
+    focus,
+    cards
   ].join("|");
 }
 
@@ -954,6 +981,51 @@ function renderTieredAbility(state, abilityId) {
   return card;
 }
 
+/* A power card in the bar. Structurally the tiered card's shape - a container with a face and
+ * a foot - because it carries two pressable things beside the cast: the re-draw button, and on
+ * Tsunami the switch for its second half.
+ *
+ * It wears its own tag where a tiered ability wears its tier, which is the one place the bar
+ * says out loud that this entry is not part of the spirit's kit. Everything else about it is
+ * deliberately identical: same head, same sweep, same cast surface, same Focus pill.
+ */
+function renderPowerCard(state, cardId) {
+  const t = locale(state);
+  const card = document.createElement("div");
+  card.className = "ability is-card";
+  card.setAttribute("data-power-card", cardId);
+
+  // Only while the card is still the one just drawn and there is something left to swap to -
+  // see powerCardRedrawOffered. Casting is accepting, so this is gone from the first cast on.
+  const redraw = powerCardRedrawOffered(state, cardId)
+    ? `<button type="button" class="ability-unlock card-redraw" data-redraw-card="${cardId}" title="${t.cardRedrawHint}">${template(t.cardRedrawBtn, { cost: powerCardRedrawCost(state) })}</button>`
+    : "";
+
+  // A sliding switch, the same control and the same reasoning as the auto-cast boxes: a
+  // setting that stays where it is put, rather than a question asked on every cast. It carries
+  // .ability-auto so it inherits that switch's whole look, and .card-option so the bar's click
+  // handler can tell the two apart before either reaches the cast.
+  const option = cardId in POWER_CARD_OPTION_DEFAULTS
+    ? `
+      <label class="ability-auto card-option" title="${t.cardOptionHint}">
+        <input type="checkbox" data-card-option="${cardId}">
+        <span>${t.cardOptionLabel}</span>
+        <span class="auto-switch" aria-hidden="true"></span>
+      </label>
+    `
+    : "";
+
+  card.innerHTML = `
+    ${abilityCardFaceMarkup(state, cardId)}
+    <span class="ability-foot">
+      <span class="ability-tier card-tag">${t.cardTag}</span>
+      ${redraw}
+      ${option}
+    </span>
+  `;
+  return card;
+}
+
 function renderAbilityBar(state) {
   dom.abilityBar.innerHTML = "";
 
@@ -965,6 +1037,13 @@ function renderAbilityBar(state) {
     else if (abilityIsTiered(abilityId)) card = renderTieredAbility(state, abilityId);
     else card = renderUnlockedAbility(state, abilityId);
     dom.abilityBar.appendChild(card);
+  }
+
+  // Then what the round earned, in the order it was handed over. After the kit rather than
+  // mixed into it: the five abilities sit where the player has learned to aim at them, and a
+  // card arriving at wave 45 must not shove them sideways mid-round.
+  for (const cardId of cardsInHand(state)) {
+    dom.abilityBar.appendChild(renderPowerCard(state, cardId));
   }
 }
 
@@ -984,14 +1063,19 @@ function patchAbilityBar(state) {
   // so the border is an OR across everything on the card rather than whichever price the loop
   // happened to reach last.
   const cardAfford = new Map();
-  for (const button of dom.abilityBar.querySelectorAll("[data-unlock-ability], [data-upgrade-ability], [data-focus-ability]")) {
+  for (const button of dom.abilityBar.querySelectorAll("[data-unlock-ability], [data-upgrade-ability], [data-focus-ability], [data-redraw-card]")) {
     const unlockId = button.getAttribute("data-unlock-ability");
     const upgradeId = button.getAttribute("data-upgrade-ability");
+    const focusId = button.getAttribute("data-focus-ability");
+    // A fourth price on the same footing as the other three: paid in Energy, inside the round,
+    // and dead the moment the purse is short. The bar treats it exactly like an unlock.
     const cost = unlockId
       ? abilityUnlockCost(state, unlockId)
       : upgradeId
       ? abilityUpgradeCost(state, upgradeId)
-      : abilityFocusCost(state, button.getAttribute("data-focus-ability"));
+      : focusId
+      ? abilityFocusCost(state, focusId)
+      : powerCardRedrawCost(state);
     const affordable = running && state.resources.energy >= cost;
     button.disabled = !affordable;
     const card = button.closest(".ability");
@@ -1007,6 +1091,12 @@ function patchAbilityBar(state) {
   // Ticked-ness is patched here rather than rebuilt, like every other per-frame value.
   for (const box of dom.abilityBar.querySelectorAll("[data-auto-cast]")) {
     box.checked = state.ui.autoCast[box.getAttribute("data-auto-cast")] !== false;
+  }
+
+  // Same exception and the same reason: a card's option switch spends nothing, so it stays
+  // live between rounds, and its ticked state is patched rather than rebuilt.
+  for (const box of dom.abilityBar.querySelectorAll("[data-card-option]")) {
+    box.checked = powerCardOptionOn(state, box.getAttribute("data-card-option"));
   }
 
   for (const button of dom.abilityBar.querySelectorAll("[data-ability]")) {
@@ -1084,7 +1174,16 @@ function shopSignature(state) {
 // function of the rung, so the rung already covers it.
 function presenceShopSignature(state) {
   const owned = PRESENCE_UPGRADE_IDS.map((id) => `${id}:${presenceUpgradeTier(state, id)}`).join(",");
-  return [currentLang(state), state.meta.presence, owned].join("|");
+  // The draw row lives in this panel, so what it shows joins the signature: which cards are
+  // owned, which three are on offer, and - because the row prints where the next draw is due -
+  // the wave the drip is counting toward.
+  const cards = [
+    ownedPowerCardIds(state).join(","),
+    powerCardOfferIds(state).join(","),
+    state.round.status,
+    roundCards(state).nextDrawWave
+  ].join("~");
+  return [currentLang(state), state.meta.presence, owned, cards].join("|");
 }
 
 /* Whether the bought half of the shop is unfolded.
@@ -1282,9 +1381,85 @@ function disarmAscend() {
 // waits on a round to start. What it does share is the tier chip on the rows that have a ladder
 // and the sold-out treatment, which is keyed to *maxed* rather than owned - a discount row is
 // still worth looking at with rungs left on it.
+/* The draw row, which is not an upgrade row at all: three cards on show and one kept, rather
+ * than a price and a tier. It sits at the top of the Presence panel because it is the only
+ * thing in there that buys a new kind of thing rather than discounting an old one.
+ *
+ * ensurePowerCardOffer is the read path, not powerCards.draw.offerIds - see the note on it.
+ * The roll is stored, so opening this panel twice shows the same three cards, and so does a
+ * reload. Boot rolls and saves the first one, which is what keeps the re-roll price honest.
+ */
+function renderCardShop(state) {
+  const t = locale(state);
+  const box = document.createElement("div");
+  box.className = "card-shop";
+
+  const owned = ownedPowerCardIds(state).length;
+  const head = `
+    <div class="card-shop-head">
+      <h4>${t.cardShopLabel}</h4>
+      <span class="card-shop-count">${template(t.cardOwnedLabel, { count: owned, total: POWER_CARD_IDS.length })}</span>
+    </div>
+  `;
+
+  // Nothing left to sell. The panel keeps the heading and the tally rather than vanishing:
+  // owning all seven is the end of a ladder, and a row that disappears reads like a bug.
+  if (powerCardsSoldOut(state)) {
+    box.innerHTML = `${head}<p class="card-shop-hint">${t.cardShopSoldOut}</p>`;
+    return box;
+  }
+
+  const cost = powerCardDrawCost(state);
+  const affordable = state.meta.presence >= cost;
+  const offers = ensurePowerCardOffer(state).map((cardId) => `
+    <div class="card-offer${affordable ? " is-affordable" : ""}">
+      <div class="card-offer-info">
+        <span class="card-offer-name">${abilityName(state, cardId)}</span>
+        <span class="card-offer-text">${abilityText(state, cardId)}</span>
+      </div>
+      <button type="button" class="upgrade-buy" data-draw-card="${cardId}" ${affordable ? "" : "disabled"}>
+        ${template(t.cardDrawCostLabel, { cost })}
+      </button>
+    </div>
+  `).join("");
+
+  // Dead rather than dear once three or fewer are unowned: at that point every card is already
+  // on show and a paid re-roll could only hand back what is already there.
+  const rerollAllowed = powerCardRerollAllowed(state);
+  const rerollCost = powerCardRerollCost(state);
+  const rerollAfford = rerollAllowed && state.meta.presence >= rerollCost;
+  const reroll = `
+    <div class="card-shop-foot">
+      <button type="button" class="small-btn card-reroll" data-reroll-cards ${rerollAfford ? "" : "disabled"}>
+        ${template(t.cardRerollBtn, { cost: rerollCost })}
+      </button>
+      <small class="card-shop-hint">${rerollAllowed ? t.cardRerollHint : t.cardRerollDeadHint}</small>
+    </div>
+  `;
+
+  // Where the next card is due, but only while a round is actually running toward it: between
+  // rounds the wave number is a countdown to nothing.
+  const nextDraw = owned > 0 && state.round.status === "running"
+    ? `<small class="card-shop-hint">${template(t.cardNextDrawHint, { wave: roundCards(state).nextDrawWave })}</small>`
+    : "";
+
+  box.innerHTML = `
+    ${head}
+    <p class="card-shop-hint">${t.cardShopHint}</p>
+    <div class="card-offers">${offers}</div>
+    ${reroll}
+    ${nextDraw}
+  `;
+  return box;
+}
+
 function renderPresenceShop(state) {
   const t = locale(state);
   dom.presenceList.innerHTML = "";
+
+  // Above the catalogue, and outside the sold-out fold below it: the draw is its own thing and
+  // never sinks, because "all seven owned" is a state it says in its own words.
+  dom.presenceList.appendChild(renderCardShop(state));
 
   function renderRow(presenceId, soldOutRow, parent) {
     const maxed = presenceUpgradeMaxed(state, presenceId);
@@ -1839,6 +2014,19 @@ drawIslandOnce();
 // to be the same board on every machine, and a stale upgrade tier would quietly change it.
 let state = FIXTURE_MODE ? createFreshGameState() : loadState();
 addLog(state, locale(state).spiritAwakens);
+
+/* The card offer, rolled here and saved with it rather than left to the shop's first render.
+ *
+ * A loaded save already carries one - normalizeState is where that happens - so this only ever
+ * fires for a game that has never had one, and it writes immediately. That is the whole point:
+ * an offer that only existed in the DOM would be gone on reload, and a reload that hands out
+ * three fresh cards makes the re-roll price decoration. Rolling it costs one RNG draw, which
+ * is why it is not done inside createFreshGameState - see the note on ensurePowerCardOffer.
+ */
+const hadOffer = state.powerCards.draw.offerIds.length;
+ensurePowerCardOffer(state);
+if (state.powerCards.draw.offerIds.length !== hadOffer) persist();
+
 updateUI(state);
 
 /* ------------------------------------------------------------------ *
@@ -1911,6 +2099,29 @@ dom.abilityBar.addEventListener("click", (event) => {
     purchaseAbilityFocus(state, focus.getAttribute("data-focus-ability") || "");
     updateUI(state);
     persist();
+    return;
+  }
+
+  // The fourth price, checked with the other three and ahead of the cast for the same reason.
+  const redraw = target.closest("[data-redraw-card]");
+  if (redraw) {
+    redrawPowerCard(state, redraw.getAttribute("data-redraw-card") || "");
+    updateUI(state);
+    persist();
+    return;
+  }
+
+  // Before the auto-cast switch below, not after it: a card's option switch wears
+  // .ability-auto too - it is the same control - so the more specific class has to win, or the
+  // block below would claim the click and then find no data-auto-cast on it.
+  const optionSwitch = target.closest(".card-option");
+  if (optionSwitch) {
+    const optionBox = target.closest("[data-card-option]");
+    if (optionBox) {
+      setPowerCardOption(state, optionBox.getAttribute("data-card-option") || "", optionBox.checked === true);
+      updateUI(state);
+      persist();
+    }
     return;
   }
 
@@ -2055,6 +2266,23 @@ dom.presenceList.addEventListener("click", (event) => {
     fold.setAttribute("aria-expanded", String(presenceSoldOutOpen));
     const body = document.getElementById("presenceSoldOut");
     if (body) body.hidden = !presenceSoldOutOpen;
+    return;
+  }
+
+  // The draw row's two buttons, both ahead of the catalogue's own: they sit in the same list
+  // and neither carries data-presence, so the row below would otherwise drop the click.
+  const draw = target.closest("button[data-draw-card]");
+  if (draw) {
+    drawPowerCard(state, draw.getAttribute("data-draw-card") || "");
+    updateUI(state);
+    persist();
+    return;
+  }
+
+  if (target.closest("button[data-reroll-cards]")) {
+    rerollPowerCardOffer(state);
+    updateUI(state);
+    persist();
     return;
   }
 

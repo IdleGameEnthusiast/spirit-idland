@@ -248,6 +248,9 @@
         "rising_dread",
         "mounting_terror",
         "high_water_mark",
+        // The power cards' own ladder, in catalogue order right after the three Fear ones and
+        // ahead of the pool. Ten tiers deep, so it stays buyable here like the rest of them.
+        "power_card_interval",
         // The pool sits with the repeatables and only sinks once it is full - 10000 Fear,
         // which this state has but has not spent.
         "dahan_remember",

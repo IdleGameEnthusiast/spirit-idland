@@ -1059,6 +1059,58 @@ button.reset {
   border-color: rgba(242, 196, 90, 0.55);
 }
 
+/* ---------- Power cards in the bar ----------
+ *
+ * Structurally the tiered card - a container with a face and a foot - and deliberately almost
+ * the same to look at: it is cast the same way, cools down the same way and takes Focus the
+ * same way, so it should not read as a different kind of control.
+ *
+ * What it does say is where it came from. The left edge carries a Presence-coloured rule and
+ * the tile a wash of the same hue, because that is the currency that bought it - the one mark
+ * on the card that separates what the round earned from what the spirit has always had. */
+.ability.is-card {
+  display: grid;
+  cursor: default;
+  border-color: rgba(166, 143, 216, 0.42);
+  border-left-width: 3px;
+  border-left-color: rgba(166, 143, 216, 0.75);
+  background:
+    linear-gradient(100deg, rgba(166, 143, 216, 0.1), rgba(166, 143, 216, 0) 55%),
+    rgba(13, 34, 43, 0.72);
+}
+
+.ability.is-card.is-castable { cursor: pointer; }
+
+.ability.is-card > .ability-head {
+  padding: 0.5rem 0.6rem 0.15rem;
+}
+
+.ability.is-card.is-affordable {
+  border-color: rgba(242, 196, 90, 0.55);
+  border-left-color: rgba(166, 143, 216, 0.75);
+}
+
+/* Where a tiered card says "Tier 2", a power card says what it is. Same slot, same weight,
+   same footnote size - only the hue differs, and it is the hue of the purse that bought it. */
+.card-tag {
+  color: var(--accent-presence);
+  opacity: 0.9;
+}
+
+/* The re-draw is priced in Energy like every other price in this bar, so it wears the gold the
+   unlock and Focus prices wear. It is the one button on the bar that disappears rather than
+   greying out - casting the card is what takes it away, and a spent option should not linger
+   as a dead control suggesting there is still a choice. */
+.card-redraw {
+  margin: 0;
+  font-size: 0.68rem;
+  padding: 0.24rem 0.55rem;
+}
+
+/* Tsunami's switch. Same control as the auto-cast box beside it on other cards, and pushed to
+   the same end of the foot, so a player who has learned one has learned both. */
+.ability-foot .card-option { margin-left: auto; }
+
 /* ------------------------------------------------------------------ *
  * Between-round shop                                                   *
  * ------------------------------------------------------------------ */
@@ -1458,6 +1510,121 @@ button.reset {
   color: var(--ink-1);
   opacity: 0.75;
 }
+
+/* ---------- The card draw ----------
+ *
+ * The one row in either shop that is not a price and a tier. It sits at the top of the
+ * Presence panel inside a frame of its own, because three cards side by side is a different
+ * shape from a list of rows and pretending otherwise would make both read worse. */
+.card-shop {
+  margin: 0 0 0.8rem;
+  padding: 0.6rem 0.65rem 0.7rem;
+  border: 1px solid rgba(166, 143, 216, 0.35);
+  border-radius: 10px;
+  background: rgba(166, 143, 216, 0.06);
+}
+
+.card-shop-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.card-shop-head h4 {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-presence);
+}
+
+.card-shop-count {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-1);
+  opacity: 0.8;
+}
+
+.card-shop-hint {
+  display: block;
+  margin: 0.35rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--ink-1);
+  opacity: 0.72;
+}
+
+/* One column, not three across. The panel is a narrow sidebar and a card's text is a sentence
+   or two - three of them side by side would each be four words wide. Stacked, the three read
+   as what they are: a choice between three whole things. */
+.card-offers {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.card-offer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(13, 34, 43, 0.5);
+}
+
+/* The same gold promise every affordable price in the game wears. */
+.card-offer.is-affordable {
+  border-color: rgba(166, 143, 216, 0.5);
+}
+
+.card-offer-info {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.card-offer-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-0);
+}
+
+.card-offer-text {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--ink-1);
+  opacity: 0.8;
+}
+
+.card-offer .upgrade-buy {
+  border-color: rgba(166, 143, 216, 0.45);
+  color: var(--accent-presence);
+  white-space: nowrap;
+}
+
+.card-shop-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.card-reroll {
+  flex: none;
+  font-size: 0.7rem;
+  border-color: rgba(166, 143, 216, 0.4);
+  color: var(--accent-presence);
+}
+
+.card-reroll:disabled { cursor: default; opacity: 0.45; }
+
+.card-shop-foot .card-shop-hint { flex: 1 1 8rem; margin: 0; }
 
 /* A Presence row reads like a shop row on purpose - same shape, same weights - and differs
    only in hue. It is the same kind of decision, in the other currency. */
