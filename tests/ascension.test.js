@@ -247,8 +247,9 @@
   // ids rather than to PRESENCE_UPGRADE_IDS as a whole - see the row below for the row that
   // proves the dilemma actually holds.
   test("ascension: the first reclaim pays for exactly both starter rows", () => {
+    const { state: fresh } = newGame();
     const total = ["presence_tide_returns", "presence_river_knows"]
-      .reduce((sum, id) => sum + engine.presenceUpgradeCost(id), 0);
+      .reduce((sum, id) => sum + engine.presenceUpgradeCost(fresh, id), 0);
     assertEqual(total, 5, "two plus three");
 
     const state = readyToAscend(2500);
@@ -257,14 +258,116 @@
   });
 
   test("ascension: Focus is not part of that first-Reclaim freebie", () => {
+    const { state: fresh } = newGame();
     const total = engine.PRESENCE_UPGRADE_IDS
-      .reduce((sum, id) => sum + engine.presenceUpgradeCost(id), 0);
+      .reduce((sum, id) => sum + engine.presenceUpgradeCost(fresh, id), 0);
     assert(total > 5, "a third row on top of the first two's 5 raises the full catalogue's cost");
 
     const state = readyToAscend(2500);
     engine.ascend(state);
     assert(state.meta.presence < total, "the first Reclaim alone cannot buy the whole catalogue");
     assert(!engine.presenceUpgradeOwned(state, "presence_current_quickens"), "Focus is still unbought");
+  });
+
+  /* ---------- The discount ladders ---------- */
+
+  // The example the design was written from, walked rung by rung: The Flood Unbidden at 300 Fear
+  // comes down 200 / 100 / 50 / 25 / 10 for 5 / 10 / 25 / 50 / 100 Presence.
+  test("ascension: a discount row walks its automation down the shared price ladder", () => {
+    const { state } = newGame();
+    state.meta.presence = 1000;
+    assertEqual(engine.upgradeCost(state, "auto_flash_floods"), 300, "full price to start");
+
+    const prices = [200, 100, 50, 25, 10];
+    const costs = [5, 10, 25, 50, 100];
+    let purse = 1000;
+    for (let i = 0; i < prices.length; i += 1) {
+      assertEqual(engine.presenceUpgradeCost(state, "presence_flood_remembered"), costs[i], `rung ${i + 1} is priced`);
+      assert(engine.purchasePresenceUpgrade(state, "presence_flood_remembered"), `rung ${i + 1} is bought`);
+      purse -= costs[i];
+      assertEqual(state.meta.presence, purse, `rung ${i + 1} took its Presence`);
+      assertEqual(engine.upgradeCost(state, "auto_flash_floods"), prices[i], `rung ${i + 1} lands on ${prices[i]}`);
+    }
+
+    assert(engine.presenceUpgradeMaxed(state, "presence_flood_remembered"), "and the ladder is finished");
+    assert(!engine.purchasePresenceUpgrade(state, "presence_flood_remembered"), "an eighth rung is refused");
+    assertEqual(engine.upgradeCost(state, "auto_flash_floods"), 10, "the floor is 10, not 0");
+  });
+
+  // Where each ladder starts is read off the automation's own price, so the row count is the
+  // Fear catalogue's business rather than a number written twice.
+  test("ascension: every discount row has as many rungs as its automation has price left", () => {
+    const expected = {
+      presence_boon_remembered: 1,
+      presence_instinct_remembered: 3,
+      presence_bounty_remembered: 4,
+      presence_flood_remembered: 5,
+      presence_current_remembered: 6,
+      presence_need_remembered: 4,
+      presence_tide_remembered: 7
+    };
+    for (const [id, rungs] of Object.entries(expected)) {
+      assertEqual(engine.presenceUpgradeMaxTier(id), rungs, `${id} has ${rungs} rungs`);
+      assert(engine.PRESENCE_DISCOUNT_COSTS.length >= rungs, `${id} has a price for every rung`);
+    }
+  });
+
+  // Structural, and the thing that breaks first if an automation is ever repriced: a discount row
+  // whose target sits off AUTOMATION_PRICE_LADDER would silently have no rungs at all.
+  test("ascension: every discounted automation is priced on the shared ladder", () => {
+    for (const id of engine.PRESENCE_UPGRADE_IDS) {
+      const target = engine.PRESENCE_UPGRADES[id].discounts;
+      if (!target) continue;
+      assert(engine.UPGRADES[target], `${id} discounts ${target}, which is not in the catalogue`);
+      assert(
+        engine.AUTOMATION_PRICE_LADDER.includes(engine.UPGRADES[target].baseCost),
+        `${target} costs ${engine.UPGRADES[target].baseCost}, which is not a rung of the ladder`
+      );
+      assertEqual(engine.PRESENCE_DISCOUNT_BY_UPGRADE[target], id, `${target} must map back to ${id}`);
+    }
+  });
+
+  // The point of the row: the discount is bought once with Presence and the Fear price stays
+  // lowered on the other side of a Reclaim, which is what makes it a meta purchase rather than a
+  // cheaper checkout this cycle.
+  test("ascension: a discount survives the reclaim that wipes the automation it discounts", () => {
+    const state = readyToAscend(2500);
+    grantPresence(state, "presence_tide_returns");
+    grantPresence(state, "presence_tide_remembered", 4);
+    assertEqual(engine.upgradeCost(state, "auto_start_round"), 100, "four rungs off 500");
+
+    state.meta.fear = 100;
+    assert(engine.purchaseUpgrade(state, "auto_start_round"), "and 100 Fear buys it this cycle");
+    assertEqual(state.meta.fear, 0, "at the discounted price, not the catalogue one");
+
+    engine.ascend(state);
+    assertEqual(engine.upgradeTier(state, "auto_start_round"), 0, "the automation is given back");
+    assertEqual(engine.presenceUpgradeTier(state, "presence_tide_remembered"), 4, "the discount is not");
+    assertEqual(engine.upgradeCost(state, "auto_start_round"), 100, "so next cycle re-buys it at 100");
+  });
+
+  // A discount is not permission. The Presence-locked rows stay locked at any price, which is the
+  // two-key rule holding across a row that now has two Presence rows pointed at it.
+  test("ascension: a discounted row is still locked until its unlock is bought", () => {
+    const { state } = newGame();
+    grantPresence(state, "presence_tide_remembered", 7);
+    state.meta.fear = 1e6;
+
+    assertEqual(engine.upgradeCost(state, "auto_start_round"), 10, "cheap as it goes");
+    assert(!engine.purchaseUpgrade(state, "auto_start_round"), "and still refused");
+    assertEqual(engine.upgradeTier(state, "auto_start_round"), 0, "nothing bought");
+    assertEqual(state.meta.fear, 1e6, "and nothing spent");
+  });
+
+  test("ascension: a save carrying a rung the ladder no longer has is clamped to the top", () => {
+    const { state } = newGame();
+    const loaded = engine.normalizeState({
+      presenceUpgrades: { purchased: { presence_boon_remembered: 99, presence_tide_returns: 4 } }
+    });
+    assertEqual(engine.presenceUpgradeTier(loaded, "presence_boon_remembered"), 1, "one rung is all it has");
+    assertEqual(engine.presenceUpgradeTier(loaded, "presence_tide_returns"), 1, "a flat row stays flat");
+    assertEqual(engine.upgradeCost(loaded, "auto_boon"), 10, "and is priced as the rung it now is");
+    assertEqual(engine.upgradeCost(state, "auto_boon"), 25, "an untouched save is unaffected");
   });
 
   /* ---------- The two-key rule, end to end ---------- */

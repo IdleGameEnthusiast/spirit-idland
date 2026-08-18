@@ -57,6 +57,7 @@ Define the canonical save shape for the round-based redesign.
     "playtest": false,
     "defeatFx": null,
     "blightFx": null,
+    "roundEndFx": null,
     "selectedLand": null
   },
   "round": {
@@ -153,6 +154,19 @@ would stop matching itself after a save/load round-trip.
 two `invader` track slots. The board registry mapping one to the other lives in
 [09-island-board.md](./09-island-board.md).
 
+## Fields power cards will add
+
+Specified in [10-power-cards.md](./10-power-cards.md#state) and **not implemented**. Listed here
+so the contract does not have to be read in two places to know what a save may hold: a top-level
+`powerCards` (`owned`, and the stored `draw` offer), `round.defense` and `round.defenseExpiry`
+keyed by land id, `round.cards`, and `ui.cardOptions`.
+
+Every one of them is additive, which is the property that matters: a new field is not a schema
+change and must not trigger the wipe — see
+[Older save files keep working](#older-save-files-keep-working). `powerCards.owned` is bought
+with Presence and therefore survives ascension; everything under `round` is cleared by
+`startRound`; `ui.cardOptions` is a preference and survives with the rest of `ui.*`.
+
 ## Retired Fields
 
 Carried over from `2.0.0` but dropped here, since nothing in the round-based design reads
@@ -177,7 +191,10 @@ Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
 
 - `status` is `running` while a round is live, or `ended` once Blight has reached
   `blightThreshold`. No other values are valid.
-- `blight` only increases during a round and is clamped to `blightThreshold` as its max.
+- `blight` is clamped to `blightThreshold` as its max. Nothing in the fight lowers it; the one
+  thing that can is a power card's removal clause, which decrements `blight` and
+  `blightByLand[land]` together and leaves `blightProgress[land]` alone. See
+  [10-power-cards.md](./10-power-cards.md#removing-blight) — designed, not built.
 - `blightThreshold` is copied from the current permanent-upgrade baseline at round setup, so
   a mid-round upgrade purchase (not currently possible; upgrades only apply between rounds)
   can't retroactively change an already-running round's threshold.
@@ -239,6 +256,11 @@ Fields the first draft of this contract did not have. Each earns its place:
   shorten a cooldown that is already ticking.
 - **`ui.blightFx`** — the transient counterpart to `ui.defeatFx`, marking the lands that
   just took Blight. Same lifetime (`DEFEAT_FX_MS`), same normalize-to-null rule.
+- **`ui.roundEndFx`** — set by `endRound` to mark the *instant* the round ended, so the board
+  can flash rather than only appearing already frozen. Same lifetime and normalize-to-null
+  rule as the two above, but it carries no payload beyond `at`: what it announces is the
+  boundary itself, not a land or a number. The lasting "round is over" reading is
+  `round.status`, which the view wears as `.round-ended`; this is only the beat at the crossing.
 - **`ui.gameSpeed`** — the speed dial: how many game seconds one real second buys, one of
   `GAME_SPEEDS` (`0`, `1`, `2`), plus `PLAYTEST_GAME_SPEEDS` (`8`) while `ui.playtest` is set.
   It lives in `ui` rather than `round` because it is a preference like the language toggle,

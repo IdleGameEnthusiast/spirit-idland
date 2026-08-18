@@ -680,8 +680,19 @@ function patchLandMeters(state) {
  * ------------------------------------------------------------------ */
 
 function renderLandDetail(state) {
+  // Unlike the map ring - which always has something to highlight, wave target or not - the
+  // panel now has an off state: clicking the selected land again clears the raw selection, and
+  // that is the one signal this reads. effectiveSelectedLand would paper back over it with the
+  // same fallback the ring uses, which is exactly what must not happen here.
+  if (!isLandId(state.ui.selectedLand)) {
+    dom.landDetail.hidden = true;
+    dom.landDetail.innerHTML = "";
+    return;
+  }
+  dom.landDetail.hidden = false;
+
   const t = locale(state);
-  const landId = effectiveSelectedLand(state);
+  const landId = state.ui.selectedLand;
   const terrain = landTerrain(landId);
   const counts = state.invaders[landId];
   const damageSlot = state.invaderDamage[landId];
@@ -780,15 +791,56 @@ function abilityBarSignature(state) {
 }
 
 // A Focus purchase button for one unlocked ability, or nothing if Focus is not unlocked yet or
-// this ability has already been bought down to the floor. Reuses .ability-unlock rather than a
-// class of its own - it is the same kind of thing the tier-upgrade button already is: a price
-// in the foot of the card.
+// this ability has already been bought down to the floor. It carries a class of its own rather
+// than the foot's .ability-unlock, because it is not the same kind of thing: an unlock or a
+// tier is bought once and changes what the card is, while Focus is bought over and over and
+// only moves the number it sits beside. So it is drawn as a small pill on the top line rather
+// than a price bar in the foot, and the two stop reading as rungs on one ladder.
+//
+// The Innate is held back an extra beat: its tier 1 is the opening-hand freebie, so Focus on it
+// this early would be spent shrinking a cooldown players are about to outgrow anyway. It appears
+// once tier 2 is bought (abilityTier index >= 1), same as every other ability's Focus button.
 function abilityFocusMarkup(state, abilityId) {
   if (!abilityFocusUnlocked(state)) return "";
+  if (abilityId === "innate_power" && abilityTier(state, abilityId) < 1) return "";
   const t = locale(state);
   const cost = abilityFocusCost(state, abilityId);
   if (!Number.isFinite(cost)) return "";
-  return `<button type="button" class="ability-unlock" data-focus-ability="${abilityId}">${template(t.abilityFocusBtn, { cost })}</button>`;
+  return `<button type="button" class="ability-focus" data-focus-ability="${abilityId}">${template(t.abilityFocusBtn, { cost })}</button>`;
+}
+
+// The card's top line: the name, and hard against the right edge the marks - the Focus price,
+// then the cooldown state. Focus stands immediately left of the countdown because that is the
+// number it buys down; the foot below is left to the purchases that change the card itself.
+//
+// Every card shape shares this line, so a card with no Focus button is the same markup with the
+// pill missing, and the state sits exactly where it always did.
+function abilityHeadMarkup(state, abilityId) {
+  return `
+    <span class="ability-head">
+      <span class="ability-name">${abilityName(state, abilityId)}</span>
+      <span class="ability-marks">
+        ${abilityFocusMarkup(state, abilityId)}
+        <span class="ability-state" data-role="state"></span>
+      </span>
+    </span>
+  `;
+}
+
+// The face of a two-part card - the shape a card takes as soon as it carries anything pressable
+// besides the cast. The head is lifted out of the cast button, because a button cannot hold the
+// Focus button that now sits on that line, and the sweep is lifted out with it so the cooldown
+// still washes across the whole card rather than only the strip below the name. What is left
+// inside the cast button is the description; the card takes the click everywhere else, which is
+// what the bar's click handler already does for the foot.
+function abilityCardFaceMarkup(state, abilityId) {
+  return `
+    <span class="ability-sweep" data-role="sweep"></span>
+    ${abilityHeadMarkup(state, abilityId)}
+    <button type="button" class="ability-cast" data-ability="${abilityId}">
+      <span class="ability-text">${abilityText(state, abilityId)}</span>
+    </button>
+  `;
 }
 
 // The switch that says whether this ability's automation casts. Drawn only once the automation
@@ -819,23 +871,12 @@ function abilityAutoCastMarkup(state, abilityId) {
 
 // One unlocked ability: the pressable card, with the cooldown sweep behind its text.
 //
-// Two shapes, and which one it takes is whether the card has a foot at all - the automation
-// switch, a Focus button, or both. With neither it stays the single button it has always been.
-// With either it becomes the container the tiered card already is - a checkbox cannot live
-// inside a button, which is the same wall renderTieredAbility hit - so the cast surface moves
-// into a button of its own and the foot sits beneath it.
+// Two shapes, and which one it takes is whether the card carries anything pressable besides the
+// cast - the automation switch, a Focus pill, or both. With neither it stays the single button
+// it has always been. With either it becomes the container the tiered card already is, because
+// neither a checkbox nor a button can live inside a button, and the cast moves into a button of
+// its own with the head above it and the foot beneath.
 function renderUnlockedAbility(state, abilityId) {
-  const face = `
-    <span class="ability-sweep" data-role="sweep"></span>
-    <span class="ability-body">
-      <span class="ability-head">
-        <span class="ability-name">${abilityName(state, abilityId)}</span>
-        <span class="ability-state" data-role="state"></span>
-      </span>
-      <span class="ability-text">${abilityText(state, abilityId)}</span>
-    </span>
-  `;
-
   const auto = abilityAutoCastMarkup(state, abilityId);
   const focus = abilityFocusMarkup(state, abilityId);
   if (!auto && !focus) {
@@ -843,15 +884,21 @@ function renderUnlockedAbility(state, abilityId) {
     button.type = "button";
     button.className = "ability";
     button.setAttribute("data-ability", abilityId);
-    button.innerHTML = face;
+    button.innerHTML = `
+      <span class="ability-sweep" data-role="sweep"></span>
+      <span class="ability-body">
+        ${abilityHeadMarkup(state, abilityId)}
+        <span class="ability-text">${abilityText(state, abilityId)}</span>
+      </span>
+    `;
     return button;
   }
 
   const card = document.createElement("div");
   card.className = "ability is-automated";
   card.innerHTML = `
-    <button type="button" class="ability-cast" data-ability="${abilityId}">${face}</button>
-    <span class="ability-foot">${focus}${auto}</span>
+    ${abilityCardFaceMarkup(state, abilityId)}
+    <span class="ability-foot">${auto}</span>
   `;
   return card;
 }
@@ -897,20 +944,10 @@ function renderTieredAbility(state, abilityId) {
     : "";
 
   card.innerHTML = `
-    <button type="button" class="ability-cast" data-ability="${abilityId}">
-      <span class="ability-sweep" data-role="sweep"></span>
-      <span class="ability-body">
-        <span class="ability-head">
-          <span class="ability-name">${abilityName(state, abilityId)}</span>
-          <span class="ability-state" data-role="state"></span>
-        </span>
-        <span class="ability-text">${abilityText(state, abilityId)}</span>
-      </span>
-    </button>
+    ${abilityCardFaceMarkup(state, abilityId)}
     <span class="ability-foot">
       <span class="ability-tier">${template(t.abilityTierLabel, { tier: abilityTier(state, abilityId) + 1 })}</span>
       ${upgrade}
-      ${abilityFocusMarkup(state, abilityId)}
       ${abilityAutoCastMarkup(state, abilityId)}
     </span>
   `;
@@ -942,7 +979,11 @@ function patchAbilityBar(state) {
   const running = state.round.status === "running";
 
   // All three prices in the bar answer the same question - can I afford this yet - so they are
-  // patched the same way, and the card wears the answer as a warm border either way.
+  // patched the same way, and the card wears the answer as a warm border either way. A card can
+  // carry two of them at once now - a tier price in the foot and a Focus pill on the top line -
+  // so the border is an OR across everything on the card rather than whichever price the loop
+  // happened to reach last.
+  const cardAfford = new Map();
   for (const button of dom.abilityBar.querySelectorAll("[data-unlock-ability], [data-upgrade-ability], [data-focus-ability]")) {
     const unlockId = button.getAttribute("data-unlock-ability");
     const upgradeId = button.getAttribute("data-upgrade-ability");
@@ -953,8 +994,10 @@ function patchAbilityBar(state) {
       : abilityFocusCost(state, button.getAttribute("data-focus-ability"));
     const affordable = running && state.resources.energy >= cost;
     button.disabled = !affordable;
-    button.closest(".ability").classList.toggle("is-affordable", affordable);
+    const card = button.closest(".ability");
+    cardAfford.set(card, cardAfford.get(card) === true || affordable);
   }
+  for (const [card, affordable] of cardAfford) card.classList.toggle("is-affordable", affordable);
 
   // The one exception to the rule above: the checkbox stays live while the round is not
   // running. It spends nothing - no Energy, no cooldown, no Fear - and the shop between rounds
@@ -988,14 +1031,14 @@ function patchAbilityBar(state) {
     // would still be showing a pointer over a cast that goes nowhere.
     card.classList.toggle("is-castable", !button.disabled);
 
-    button.querySelector('[data-role="state"]').textContent = armed
+    card.querySelector('[data-role="state"]').textContent = armed
       ? t.abilityArmed
       : (ready ? t.abilityReady : template(t.abilityCooldown, { seconds: displaySeconds(state, remaining) }));
 
     // The sweep drains left to right as the cooldown runs down, so "how long still" is
     // readable at a glance without reading the number.
     const pct = ready || full <= 0 ? 0 : Math.max(0, Math.min(100, (remaining / full) * 100));
-    button.querySelector('[data-role="sweep"]').style.width = `${pct}%`;
+    card.querySelector('[data-role="sweep"]').style.width = `${pct}%`;
   }
 }
 
@@ -1015,8 +1058,9 @@ function patchAbilityBar(state) {
 function shopSignature(state) {
   const tiers = UPGRADE_IDS.map((id) => `${id}:${upgradeTier(state, id)}:${activeUpgradeTier(state, id)}`).join(",");
   // What the Presence catalogue owns decides which rows exist at all now that a locked one is
-  // absent rather than dead, so a Presence purchase has to reach this signature - nothing else
-  // in the list moves when one is made.
+  // absent rather than dead, and - since the discount ladders landed - what several of them
+  // cost. So a Presence purchase has to reach this signature; nothing else in the list moves
+  // when one is made, and a discounted row would otherwise keep advertising its old price.
   const unlocks = PRESENCE_UPGRADE_IDS.map((id) => presenceUpgradeTier(state, id)).join(",");
   return [
     currentLang(state),
@@ -1034,9 +1078,10 @@ function shopSignature(state) {
   ].join("|");
 }
 
-// Two rows, no tiers, no prices that move: what changes a Presence row is the purse crossing
-// its cost, and the purse only moves on an ascension or a purchase. So the signature is the
-// purse, what is owned, and the language.
+// What changes a Presence row is the purse crossing its cost, or a rung being taken - and the
+// purse only moves on an ascension or a purchase. So the signature is the purse, the rung every
+// row stands on, and the language. The discount rows quote a Fear price, but that price is a
+// function of the rung, so the rung already covers it.
 function presenceShopSignature(state) {
   const owned = PRESENCE_UPGRADE_IDS.map((id) => `${id}:${presenceUpgradeTier(state, id)}`).join(",");
   return [currentLang(state), state.meta.presence, owned].join("|");
@@ -1233,37 +1278,43 @@ function disarmAscend() {
   ascendArmed = false;
 }
 
-// The catalogue is two rows and neither is repeatable, so this is much simpler than the Fear
-// shop's: no tiers, no pool denominations, no pending hint. What it does share is the sold-out
-// treatment, because a bought Presence row stays on the list exactly as a bought one-off does.
+// Simpler than the Fear shop's: no pool denominations and no pending hint, because nothing here
+// waits on a round to start. What it does share is the tier chip on the rows that have a ladder
+// and the sold-out treatment, which is keyed to *maxed* rather than owned - a discount row is
+// still worth looking at with rungs left on it.
 function renderPresenceShop(state) {
   const t = locale(state);
   dom.presenceList.innerHTML = "";
 
   function renderRow(presenceId, soldOutRow, parent) {
-    const owned = presenceUpgradeOwned(state, presenceId);
-    const cost = presenceUpgradeCost(presenceId);
-    const affordable = !owned && state.meta.presence >= cost;
+    const maxed = presenceUpgradeMaxed(state, presenceId);
+    const cost = presenceUpgradeCost(state, presenceId);
+    const affordable = !maxed && state.meta.presence >= cost;
+    const laddered = presenceUpgradeMaxTier(presenceId) > 1;
+
+    const statusText = presenceUpgradeStatusText(state, presenceId);
+    const status = statusText ? `<span class="upgrade-tier">${statusText}</span>` : "";
 
     const row = document.createElement("div");
-    row.className = `upgrade is-one-off is-presence${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
+    row.className = `upgrade is-presence${laddered ? "" : " is-one-off"}${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${presenceUpgradeName(state, presenceId)}</span>
+        ${status}
         <span class="upgrade-text">${presenceUpgradeText(state, presenceId)}</span>
       </div>
-      <button type="button" class="upgrade-buy" data-presence="${presenceId}" ${owned || !affordable ? "disabled" : ""}>
-        ${owned ? t.presenceOwnedBtn : template(t.presenceCostLabel, { cost })}
+      <button type="button" class="upgrade-buy" data-presence="${presenceId}" ${maxed || !affordable ? "disabled" : ""}>
+        ${maxed ? (laddered ? t.presenceMaxedBtn : t.presenceOwnedBtn) : template(t.presenceCostLabel, { cost })}
       </button>
     `;
     (parent || dom.presenceList).appendChild(row);
   }
 
-  // Same split and fold as the Fear shop's sold-out section (see renderShop): a bought
-  // Presence row sinks below what is still worth a look instead of cluttering the list
+  // Same split and fold as the Fear shop's sold-out section (see renderShop): a Presence row with
+  // nothing left to sell sinks below what is still worth a look instead of cluttering the list
   // it was just bought out of.
-  const buyable = PRESENCE_UPGRADE_IDS.filter((id) => !presenceUpgradeOwned(state, id));
-  const soldOut = PRESENCE_UPGRADE_IDS.filter((id) => presenceUpgradeOwned(state, id));
+  const buyable = PRESENCE_UPGRADE_IDS.filter((id) => !presenceUpgradeMaxed(state, id));
+  const soldOut = PRESENCE_UPGRADE_IDS.filter((id) => presenceUpgradeMaxed(state, id));
 
   for (const presenceId of buyable) renderRow(presenceId, false);
 
@@ -1440,7 +1491,13 @@ function patchHud(state) {
   dom.buildTerrain.textContent = terrainNames(state, state.invader.build);
   dom.discoverTerrain.textContent = terrainNames(state, state.invader.explore);
 
+  // Two readings of one boundary, and they are not the same length. `round-ended` holds for as
+  // long as the round is over - it dims the frozen board and calls the Start button - while
+  // `round-end-flash` marks the instant it happened and expires on the fx clock the defeat and
+  // Blight chips run on. Without the second one, a round that ends while the player is reading
+  // the shop simply finds the board already grey, with nothing having said when.
   document.body.classList.toggle("round-ended", !running);
+  document.body.classList.toggle("round-end-flash", Boolean(activeRoundEndFx(state)));
 }
 
 // The escalation ladder under the track. Rebuilt rather than patched, and only when the wave
@@ -1664,6 +1721,10 @@ function mapSignature(state) {
   const parts = [
     currentLang(state),
     `sel:${effectiveSelectedLand(state)}`,
+    // The ring's target and the panel's are not the same read once a deselect can happen: the
+    // ring still falls back, but the panel goes empty, and effectiveSelectedLand alone cannot
+    // tell those two moments apart.
+    `selRaw:${state.ui.selectedLand || "-"}`,
     `armed:${state.pendingAbilityTarget || "-"}`,
     `wave:${state.invader.build || "-"}`,
     // The Discover slot paints rings too now, so a redraw it does not trigger would leave
@@ -1890,13 +1951,20 @@ dom.abilityBar.addEventListener("click", (event) => {
   updateUI(state);
 });
 
-// A land click always selects. If an ability is armed and the land is legal, the same click
-// also resolves it - one click, never two, and never an ambiguous one.
+// A land click selects it; clicking the already-selected land again deselects it, which is
+// what lets the detail panel close. While an ability is armed the click means something else
+// entirely - it names the target - so it leaves the selection alone: the detail panel does not
+// pop open behind the cast, and it does not close if the targeted land happened to be the one
+// already open. A click on an illegal land is still a targeting click, just a refused one.
 function selectLand(state, landId) {
   if (!isLandId(landId)) return;
   const armed = state.pendingAbilityTarget;
-  state.ui.selectedLand = landId;
-  if (armed && abilityLegalLand(state, armed, landId)) resolveAbilityTarget(state, landId);
+  if (armed) {
+    if (abilityLegalLand(state, armed, landId)) resolveAbilityTarget(state, landId);
+    updateUI(state);
+    return;
+  }
+  state.ui.selectedLand = state.ui.selectedLand === landId ? null : landId;
   updateUI(state);
 }
 

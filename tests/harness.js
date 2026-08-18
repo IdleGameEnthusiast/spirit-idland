@@ -187,12 +187,14 @@ function grantUpgrade(state, upgradeId, tier) {
   return state;
 }
 
-/* Grants a Presence row without going through the purse.
+/* Grants a Presence row without going through the purse, to `tier` rungs (default 1, which is
+ * the whole of a flat row).
  *
- * No round-snapshot half to this one: a Presence purchase unlocks a Fear row rather than
- * changing anything a running round reads, so there is nothing for a snapshot to defer. */
-function grantPresence(state, presenceId) {
-  state.presenceUpgrades.purchased[presenceId] = 1;
+ * No round-snapshot half to this one: a Presence purchase changes what the Fear shop offers and
+ * what it charges, neither of which a running round reads, so there is nothing for a snapshot
+ * to defer. */
+function grantPresence(state, presenceId, tier) {
+  state.presenceUpgrades.purchased[presenceId] = Math.max(1, Math.floor(Number(tier) || 1));
   return state;
 }
 

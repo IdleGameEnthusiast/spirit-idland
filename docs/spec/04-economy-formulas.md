@@ -32,6 +32,20 @@ ASCENSION_UNLOCK_PRESENCE = 5          (what a Reclaim must pay before it is off
 PRESENCE_FEAR_DIVISOR = 100            (placeholder, and the least measured number here)
 ```
 
+Power cards add the block below. **None of it is implemented**, and every figure in it is a
+first pass — see [10-power-cards.md](./10-power-cards.md) for what each one buys and the
+arithmetic behind it.
+
+```txt
+POWER_CARD_DRAW_BASE_COST     = 10       Presence, first draw
+POWER_CARD_DRAW_GROWTH        = 1.6      the shop's own curve, reused
+POWER_CARD_REROLL_DIVISOR     = 4        a re-roll is a quarter of the draw it re-rolls
+POWER_CARD_DRAW_FIRST_WAVE    = 25       the round's first card
+POWER_CARD_DRAW_INTERVAL_BASE = 20       waves between draws at tier 0, 10 at tier 10
+POWER_CARD_REDRAW_BASE_ENERGY = 10       x the round's draw number: 10, 20, 30
+DEFENSE_DURATION_SECONDS      = WAVE_INTERVAL_SECONDS   (from a ward's first use, not from cast)
+```
+
 ## Beats and TIME_SCALE
 
 Every duration in the game is authored in **beats** and rendered in seconds by one dial. A
@@ -150,6 +164,11 @@ runs whenever the round is `running` and no gate is held, and it deals no damage
 ## Blight Formula
 
 Continuous, per land, every tick. No terrain is selected and no phase is involved.
+
+Power cards add one term in front of this, not implemented: a land carrying **Defense** has its
+`gross` reduced by the ward before any of the below runs, and a ward covering the whole of
+`gross` zeroes the land outright — the one exception to `BLIGHT_FLOOR_FRACTION` in the design.
+See [10-power-cards.md](./10-power-cards.md#defense).
 
 ```txt
 gross           = explorers*1 + towns*2 + cities*3
@@ -574,6 +593,13 @@ no open ground?     an adjacent land that already holds invaders, ranked the sam
                     want of a destination
 ```
 
+Power cards extend that ranking without changing its shape, and this is designed rather than
+built: a land holding **Dahan and Defense** outranks one holding Dahan, which outranks one
+holding Defense alone, which outranks a bare coastal land. Shoving a unit onto a warded land is
+strictly good for the player, so the water prefers it — and it stays under the Dahan preference,
+because Dahan kill what arrives where a ward only absorbs it. See
+[10-power-cards.md](./10-power-cards.md#defense).
+
 The destination is deterministic, like every other tie on this board: the water always runs the
 same way, so a push can be planned rather than gambled on. An earlier draft picked randomly
 among the equals to stop a player farming one land into a permanent sink; predictability turned
@@ -894,8 +920,9 @@ presence_river_knows       3 Presence   unlocks auto_buy_abilities (200 Fear, st
 presence_current_quickens  5 Presence   unlocks Focus directly - no Fear row to still owe
 ```
 
-Flat prices, no curve, because none of the three rows is repeatable and there is nothing yet to
-shape.
+Flat prices, no curve, because none of the three rows is repeatable and there is nothing to
+shape. The seven discount ladders below are the repeatable ones, and they are priced by their
+own table rather than by any growth rate.
 
 `presence_current_quickens` breaks the pattern the first two set: it does not open a row in the
 Fear shop, it flips `abilityFocusUnlocked` directly (see
@@ -905,18 +932,80 @@ lump the Presence row unlocked. This is also the first Presence row to touch the
 than gate a Fear row; see [05-progression.md](./05-progression.md#the-two-layers) for how that
 sits against "Presence never touches the board."
 
-The thing to get right when a repeatable Presence row is added: **Presence income is
-root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth would outrun it
-inside three tiers and every rung past the third would be dead. A Presence ladder wants
-something nearer 1.3–1.5, or a flat price, and the check is whether a tier stays buyable a
-cycle or two after the one below it.
+### The automation discount ladders
 
-This is no longer only a shop-pacing concern. Since [Presence multiplies Fear
-generation](#presence-multiplies-too-and-does-not-cap) at 1% per point held, and that bonus has
-no ceiling, a repeatable row here is what gives holding Presence a real opposite — a reason
-spending it can beat sitting on it. Until one exists, the two flat unlocks above are the only
-sink in the game, and every point of Presence past 5 is Presence a player has no in-system
-reason to ever spend.
+```txt
+AUTOMATION_PRICE_LADDER    500  400  300  200  100  50  25  10     (Fear)
+PRESENCE_DISCOUNT_COSTS      5   10   25   50  100  250  500       (Presence, by rung taken)
+```
+
+Every automation's Fear price is a rung of the first line, and each Presence rung bought walks
+it one step to the right. How many rungs a row has is read off where its automation already
+sits, never written twice:
+
+```txt
+auto_start_round     500 Fear   7 rungs    940 Presence for all of them
+auto_wash_away       400 Fear   6 rungs    440
+auto_flash_floods    300 Fear   5 rungs    190
+auto_bounty          200 Fear   4 rungs     90
+auto_buy_abilities   200 Fear   4 rungs     90
+auto_innate          100 Fear   3 rungs     40
+auto_boon             25 Fear   1 rung       5
+                                          ----
+                                          1,795 Presence for the whole set
+```
+
+It bottoms out at 10 rather than 0 so the automations stay purchases a cycle makes rather than
+switches a save carries — see [05-progression.md](./05-progression.md#the-discount-ladders).
+
+**The value per Presence spent falls off a cliff, and that is the design.** Take the 500 Fear
+row rung by rung:
+
+| rung | Presence | Fear saved a cycle | Fear per Presence |
+| --- | --- | --- | --- |
+| 1 | 5 | 100 | 20 |
+| 2 | 10 | 100 | 10 |
+| 3 | 25 | 100 | 4 |
+| 4 | 50 | 100 | 2 |
+| 5 | 100 | 50 | 0.5 |
+| 6 | 250 | 25 | 0.1 |
+| 7 | 500 | 15 | 0.03 |
+
+The cost climbs 100× while what a rung saves falls from 100 Fear to 15, so the last rung is
+some 700× worse than the first. **The early rungs are the investment and the late ones are a
+sink**, and they are meant to be read that way rather than as a ladder a player climbs evenly.
+
+### These rows do not out-earn holding Presence, and are not meant to
+
+The comparison that matters is not rung against rung, it is any rung against *not spending*.
+Presence held pays [1% more Fear generated per point](#presence-multiplies-too-and-does-not-cap),
+uncapped, so spending `P` Presence to save `S` Fear a cycle wins only while
+
+```txt
+cycleFearGenerated  <  100 * S / P
+```
+
+which for the seven rungs above is 2,000 / 1,000 / 400 / 200 / 50 / 10 / 3 Fear a cycle. And a
+purse holding 500 Presence implies cycles generating millions (the payout is a root — see [The
+ascension payout](#the-ascension-payout)). So a fixed Fear discount is a losing trade against
+the hold bonus at almost any income, and the deep rungs lose by orders of magnitude.
+
+That is known and accepted rather than an oversight. What these rows are for:
+
+- **Early, they are a genuinely good buy.** A cycle generating a couple of thousand Fear is one
+  where 100 Fear off a 500 Fear row is real money, and 5 Presence is a rung the second or third
+  Reclaim can reach.
+- **Late, they are somewhere to put Presence.** Before them the catalogue held 10 Presence
+  total and every point past that had no in-system use at all. 1,795 is a floor under that
+  problem without capping the hold bonus, which stays uncapped on purpose.
+
+The thing to get right if a *differently shaped* repeatable Presence row is added: **Presence
+income is root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth would
+outrun it inside three tiers and every rung past the third would be dead. The ladders above
+sidestep that with a hand-written table rather than a growth rate, and a new row wants either
+the same treatment or something nearer 1.3–1.5. A row meant to actually beat holding Presence
+has to pay in something that *scales* — a multiplier, or a permanence — because a fixed Fear
+amount provably cannot.
 
 ## Offline Handling
 

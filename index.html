@@ -178,14 +178,11 @@
         </div>
       </div>
       <div id="landDetail" class="land-detail"></div>
-    </section>
 
-    <!-- The rail sits beside the board rather than under it, so the shop can appear the
-         instant a round ends without pushing the frozen board off screen. -->
-    <div class="rail">
-      <!-- What the next wave brings, and who is bringing it. Beside the board rather than
-           above it: with the vitals now on the map, nothing needs the full-width row that
-           used to push the island below the fold. -->
+      <!-- What the next wave brings, and who is bringing it. Under the map rather than in the
+           rail: that leaves the rail's top slot for Abilities, so on a wide screen the cards a
+           running round is actually spent on sit level with the board they act on, instead of
+           queued behind the track. -->
       <section class="panel track">
         <h2 id="invaderTrackTitle">Invasorenleiste</h2>
         <div class="track-strip">
@@ -206,7 +203,11 @@
 
         <p id="spiritTraits" class="hint"></p>
       </section>
+    </section>
 
+    <!-- The rail sits beside the board rather than under it, so the shop can appear the
+         instant a round ends without pushing the frozen board off screen. -->
+    <div class="rail">
       <!-- Energy lives here rather than in the HUD: it is only ever read next to what it
            buys, and every one of those things is in this panel. -->
       <section class="panel abilities">

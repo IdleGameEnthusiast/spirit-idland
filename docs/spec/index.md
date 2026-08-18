@@ -32,7 +32,8 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 7. [07 Content Registry](./07-content-registry.md)
 8. [08 Acceptance and Tests](./08-acceptance-tests.md)
 9. [09 Island Board](./09-island-board.md)
-10. [Implementation Microtasks](../tasks/implementation-microtasks.md)
+10. [10 Power Cards](./10-power-cards.md) — *designed, not built*
+11. [Implementation Microtasks](../tasks/implementation-microtasks.md)
 
 ## Concept Summary
 
@@ -128,9 +129,12 @@ What is left:
   on the argument that Fear income already grows steeply with depth. If a player with
   `auto_start_round` earns faster farming wave 1–10 loops than by pushing, the fix is a wave
   floor on what banks toward the payout, not a depth term.
-- **The Presence catalogue is two rows.** No Fear multiplier, no automation discount, no cap
-  extension, no power cards — all wanted, none designed. See
-  [05-progression.md](./05-progression.md#the-presence-catalogue).
+- **Power cards are designed and not built.** [10 Power Cards](./10-power-cards.md) specifies the
+  whole feature — a Presence draw, a card handed to the round every 20 waves, and the two
+  mechanics the first seven bring with them (Defense, and Blight that can fall). Nothing of it
+  is implemented, and none of its numbers has been played against. It is also the first Presence
+  row that out-earns *holding* Presence, which is the gap
+  [05-progression.md](./05-progression.md#the-presence-catalogue) has been carrying.
 - **Whether 10000 Fear is the right price for a full Dahan Remember**, and whether 100% haste
   is the right cap now that it is the only cooldown the shop touches. Both are first numbers,
   shipped to be played against — see

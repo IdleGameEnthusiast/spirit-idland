@@ -236,6 +236,17 @@ piling everything into one land beat defending six.
 When the last Dahan in a land falls, that land's casualty bar resets to zero, so
 reinforcements arrive at full strength rather than inheriting a nearly-full bar.
 
+### Defense, when a ward is standing
+
+A land can also carry **Defense**, laid on it by a power card. It is not a unit and not a
+permanent stat: a pool that waits on the land, cancels invader attack when attack arrives, and
+lapses one wave interval after it first does anything. Defense at or above the land's gross
+stops that land's Blight and casualties **entirely**, floor included — which is the one thing no
+number of Dahan can do — and below that it is read as a plain reduction of gross in both
+formulas above. It is designed and not implemented; the full rule, and why it is the one
+exception to `BLIGHT_FLOOR_FRACTION`, is in
+[10-power-cards.md](./10-power-cards.md#defense).
+
 ### Dahan strike back
 
 On `DAHAN_ATTACK_INTERVAL_SECONDS`, every land holding both Dahan and invaders strikes at
@@ -254,7 +265,12 @@ see [04-economy-formulas.md](./04-economy-formulas.md#the-interval-and-the-one-t
 
 ## Blight
 
-Blight is the round's clock. It only goes up; nothing in this slice removes it once gained.
+Blight is the round's clock. Nothing **in the fight** ever takes it back: no rate, no defence
+and no cleared land reduces a Blight already taken. What can is a power card, four of the first
+seven of which remove 1 — designed, not built, and specified in
+[10-power-cards.md](./10-power-cards.md#blight-can-fall). Removal is preventive rather than a
+rescue: the threshold check runs inside the tick that raised the bar, so there is no moment at
+which a card can pull a round back from its end.
 
 - `round.blight` is the round total; `round.blightByLand` is where it came from.
 - `round.blightProgress[land]` is the fraction of the next Blight that land has accrued.
@@ -357,11 +373,13 @@ Neither stops the round; both buy time. How long you bought is the score.
 
 ## Acceptance
 
-- A round's Blight only increases; nothing in this slice reduces it.
+- Nothing in the fight reduces Blight. The only thing that ever takes one back is a power card,
+  and a round still ends in the tick its threshold is reached.
 - A round ends exactly when Blight reaches its threshold, never earlier or later.
 - Blight accrues from every land holding invaders, with no terrain selected and no phase.
 - A land whose Dahan defence meets or exceeds its invader damage is held, and still seeps
-  `BLIGHT_FLOOR_FRACTION` of its gross: no land is ever permanently safe.
+  `BLIGHT_FLOOR_FRACTION` of its gross: no land is ever permanently safe. A ward buys a land one
+  wave of true immunity and is spent doing it, which is the same rule read at a shorter scale.
 - Dahan take gross invader damage, concentrated on the survivors, so casualties accelerate —
   but the concentration stops at `DAHAN_CONCENTRATION_CAP`, so stacking cannot outrun it.
 - The Dahan strike runs on its own timer, independent of the wave timer.

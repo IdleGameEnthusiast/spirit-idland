@@ -206,6 +206,11 @@ table and cost-curve note.
 predicate are gone: ten tiers each now, and a predicate with no `false` case left to report.
 So every row can sink into the shop's sold-out half, and none shows a bare price forever. See
 [04-economy-formulas.md](./04-economy-formulas.md#the-ladders-are-capped-at-ten).
+- `power_card_interval` — *The Island Remembers Sooner*, repeatable, max tier 10, `baseCost` 30.
+  Each tier shortens the gap between power-card draws by one wave, 20 at tier 0 down to 10 at
+  tier 10; the first draw stays at wave 25. **Designed, not built** — see
+  [10-power-cards.md](./10-power-cards.md#the-fear-row) for the cost table and the honest note
+  that its rungs are lumpy against a 70-wave round.
 - `unlock_<ability_id>` — one-time, adds an ability the active spirit's kit does not contain.
   **The machinery is implemented and no catalogue row uses it.** Unlocking a *kit* ability is
   now Energy's job and does not go through the shop at all; this key remains the path for a
@@ -323,32 +328,87 @@ of that round's own Energy.
 The ascension layer's shop, in `PRESENCE_UPGRADES`, keyed into `presenceUpgrades.purchased`.
 Bought with `meta.presence`, which only `ascend()` pays out, and never lost to an ascension.
 
-**Every row here unlocks a Fear row and does nothing else.** Presence never touches the board:
-it buys no Dahan, shortens no clock, adds no damage. That is the rule the whole two-currency
-design rests on, and it is what makes the two impossible to price against each other — see
-[05-progression.md](./05-progression.md#the-two-layers).
+**Presence never touches the board.** It buys no Dahan, shortens no clock, adds no damage. That
+is the rule the whole two-currency design rests on, and it is what makes the two impossible to
+price against each other — see [05-progression.md](./05-progression.md#the-two-layers). What a
+row buys instead is one of three things: permission for a Fear row to exist, a capability
+directly, or a lower price on a Fear row.
 
-| id | unlocks | cost |
+### The rows that open something
+
+| id | opens | cost |
 | --- | --- | --- |
-| `presence_tide_returns` — *Die Flut kehrt wieder* / The Tide Returns | `auto_start_round` | 2 |
-| `presence_river_knows` — *Der Fluss weiß, was er braucht* / The River Knows Its Own Need | `auto_buy_abilities` | 3 |
+| `presence_tide_returns` — *Die Flut kehrt wieder* / The Tide Returns | `auto_start_round` in the Fear shop | 2 |
+| `presence_river_knows` — *Der Fluss weiß, was er braucht* / The River Knows Its Own Need | `auto_buy_abilities` in the Fear shop | 3 |
+| `presence_current_quickens` — *Die Strömung eilt* / The Current Quickens | Focus, directly — no Fear row, `abilityFocusUnlocked` reads it | 5 |
 
-Both names are the ones the Fear rows already carried in the I18N table, kept rather than
-invented: the Presence row and the Fear row it opens are the same idea at two prices, and
-giving them separate names would make a player learn the pairing.
+The first two names are the ones the Fear rows already carried in the I18N table, kept rather
+than invented: the Presence row and the Fear row it opens are the same idea at two prices, and
+giving them separate names would make a player learn the pairing. `presence_current_quickens`
+has no Fear row to name itself after, carries no `unlocks`, and is the first row in the
+catalogue to touch the board through what it opens.
 
-The two together cost exactly what a first Reclaim is shaped to pay (about 5), so the first
-ascension buys both. That is deliberate — the first one should read as an unambiguous win, and
-the dilemmas belong to rows that do not exist yet.
+The first two together cost exactly what a first Reclaim is shaped to pay (about 5), so the
+first ascension buys both. That is deliberate — the first one should read as an unambiguous
+win. Focus is priced past that first payout on purpose, as the catalogue's first real dilemma.
 
-Prices are flat, with no growth curve, because neither row is repeatable. What a repeatable
-Presence row would need is in
-[04-economy-formulas.md](./04-economy-formulas.md#presence-prices-and-why-they-are-not-on-this-curve):
-Presence income is root-shaped, so the Fear catalogue's 1.6 growth would kill a ladder inside
-three tiers.
+### The rows that lower a price
 
-Nothing here is a multiplier, a discount or a cap extension, and all three are wanted. This is
-the first draft of the layer, not its intended shape.
+Seven repeatable ladders, one per automation, each carrying `discounts` instead of `unlocks`.
+A rung walks its automation one step down the shared **500 · 400 · 300 · 200 · 100 · 50 · 25 ·
+10** Fear ladder; rungs cost **5 · 10 · 25 · 50 · 100 · 250 · 500** Presence by how many have
+already been taken.
+
+| id | discounts | Fear price | rungs | Presence for all |
+| --- | --- | --- | --- | --- |
+| `presence_boon_remembered` — *Der Segen bleibt in Erinnerung* / The Boon Remembered | `auto_boon` | 25 | 1 | 5 |
+| `presence_instinct_remembered` — *Der Instinkt bleibt in Erinnerung* / The Instinct Remembered | `auto_innate` | 100 | 3 | 40 |
+| `presence_bounty_remembered` — *Die Gabe bleibt in Erinnerung* / The Bounty Remembered | `auto_bounty` | 200 | 4 | 90 |
+| `presence_flood_remembered` — *Die Sturzflut bleibt in Erinnerung* / The Flood Remembered | `auto_flash_floods` | 300 | 5 | 190 |
+| `presence_current_remembered` — *Die Strömung bleibt in Erinnerung* / The Current Remembered | `auto_wash_away` | 400 | 6 | 440 |
+| `presence_need_remembered` — *Der Bedarf bleibt in Erinnerung* / The Need Remembered | `auto_buy_abilities` | 200 | 4 | 90 |
+| `presence_tide_remembered` — *Die Flut bleibt in Erinnerung* / The Tide Remembered | `auto_start_round` | 500 | 7 | 940 |
+
+One naming family, because it is one mechanism: the island remembers what was already paid for
+and asks less the next time. Each names the Fear row it walks down, so the pairing is readable
+off the two shops without a mapping to learn.
+
+**A rung count is never written here or in the catalogue** — `presenceUpgradeMaxTier` reads it
+off where the automation's own `baseCost` sits on `AUTOMATION_PRICE_LADDER`, so repricing an
+automation resizes its ladder. An automation priced off the ladder entirely gets no rungs and
+keeps its full price, which a structural test in `tests/ascension.test.js` catches.
+
+Two further properties worth keeping straight:
+
+- **A discount is not permission.** `auto_start_round` at 10 Fear is still refused until
+  `presence_tide_returns` is bought. Two Presence rows now point at the same Fear row — one for
+  the lock, one for the price — and neither knows about the other.
+- **The floor is 10 Fear, not 0**, so an automation is still re-bought every cycle and the Fear
+  catalogue keeps its shape. See
+  [05-progression.md](./05-progression.md#the-discount-ladders).
+
+### The row that is designed and not built
+
+**The power card draw.** A repeatable Presence row that is not an upgrade at all: it offers three
+cards and the player keeps one, at `10 * 1.6^owned` Presence with a re-roll at a quarter of that.
+Cards are cast like abilities, reach a round only through a wave-25 drip, and survive ascension
+like every Presence purchase. The whole feature — records, Defense, Blight removal, the Fear row
+that shortens the drip — is in [10-power-cards.md](./10-power-cards.md). None of it is
+implemented.
+
+It is also the catalogue's first row that out-earns *holding* Presence, which is the gap the
+ladders above deliberately do not close.
+
+### What the catalogue still has no row for
+
+No cap extension, and nothing that pays in a *scaling* quantity. Unspent Presence multiplies Fear
+generation 1% a point, uncapped, so a fixed Fear discount cannot beat holding at any serious
+income. The ladders above are a sink and an early investment, not an answer to that — see
+[04-economy-formulas.md](./04-economy-formulas.md#these-rows-do-not-out-earn-holding-presence-and-are-not-meant-to).
+The card draw beats holding, but it terminates: seven draws and the row is finished. Its
+designed successor, a repeat draw that upgrades a card already owned, would be the first row
+that neither terminates nor loses to holding — see
+[10-power-cards.md](./10-power-cards.md#what-is-deliberately-not-designed).
 
 ## Terrain Registry
 

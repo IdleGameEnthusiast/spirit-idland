@@ -837,6 +837,56 @@ const UPGRADES = {
  * shortens no clock" above is no longer true of the whole catalogue, only of the two older rows.
  * ------------------------------------------------------------------ */
 
+/* ---------- The discount ladder the seven automations come down ----------
+ *
+ * Every automation's Fear price is one rung of this one shared ladder, and a `discounts` row
+ * below moves its automation down a rung. Prices are a shared ladder rather than seven private
+ * curves so that the shop has one descent to learn instead of seven, and so a row's remaining
+ * rungs are readable off where its price already sits.
+ *
+ * It bottoms out at 10 rather than at 0. A row still owed something is still re-bought every
+ * cycle, which keeps the shape of the Fear catalogue intact - the automations stay purchases a
+ * cycle makes rather than switches a save carries. 10 is small enough not to be a decision and
+ * large enough not to be free.
+ */
+const AUTOMATION_PRICE_LADDER = [500, 400, 300, 200, 100, 50, 25, 10];
+
+/* What each rung of that descent costs in Presence, by how many rungs have already been taken.
+ *
+ * It climbs 100x across seven steps while what a step saves falls from 100 Fear to 15, so the
+ * value per Presence spent drops by something like 700x from the first rung to the last. That is
+ * deliberate and it is the whole shape of these rows: **the early rungs are the investment and
+ * the late ones are an endgame sink.** 5 Presence for 100 Fear a cycle is a good buy the first
+ * Reclaim after Focus can nearly make; 500 Presence for the last 15 Fear is something a run
+ * arrives at long after the Fear it saves has stopped mattering.
+ *
+ * They are also priced against the thing Presence does when it is *not* spent - 1% more Fear
+ * generated per point held, uncapped (PRESENCE_FEAR_BONUS_PER_POINT). Against that, a fixed Fear
+ * discount is a losing trade at any income above a few thousand a cycle, and the deep rungs lose
+ * by orders of magnitude. That is known and intended: these rows are not meant to out-earn
+ * holding. They are meant to be worth taking early, when a cycle's income is small enough that
+ * 100 Fear off a 500 Fear row is real money, and to still have somewhere to put Presence much
+ * later when nothing else does.
+ */
+const PRESENCE_DISCOUNT_COSTS = [5, 10, 25, 50, 100, 250, 500];
+
+/* Where an automation's price sits after `tier` rungs of discount, and the one piece of ladder
+ * arithmetic in the file - both the live price and the "next rung" the shop row advertises come
+ * through here, so they cannot drift apart.
+ *
+ * An automation whose `baseCost` is not on the ladder keeps its price untouched rather than being
+ * snapped to a nearby rung. That is the safe direction: a mispriced row costs full price instead
+ * of silently becoming cheap.
+ */
+function automationPriceAtTier(upgradeId, tier) {
+  const record = UPGRADES[upgradeId];
+  if (!record) return Infinity;
+  const rung = AUTOMATION_PRICE_LADDER.indexOf(record.baseCost);
+  if (rung < 0) return record.baseCost;
+  const steps = Math.max(0, Math.floor(Number(tier) || 0));
+  return AUTOMATION_PRICE_LADDER[Math.min(rung + steps, AUTOMATION_PRICE_LADDER.length - 1)];
+}
+
 const PRESENCE_UPGRADES = {
   // 2 and 3 against a first payout of about 5, so the first Reclaim buys both. Deliberate: the
   // first ascension should read as an unambiguous win rather than a dilemma. Dilemmas belong
@@ -856,10 +906,62 @@ const PRESENCE_UPGRADES = {
   presence_current_quickens: {
     id: "presence_current_quickens",
     cost: 5
+  },
+
+  /* ---------- The seven discount rows ----------
+   *
+   * A third shape of Presence row, after "opens a Fear row" and "opens a capability": these
+   * change a price in the Fear catalogue without touching what it buys. That keeps them inside
+   * the two-currency rule in the way that matters - Presence still buys no Dahan, shortens no
+   * clock, adds no damage - while making them the first repeatable rows the layer has.
+   *
+   * `discounts` names the automation, and its rung count is read off where that automation's
+   * price already sits on AUTOMATION_PRICE_LADDER rather than written here: a row priced at 300
+   * has five rungs down to 10 whether or not anybody counted. Move an automation's `baseCost`
+   * to another rung and its ladder resizes itself.
+   *
+   * Listed in the same order as the automations in UPGRADES, so the two shops read down in the
+   * same sequence and a player can find a row's discount where they expect it.
+   */
+  presence_boon_remembered: {
+    id: "presence_boon_remembered",
+    discounts: "auto_boon"
+  },
+  presence_instinct_remembered: {
+    id: "presence_instinct_remembered",
+    discounts: "auto_innate"
+  },
+  presence_bounty_remembered: {
+    id: "presence_bounty_remembered",
+    discounts: "auto_bounty"
+  },
+  presence_flood_remembered: {
+    id: "presence_flood_remembered",
+    discounts: "auto_flash_floods"
+  },
+  presence_current_remembered: {
+    id: "presence_current_remembered",
+    discounts: "auto_wash_away"
+  },
+  presence_need_remembered: {
+    id: "presence_need_remembered",
+    discounts: "auto_buy_abilities"
+  },
+  presence_tide_remembered: {
+    id: "presence_tide_remembered",
+    discounts: "auto_start_round"
   }
 };
 
 const PRESENCE_UPGRADE_IDS = Object.keys(PRESENCE_UPGRADES);
+
+// The reverse of every `discounts` key, built once. upgradeBaseCost asks this on every price
+// lookup in the shop, which is every row every frame the catalogue changes.
+const PRESENCE_DISCOUNT_BY_UPGRADE = {};
+for (const id of PRESENCE_UPGRADE_IDS) {
+  const discounts = PRESENCE_UPGRADES[id].discounts;
+  if (discounts) PRESENCE_DISCOUNT_BY_UPGRADE[discounts] = id;
+}
 
 const UPGRADE_IDS = Object.keys(UPGRADES);
 
@@ -1103,19 +1205,46 @@ const I18N = {
     presenceNames: {
       presence_tide_returns: "Die Flut kehrt wieder",
       presence_river_knows: "Der Fluss weiß, was er braucht",
-      presence_current_quickens: "Die Strömung eilt"
+      presence_current_quickens: "Die Strömung eilt",
+      // Eine Familie, weil es ein Mechanismus ist - siehe die englische Fassung. Jede Zeile
+      // nennt die Furchtzeile, die sie günstiger macht.
+      presence_boon_remembered: "Der Segen bleibt in Erinnerung",
+      presence_instinct_remembered: "Der Instinkt bleibt in Erinnerung",
+      presence_bounty_remembered: "Die Gabe bleibt in Erinnerung",
+      presence_flood_remembered: "Die Sturzflut bleibt in Erinnerung",
+      presence_current_remembered: "Die Strömung bleibt in Erinnerung",
+      presence_need_remembered: "Der Bedarf bleibt in Erinnerung",
+      presence_tide_remembered: "Die Flut bleibt in Erinnerung"
     },
     presenceTexts: {
       presence_tide_returns: "Öffnet \"Die Flut kehrt wieder\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu.",
       presence_river_knows: "Öffnet \"Der Fluss weiß, was er braucht\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu.",
-      presence_current_quickens: "Schaltet Fokus frei: Abklingzeiten von Fähigkeiten lassen sich während der Runde mit Energie verkürzen, bis auf 30% ihrer Ausgangszeit."
+      presence_current_quickens: "Schaltet Fokus frei: Abklingzeiten von Fähigkeiten lassen sich während der Runde mit Energie verkürzen, bis auf 30% ihrer Ausgangszeit.",
+      // Nur Rückfallebene - presenceUpgradeText baut diese Zeilen aus dem echten Preis.
+      presence_boon_remembered: "Senkt, was \"Segen von selbst\" im Furchtladen kostet, eine Stufe je Rang.",
+      presence_instinct_remembered: "Senkt, was \"Angeborener Instinkt\" im Furchtladen kostet, eine Stufe je Rang.",
+      presence_bounty_remembered: "Senkt, was \"Gabe des Flusses\" im Furchtladen kostet, eine Stufe je Rang.",
+      presence_flood_remembered: "Senkt, was \"Sturzflut von selbst\" im Furchtladen kostet, eine Stufe je Rang.",
+      presence_current_remembered: "Senkt, was \"Strömung von selbst\" im Furchtladen kostet, eine Stufe je Rang.",
+      presence_need_remembered: "Senkt, was \"Der Fluss weiß, was er braucht\" im Furchtladen kostet, eine Stufe je Rang.",
+      presence_tide_remembered: "Senkt, was \"Die Flut kehrt wieder\" im Furchtladen kostet, eine Stufe je Rang."
+    },
+    // Beide Hälften nennen den Preis, nicht den Rabatt - siehe die englische Fassung.
+    presenceNextTexts: {
+      discount: "{upgrade} kostet jeden Zyklus {current} Furcht. Nächste Stufe: {next}."
+    },
+    presenceMaxedTexts: {
+      discount: "{upgrade} kostet jeden Zyklus {current} Furcht - weniger verlangt die Insel nicht."
     },
     presencePurchased: "{upgrade} für {cost} Präsenz. {unlocks} steht jetzt im Laden.",
     presencePurchasedDirect: "{upgrade} für {cost} Präsenz.",
+    presenceDiscounted: "{upgrade} für {cost} Präsenz. {unlocks} kostet jetzt {price} Furcht.",
     presenceOwned: "{upgrade} gehört dir bereits.",
+    presenceMaxed: "{upgrade} hat nichts mehr zurückzugeben.",
     presenceTooExpensive: "{upgrade} kostet {cost} Präsenz, du hast {presence}.",
     presenceCostLabel: "{cost} Präsenz",
     presenceOwnedBtn: "Freigeschaltet",
+    presenceMaxedBtn: "Vollständig",
     upgradeNames: {
       dahan_reinforcement: "Verstärkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
@@ -1428,19 +1557,51 @@ const I18N = {
     presenceNames: {
       presence_tide_returns: "The Tide Returns",
       presence_river_knows: "The River Knows Its Own Need",
-      presence_current_quickens: "The Current Quickens"
+      presence_current_quickens: "The Current Quickens",
+      // One family, because they are one mechanism: the island remembers what was already paid
+      // for and asks less the next time. Each names the Fear row it walks down, so the pairing
+      // is readable off the two shops without the player learning a mapping.
+      presence_boon_remembered: "The Boon Remembered",
+      presence_instinct_remembered: "The Instinct Remembered",
+      presence_bounty_remembered: "The Bounty Remembered",
+      presence_flood_remembered: "The Flood Remembered",
+      presence_current_remembered: "The Current Remembered",
+      presence_need_remembered: "The Need Remembered",
+      presence_tide_remembered: "The Tide Remembered"
     },
     presenceTexts: {
       presence_tide_returns: "Opens \"The Tide Returns\" in the Fear shop. Its Fear price is still owed - every cycle, again.",
       presence_river_knows: "Opens \"The River Knows Its Own Need\" in the Fear shop. Its Fear price is still owed - every cycle, again.",
-      presence_current_quickens: "Unlocks Focus: ability cooldowns can be shortened mid-round with Energy, down to 30% of where they started."
+      presence_current_quickens: "Unlocks Focus: ability cooldowns can be shortened mid-round with Energy, down to 30% of where they started.",
+      // Fallbacks only - presenceUpgradeText builds these rows from the live price. Kept so the
+      // "every row has a text in both languages" test has something to find and so a row is
+      // never blank if the dynamic tables lose a key.
+      presence_boon_remembered: "Lowers what \"Boon Unbidden\" costs in the Fear shop, one rung a tier.",
+      presence_instinct_remembered: "Lowers what \"Innate Instinct\" costs in the Fear shop, one rung a tier.",
+      presence_bounty_remembered: "Lowers what \"The River Provides\" costs in the Fear shop, one rung a tier.",
+      presence_flood_remembered: "Lowers what \"The Flood Unbidden\" costs in the Fear shop, one rung a tier.",
+      presence_current_remembered: "Lowers what \"The Current Unbidden\" costs in the Fear shop, one rung a tier.",
+      presence_need_remembered: "Lowers what \"The River Knows Its Own Need\" costs in the Fear shop, one rung a tier.",
+      presence_tide_remembered: "Lowers what \"The Tide Returns\" costs in the Fear shop, one rung a tier."
+    },
+    // Both halves name the price rather than the discount. What the player is deciding is what
+    // the row will cost them next cycle, and "300, then 200" answers that where "-100 Fear"
+    // makes them do the arithmetic.
+    presenceNextTexts: {
+      discount: "{upgrade} costs {current} Fear every cycle. Next tier: {next}."
+    },
+    presenceMaxedTexts: {
+      discount: "{upgrade} costs {current} Fear every cycle - the least the island will ask."
     },
     presencePurchased: "{upgrade} for {cost} Presence. {unlocks} is in the shop now.",
     presencePurchasedDirect: "{upgrade} for {cost} Presence.",
+    presenceDiscounted: "{upgrade} for {cost} Presence. {unlocks} costs {price} Fear now.",
     presenceOwned: "{upgrade} is already yours.",
+    presenceMaxed: "{upgrade} has nothing further to give back.",
     presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",
     presenceCostLabel: "{cost} Presence",
     presenceOwnedBtn: "Unlocked",
+    presenceMaxedBtn: "Maxed",
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
@@ -1880,9 +2041,40 @@ function presenceUpgradeName(state, presenceId) {
   return (t.presenceNames && t.presenceNames[presenceId]) || presenceId;
 }
 
+/* A discount row's honest description is a price and the next price, both of which move as it is
+ * bought - so it is built rather than translated, the same way the three ladders on the Fear side
+ * are (see NEXT_TIER_UPGRADE_TEXT). The static `presenceTexts` entry stays in both locale tables
+ * regardless, so a row is never blank because a translation is missing a key.
+ */
 function presenceUpgradeText(state, presenceId) {
   const t = locale(state);
+  const record = PRESENCE_UPGRADES[presenceId];
+  if (record && record.discounts) {
+    const parts = {
+      upgrade: upgradeName(state, record.discounts),
+      current: upgradeBaseCost(state, record.discounts)
+    };
+    if (presenceUpgradeMaxed(state, presenceId)) {
+      return template((t.presenceMaxedTexts || {}).discount, parts);
+    }
+    return template((t.presenceNextTexts || {}).discount, {
+      ...parts,
+      next: automationPriceAtTier(record.discounts, presenceUpgradeTier(state, presenceId) + 1)
+    });
+  }
   return (t.presenceTexts && t.presenceTexts[presenceId]) || "";
+}
+
+// The chip above a Presence row's note, matching upgradeStatusText on the Fear side: the rung a
+// ladder stands on, nothing at all for the three flat rows that were never on one.
+function presenceUpgradeStatusText(state, presenceId) {
+  const record = PRESENCE_UPGRADES[presenceId];
+  if (!record || !record.discounts) return "";
+  const t = locale(state);
+  return template(t.shopTierLabelMax, {
+    tier: presenceUpgradeTier(state, presenceId),
+    max: presenceUpgradeMaxTier(presenceId)
+  });
 }
 
 /* ---------- The rows that describe where they stand ----------
@@ -2219,6 +2411,16 @@ function normalizeFearFx(fearFx) {
   return { wave, amount, at };
 }
 
+// The round-end flash, for the board to mark the instant itself rather than only the frozen
+// state that follows it. Carries no payload - unlike the other three fx, what it announces is
+// not a number or a land, just that the boundary was crossed - so a bare timestamp is enough.
+function normalizeRoundEndFx(roundEndFx) {
+  if (!roundEndFx || typeof roundEndFx !== "object") return null;
+  const at = Number(roundEndFx.at);
+  if (!Number.isFinite(at)) return null;
+  return { at };
+}
+
 function fxIsFresh(fx) {
   return Boolean(fx) && (nowMs() - fx.at) <= DEFEAT_FX_MS;
 }
@@ -2238,10 +2440,16 @@ function activeFearFx(state) {
   return fxIsFresh(fx) ? fx : null;
 }
 
+function activeRoundEndFx(state) {
+  const fx = normalizeRoundEndFx(state.ui && state.ui.roundEndFx);
+  return fxIsFresh(fx) ? fx : null;
+}
+
 function pruneFx(state) {
   if (!fxIsFresh(normalizeDefeatFx(state.ui.defeatFx))) state.ui.defeatFx = null;
   if (!fxIsFresh(normalizeBlightFx(state.ui.blightFx))) state.ui.blightFx = null;
   if (!fxIsFresh(normalizeFearFx(state.ui.fearFx))) state.ui.fearFx = null;
+  if (!fxIsFresh(normalizeRoundEndFx(state.ui.roundEndFx))) state.ui.roundEndFx = null;
 }
 
 function markDefeatFx(state, land, unitType, count) {
@@ -2263,6 +2471,10 @@ function markFearFx(state, wave, amount) {
   const a = Math.floor(amount || 0);
   if (w <= 0 || a <= 0) return;
   state.ui.fearFx = { wave: w, amount: a, at: nowMs() };
+}
+
+function markRoundEndFx(state) {
+  state.ui.roundEndFx = { at: nowMs() };
 }
 
 /* ------------------------------------------------------------------ *
@@ -2301,9 +2513,36 @@ function presenceUpgradeOwned(state, presenceId) {
   return presenceUpgradeTier(state, presenceId) > 0;
 }
 
-function presenceUpgradeCost(presenceId) {
+/* How many rungs a row has, which for a discount row is a question about the Fear catalogue
+ * rather than about this one: the automation's own price is a rung of AUTOMATION_PRICE_LADDER,
+ * and what is left is everything under it.
+ *
+ * An automation priced off the ladder entirely has no rungs at all rather than a guessed
+ * position - see the structural test in tests/ascension.test.js, which is what actually keeps
+ * the two tables agreeing.
+ */
+function presenceUpgradeMaxTier(presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
-  return record ? record.cost : Infinity;
+  if (!record) return 0;
+  if (!record.discounts) return 1;
+  const target = UPGRADES[record.discounts];
+  const rung = target ? AUTOMATION_PRICE_LADDER.indexOf(target.baseCost) : -1;
+  return rung < 0 ? 0 : AUTOMATION_PRICE_LADDER.length - 1 - rung;
+}
+
+function presenceUpgradeMaxed(state, presenceId) {
+  return presenceUpgradeTier(state, presenceId) >= presenceUpgradeMaxTier(presenceId);
+}
+
+// Cost of the *next* rung, mirroring upgradeCost on the Fear side - which is why this takes a
+// state where it used to take an id alone. A flat row has one rung and answers with its price.
+function presenceUpgradeCost(state, presenceId) {
+  const record = PRESENCE_UPGRADES[presenceId];
+  if (!record) return Infinity;
+  if (!record.discounts) return record.cost;
+  if (presenceUpgradeMaxed(state, presenceId)) return Infinity;
+  const cost = PRESENCE_DISCOUNT_COSTS[presenceUpgradeTier(state, presenceId)];
+  return Number.isFinite(cost) ? cost : Infinity;
 }
 
 function purchasePresenceUpgrade(state, presenceId) {
@@ -2311,12 +2550,16 @@ function purchasePresenceUpgrade(state, presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return false;
 
-  if (presenceUpgradeOwned(state, presenceId)) {
-    addLog(state, template(t.presenceOwned, { upgrade: presenceUpgradeName(state, presenceId) }));
+  // "Owned" and "maxed" are the same sentence for the three flat rows, whose max tier is 1, and
+  // differ only for the ladders - so there is one check here rather than a branch.
+  if (presenceUpgradeMaxed(state, presenceId)) {
+    addLog(state, template(record.discounts ? t.presenceMaxed : t.presenceOwned, {
+      upgrade: presenceUpgradeName(state, presenceId)
+    }));
     return false;
   }
 
-  const cost = record.cost;
+  const cost = presenceUpgradeCost(state, presenceId);
   if (state.meta.presence < cost) {
     addLog(state, template(t.presenceTooExpensive, {
       upgrade: presenceUpgradeName(state, presenceId),
@@ -2327,22 +2570,32 @@ function purchasePresenceUpgrade(state, presenceId) {
   }
 
   state.meta.presence -= cost;
-  state.presenceUpgrades.purchased[presenceId] = 1;
+  state.presenceUpgrades.purchased[presenceId] = presenceUpgradeTier(state, presenceId) + 1;
 
-  // Names the Fear row it opened, not just itself. What a Presence purchase *does* is put a
-  // row in the other shop, and a log line that did not say which one would be reporting a
-  // number going down and nothing going up. A row with no Fear-row counterpart (see
-  // PRESENCE_UPGRADES) has nothing to name, so it gets the plainer line instead.
-  addLog(state, record.unlocks
-    ? template(t.presencePurchased, {
-        upgrade: presenceUpgradeName(state, presenceId),
-        unlocks: upgradeName(state, record.unlocks),
-        cost
-      })
-    : template(t.presencePurchasedDirect, {
-        upgrade: presenceUpgradeName(state, presenceId),
-        cost
-      }));
+  // Names the Fear row it moved, not just itself. What a Presence purchase *does* is happen in
+  // the other shop, and a log line that did not say which row would be reporting a number going
+  // down and nothing going up. A discount row reports the new price, because the price is the
+  // whole of what it did; a row with no Fear-row counterpart (see PRESENCE_UPGRADES) has
+  // nothing to name and gets the plainer line instead.
+  if (record.discounts) {
+    addLog(state, template(t.presenceDiscounted, {
+      upgrade: presenceUpgradeName(state, presenceId),
+      unlocks: upgradeName(state, record.discounts),
+      price: upgradeBaseCost(state, record.discounts),
+      cost
+    }));
+  } else {
+    addLog(state, record.unlocks
+      ? template(t.presencePurchased, {
+          upgrade: presenceUpgradeName(state, presenceId),
+          unlocks: upgradeName(state, record.unlocks),
+          cost
+        })
+      : template(t.presencePurchasedDirect, {
+          upgrade: presenceUpgradeName(state, presenceId),
+          cost
+        }));
+  }
   return true;
 }
 
@@ -2536,12 +2789,27 @@ function upgradeCostGrowth(upgradeId) {
   return Number.isFinite(growth) && growth > 0 ? growth : UPGRADE_COST_GROWTH;
 }
 
+/* What a row's first rung costs *this cycle*, which is its catalogue price unless a Presence
+ * discount row has walked it down AUTOMATION_PRICE_LADDER.
+ *
+ * Every Fear price in the game goes through here rather than reading `baseCost` directly, so
+ * there is one place a discount can apply and no path - shop label, purchase, affordability -
+ * that can disagree with another about what a row costs.
+ */
+function upgradeBaseCost(state, upgradeId) {
+  const record = UPGRADES[upgradeId];
+  if (!record) return Infinity;
+  const presenceId = PRESENCE_DISCOUNT_BY_UPGRADE[upgradeId];
+  if (!presenceId) return record.baseCost;
+  return automationPriceAtTier(upgradeId, presenceUpgradeTier(state, presenceId));
+}
+
 // Cost of the *next* tier. Rounded to whole Fear so the shop never shows 6.4 Fear.
 function upgradeCost(state, upgradeId) {
   const record = UPGRADES[upgradeId];
   if (!record) return Infinity;
   const tier = upgradeTier(state, upgradeId);
-  return Math.round(record.baseCost * Math.pow(upgradeCostGrowth(upgradeId), tier));
+  return Math.round(upgradeBaseCost(state, upgradeId) * Math.pow(upgradeCostGrowth(upgradeId), tier));
 }
 
 /* ---------- Buying more than one rung at once ----------
@@ -2556,7 +2824,7 @@ function upgradeCost(state, upgradeId) {
  * asks about thousands.
  */
 function upgradeCostFor(state, upgradeId, count) {
-  return upgradeCostFromTier(upgradeId, upgradeTier(state, upgradeId), count);
+  return upgradeCostFromTier(upgradeId, upgradeTier(state, upgradeId), count, upgradeBaseCost(state, upgradeId));
 }
 
 /* The same sum without a state to read the starting rung from.
@@ -2566,18 +2834,23 @@ function upgradeCostFor(state, upgradeId, count) {
  * normalizeState, which asks what a save's owned tiers *have already cost* - a question about
  * rungs 0..n-1, with no state to ask because the state is still being built.
  */
-function upgradeCostFromTier(upgradeId, from, count) {
+function upgradeCostFromTier(upgradeId, from, count, baseCost) {
   const record = UPGRADES[upgradeId];
   if (!record) return Infinity;
   const want = Math.max(0, Math.floor(Number(count) || 0));
   if (want === 0) return 0;
 
+  // The discounted price when a caller has a state to read one from, the catalogue price when it
+  // does not. rebuildSpentFear is the second case: it prices a save's owned rows with no state
+  // built yet, and undiscounted is the right answer there anyway - the tiers it is pricing were
+  // bought before whatever discount the same save also carries.
+  const base = Number.isFinite(baseCost) ? baseCost : record.baseCost;
   const tier = Math.max(0, Math.floor(Number(from) || 0));
   const growth = upgradeCostGrowth(upgradeId);
-  if (growth === 1) return Math.round(record.baseCost) * want;
+  if (growth === 1) return Math.round(base) * want;
 
   let total = 0;
-  for (let i = 0; i < want; i += 1) total += Math.round(record.baseCost * Math.pow(growth, tier + i));
+  for (let i = 0; i < want; i += 1) total += Math.round(base * Math.pow(growth, tier + i));
   return total;
 }
 
@@ -2589,9 +2862,10 @@ function upgradeTiersAffordable(state, upgradeId) {
   const room = upgradeMaxTier(upgradeId) - upgradeTier(state, upgradeId);
   if (!(room > 0)) return 0;
   const fear = Math.max(0, Math.floor(Number(state.meta.fear) || 0));
+  const base = upgradeBaseCost(state, upgradeId);
 
   if (upgradeCostGrowth(upgradeId) === 1) {
-    const each = Math.max(1, Math.round(record.baseCost));
+    const each = Math.max(1, Math.round(base));
     return Math.min(room, Math.floor(fear / each));
   }
 
@@ -2604,7 +2878,7 @@ function upgradeTiersAffordable(state, upgradeId) {
   let count = 0;
   let spent = 0;
   while (count < room && count < 1000) {
-    spent += Math.round(record.baseCost * Math.pow(growth, tier + count));
+    spent += Math.round(base * Math.pow(growth, tier + count));
     if (spent > fear) break;
     count += 1;
   }
@@ -4831,6 +5105,7 @@ function endRound(state) {
   state.round.dahanAttackRemaining = 0;
   state.round.awaitingWave = false;
   state.pendingAbilityTarget = null;
+  markRoundEndFx(state);
 
   // Payday. Everything the round earned becomes spendable here and nowhere else, which is
   // what makes surviving the round the thing that pays rather than the kills inside it.
@@ -4950,6 +5225,7 @@ function startRound(state) {
   state.ui.defeatFx = null;
   state.ui.blightFx = null;
   state.ui.fearFx = null;
+  state.ui.roundEndFx = null;
 
   addLog(state, template(locale(state).roundStarted, {
     round: state.round.number,
@@ -5327,6 +5603,7 @@ function createInitialState() {
       defeatFx: null,
       blightFx: null,
       fearFx: null,
+      roundEndFx: null,
       selectedLand: null
     },
     round: {
@@ -5454,6 +5731,7 @@ function normalizeState(raw) {
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
   merged.ui.fearFx = normalizeFearFx(merged.ui.fearFx);
+  merged.ui.roundEndFx = normalizeRoundEndFx(merged.ui.roundEndFx);
 
   // Floored, not just clamped: a save written while Fear was fractional loads as the whole
   // number the shop can actually spend, and never as 6.3.
@@ -5539,11 +5817,14 @@ function normalizeState(raw) {
 
   // Rebuilt from the Presence registry, never merged over it - the same rule upgrades.purchased
   // and ui.autoCast follow, so a save cannot smuggle in a row the catalogue no longer has.
+  // Clamped to the row's own top rather than to 1: the discount rows are ladders, and a save
+  // that names a rung the ladder no longer has is priced as the rung it now is - the same rule
+  // the Fear tiers above follow.
   const presencePurchased = {};
   for (const id of PRESENCE_UPGRADE_IDS) {
     const value = (merged.presenceUpgrades.purchased || {})[id];
     const tier = value === true ? 1 : Math.max(0, Math.floor(Number(value) || 0));
-    if (tier > 0) presencePurchased[id] = 1;
+    if (tier > 0) presencePurchased[id] = Math.min(tier, presenceUpgradeMaxTier(id));
   }
 
   /* Grandfathering, and the only place normalization *writes* a Presence row rather than
@@ -5940,6 +6221,7 @@ const ENGINE_EXPORTS = {
   fearBreakdown,
   upgradeTier,
   upgradeMaxTier,
+  upgradeBaseCost,
   upgradeCost,
   upgradeCostFor,
   upgradeCostFromTier,
@@ -5956,6 +6238,10 @@ const ENGINE_EXPORTS = {
   // The ascension layer.
   PRESENCE_UPGRADES,
   PRESENCE_UPGRADE_IDS,
+  PRESENCE_DISCOUNT_BY_UPGRADE,
+  PRESENCE_DISCOUNT_COSTS,
+  AUTOMATION_PRICE_LADDER,
+  automationPriceAtTier,
   ASCENSION_UNLOCK_PRESENCE,
   PRESENCE_FEAR_DIVISOR,
   PRESENCE_FEAR_BONUS_PER_POINT,
@@ -5963,9 +6249,12 @@ const ENGINE_EXPORTS = {
   FEAR_LADDER_MAX_TIER,
   presenceUpgradeTier,
   presenceUpgradeOwned,
+  presenceUpgradeMaxTier,
+  presenceUpgradeMaxed,
   presenceUpgradeCost,
   presenceUpgradeName,
   presenceUpgradeText,
+  presenceUpgradeStatusText,
   purchasePresenceUpgrade,
   ascensionUnlocked,
   ascensionPayout,
@@ -6112,6 +6401,7 @@ const ENGINE_EXPORTS = {
   activeDefeatFx,
   activeBlightFx,
   activeFearFx,
+  activeRoundEndFx,
   pruneFx
 };
 

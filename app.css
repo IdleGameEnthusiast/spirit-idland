@@ -382,6 +382,21 @@ h3 {
   50% { filter: brightness(1.45); }
 }
 
+/* The instant the round ends, not the state that follows it - round-ended can hold indefinitely
+   and only says "frozen", so the boundary itself gets one loud beat on the tile that caused it.
+   Body-level and time-boxed by activeRoundEndFx, the same fx-expiry pattern the defeat and Blight
+   chips use, rather than a class the tile keeps - a flash that did not end would just be a second
+   is-critical throb. */
+.round-end-flash .hud-blight {
+  animation: roundend-flash 1.1s ease-out;
+}
+
+@keyframes roundend-flash {
+  0% { filter: brightness(1); }
+  15% { filter: brightness(2) saturate(1.4); }
+  100% { filter: brightness(1); }
+}
+
 /* The wave timer resets by jumping back to full; animating that jump reads as the timer
    running backwards, so only its drain is eased. */
 .hud-wave .meter-fill { transition: width 0.12s linear; }
@@ -786,11 +801,16 @@ button.reset {
   padding: 0.5rem 0.6rem;
 }
 
+/* Wraps rather than overflows: at the rail's narrowest a long name, a Focus price and a long
+   state ("Ziel wahlen") together outrun the card, and a second right-aligned line is a far
+   better answer than a clipped name. */
 .ability-head {
+  position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.35rem 0.5rem;
 }
 
 .ability-name {
@@ -798,14 +818,65 @@ button.reset {
   font-size: 0.94rem;
 }
 
+/* A fixed slot, right-aligned, so the Focus pill beside it holds still. Everything the state
+   says while a round runs is either the ready label or a countdown, and those churn every
+   second - without a floor here the pill would step left and right on the tick from 10s to 9s
+   and again on the way to Ready. 2.6rem clears the widest of them ("Bereit", 2.48rem) with
+   tabular digits keeping every countdown narrower still.
+   The armed label is the one thing that outgrows the slot - "Ziel wahlen" is nearly twice as
+   wide - and it pushes the pill left when it appears. That is a shift the player caused with a
+   click and undoes with the next one, not a twitch on a timer, and reserving room for it would
+   leave a 5rem hole on every card that is not armed. */
 .ability-state {
+  min-width: 2.6rem;
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   font-variant-numeric: tabular-nums;
+  text-align: right;
   color: var(--ink-1);
 }
+
+/* The right end of the top line: the Focus price, then the state. The two travel together so
+   the state keeps its place hard against the card's edge whether or not the pill is beside it. */
+.ability-marks {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+  margin-left: auto;
+  gap: 0.4rem;
+}
+
+/* Focus is a pill, not a price bar. It is bought over and over and all it does is shorten the
+   countdown it stands next to, so it is cut to that countdown's size - the same footnote type -
+   and wears Energy's gold on its outline rather than a filled button's weight. The foot below is
+   left to the purchases that change what the card is: the unlock and the next tier. */
+.ability-focus {
+  width: auto;
+  margin: 0;
+  padding: 0.1rem 0.42rem;
+  border: 1px solid rgba(242, 196, 90, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--accent-energy);
+  cursor: pointer;
+}
+
+/* No lift on hover: a button this small sitting inside a card reads as part of the line, and a
+   line that jumps is a line that looks broken. */
+.ability-focus:hover {
+  transform: none;
+  border-color: rgba(242, 196, 90, 0.8);
+}
+
+.ability-focus:disabled { cursor: default; opacity: 0.45; }
 
 .ability-text {
   font-size: 0.74rem;
@@ -889,14 +960,24 @@ button.reset {
 .ability.is-tiered.is-castable,
 .ability.is-automated.is-castable { cursor: pointer; }
 
+/* On a two-part card the head is a row of the card's grid rather than a line inside the body,
+   so it carries the padding the body used to give it. */
+.ability.is-tiered > .ability-head,
+.ability.is-automated > .ability-head {
+  padding: 0.5rem 0.6rem 0.15rem;
+}
+
+/* The cast button is the description line and nothing else: the head left it when Focus moved
+   onto that line - a button cannot hold a button - and the sweep left with it, up to the card,
+   so the cooldown still washes across the whole tile. The button picks up the side and bottom
+   padding the .ability-body used to give it, so head and text still read as one block. */
 .ability-cast {
   position: relative;
   width: 100%;
   margin: 0;
-  padding: 0;
-  overflow: hidden;
+  padding: 0 0.6rem 0.5rem;
   border: 0;
-  border-radius: 10px 10px 0 0;
+  border-radius: 0;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -904,9 +985,16 @@ button.reset {
 
 .ability-cast:disabled { cursor: default; }
 
-.ability-cast:focus-visible { outline: 2px solid #8ed3e6; outline-offset: -2px; }
+/* Keyboard focus lands on the cast button, but what is being cast is the card. Now that the
+   button is only the description line, a ring drawn round it would read as text selected rather
+   than as an ability picked, so the card wears it instead. */
+.ability:has(.ability-cast:focus-visible) {
+  outline: 2px solid #8ed3e6;
+  outline-offset: 2px;
+}
 
 .ability-foot {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1241,6 +1329,13 @@ button.reset {
 
 .round-controls .primary-btn { flex: 1; }
 
+/* Reuses wave-call rather than a keyframe of its own: the wave gate already trained the
+   player that a pulsing button is the one waiting on a click, and Start Next Round is the same
+   kind of wait one level up. */
+.round-ended .round-controls .primary-btn {
+  animation: wave-call 1.5s ease-in-out infinite;
+}
+
 /* Always available, whatever is left in the purse: the shop must never hold a round
    hostage to spending. */
 .primary-btn {
@@ -1375,6 +1470,10 @@ button.reset {
   color: var(--accent-presence);
 }
 
+/* The discount ladders put a tier chip on a Presence row for the first time. It takes the
+   panel's hue rather than the Fear shop's, so the row stays one colour top to bottom. */
+.upgrade.is-presence .upgrade-tier { color: var(--accent-presence); }
+
 .upgrade.is-presence .upgrade-buy:not(:disabled):hover {
   border-color: rgba(166, 143, 216, 0.85);
   background: rgba(166, 143, 216, 0.18);
@@ -1393,6 +1492,28 @@ button.reset {
   border-radius: 12px;
   overflow: hidden;
   background: #07202e;
+}
+
+/* Frozen once a round ends: the island goes dim and grey, standing in for the countdowns that
+   have already gone still, so "nothing here is live" is a read rather than something inferred
+   from a HUD value showing "-".
+
+   Deliberately not set on .board-frame, which would take the HUD strip down with it - a filter
+   on a parent cannot be lifted by a child. The strip holds the round's closing figures and the
+   Blight tile's end-of-round flash, and both have to stay bright over a dead board. So the map
+   layers are dimmed one by one instead, and the strip laid over them is left alone. */
+.board-frame > svg,
+.board-overlay,
+.board .land-detail,
+.board .panel.track {
+  transition: filter 0.5s ease;
+}
+
+.round-ended .board-frame > svg,
+.round-ended .board-overlay,
+.round-ended .board .land-detail,
+.round-ended .board .panel.track {
+  filter: grayscale(0.6) brightness(0.72) saturate(0.75);
 }
 
 /* Direct child only: the token sprites inside the chip overlay are also svg, and a
@@ -1837,6 +1958,13 @@ button.reset {
 
 /* ---------- land detail ---------- */
 
+/* Now the board's third stacked child, under the land detail card, rather than the rail's
+   first: the rail's flex gap doesn't reach here, so the spacing above it is set by hand to
+   match. */
+.board .panel.track {
+  margin-top: 0.9rem;
+}
+
 .land-detail {
   margin-top: 0.55rem;
   border: 1px solid rgba(var(--terrain-rgb), 0.45);
@@ -2006,7 +2134,13 @@ button.reset {
   /* The caret still turns to say which way the fold is set - which way it points is the cue,
      and a state is not motion. Only the sweep between the two states goes. */
   .upgrade-fold-caret,
-  .ability-sweep { transition: none; animation: none; }
+  .ability-sweep,
+  /* The board still goes dim and grey when a round ends - that is a state, not motion - it
+     just gets there in a jump instead of a half-second fade. */
+  .board-frame > svg,
+  .board-overlay,
+  .board .land-detail,
+  .board .panel.track { transition: none; animation: none; }
 
   /* The payout still has to be readable without the pop, so it holds at full opacity for as
      long as the fx is fresh instead of animating to it. */
@@ -2016,6 +2150,11 @@ button.reset {
   .land-ring.is-wave-target,
   .land-ring.is-explore-target { animation: none; }
   .hud-blight .meter-fill.is-critical { animation: none; }
+  /* The one-shot round-end flash and the Start Next Round pulse are both pure motion with no
+     state of their own to fall back to, so reduced motion drops them outright rather than
+     freezing them mid-brightness. */
+  .round-end-flash .hud-blight,
+  .round-ended .round-controls .primary-btn { animation: none; }
 }
 
 #eventLog {

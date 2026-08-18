@@ -390,6 +390,20 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    carries no `unlocks` field; buying it flips `abilityFocusUnlocked` straight on rather than
    opening a row in the Fear catalogue. The first Reclaim (which pays exactly the first two
    rows' combined cost) does not also cover this one — see [Focus Checks](#focus-checks).
+10. **The discount ladders walk an automation down the shared price ladder.**
+    `presence_flood_remembered` takes `auto_flash_floods` from 300 Fear to 200 / 100 / 50 / 25 /
+    10 for 5 / 10 / 25 / 50 / 100 Presence, each rung deducting exactly its price; an eighth rung
+    is refused and the price floors at 10 rather than 0.
+11. **A ladder's length is read off the Fear catalogue, never written twice.** The seven rows
+    have 1 / 3 / 4 / 5 / 6 / 4 / 7 rungs, matching what each automation's `baseCost` leaves under
+    it on `AUTOMATION_PRICE_LADDER`, and every discounted automation is priced on a rung of that
+    ladder and maps back to the row that discounts it.
+12. **A discount is a meta purchase and not permission.** It survives the Reclaim that wipes the
+    automation it discounts, so the next cycle re-buys the automation at the lowered price; and a
+    Presence-locked row at 10 Fear is still refused with a million Fear banked until its
+    `presenceUnlock` is owned.
+13. **A save carrying a rung the ladder no longer has clamps to the row's top** and is priced as
+    the rung it now is, the same rule the Fear tiers follow.
 
 ## Focus Checks
 
@@ -429,6 +443,23 @@ for the formulas these checks hold.
    non-positive count, is dropped on load rather than carried or clamped negative.
 8. Both locales name `presence_current_quickens` and carry the Focus button label and its two
    log lines.
+
+## Power Card Checks — *not written, feature not built*
+
+Planned suites `tests/cards.test.js` and `tests/defense.test.js`. The checks are the acceptance
+list in [10-power-cards.md](./10-power-cards.md#acceptance); the ones worth naming here are the
+three a careless implementation passes by accident:
+
+1. **The offer is state.** Roll an offer, save, load, re-render — the same three ids. Only a paid
+   re-roll changes them. A test that only reads the offer once cannot catch a render-time roll.
+2. **A ward's clock starts on use, not on cast.** Lay Defend 6 on an empty land, run several wave
+   intervals, then bring invaders in: the ward must still be there and must lapse one interval
+   after *that* moment. Assert both halves — a ward that never expires passes the first half.
+3. **Removal cannot rescue.** Bring `round.blight` to `threshold - 1`, let a tick take it to the
+   threshold, and confirm the round has ended even though a removal was available in the same
+   tick.
+
+Use `setRng` for every draw assertion; nothing here should be tested against a distribution.
 
 ## Save and Migration Checks
 

@@ -338,9 +338,16 @@ Permanent unlocks are the smaller lift — they reuse the shop and ability-bar p
 already exists. The round-scoped card hand is the bigger, riskier piece: it needs its own
 design pass (when does a draw happen, does it sit in the ability bar or somewhere new, what
 happens to an undrawn/unplayed card at round end) before it's an implementation task rather
-than an idea. Recommendation: build the permanent-unlock purchase first — it validates the
-Presence shop taking a second purchase category at all — then design the card-hand subsystem
-once that's landed, rather than starting both at once.
+than an idea.
+
+**The card half of this is answered — see item 14 and
+[10-power-cards.md](../spec/10-power-cards.md).** All three questions have answers now: a draw
+happens on a wave schedule (first at 25, then every 20), the card sits in the existing ability
+bar rather than anywhere new, and a card in hand simply dies with the round like the Energy
+that would have bought an unlock. One assumption in the paragraph above did **not** survive the
+design pass — a card is not bought with Presence *and then* re-earned each round, it is bought
+once and kept forever; what a round earns is the right to *hold* it. The permanent-unlock half of
+this item is still unbuilt and still the smaller lift.
 
 ### 6. Invaders that scale with the player — *the next real feature*
 
@@ -398,11 +405,13 @@ to the Presence total, only while it is nonzero.
 
 This is deliberately uncapped, unlike the three Fear ladders it stacks with — the point is to
 make *not* spending Presence a real, growing cost rather than a free stat. That only holds up
-once there is something worth spending Presence on past the first cycle or two: today the
-Presence shop is still just the two flat one-off unlocks (2 + 3 Presence, ever), so past that
-every point of Presence a player earns has no in-system reason to be spent and the bonus only
-grows. **Item 5's permanent-unlock Presence rows are now the balance fix, not just a feature
-request** — build them before this compounds past a cycle or two of real play.
+once there is something worth spending Presence on past the first cycle or two.
+
+Item 13's discount ladders are the sink that was missing — 1,795 Presence of catalogue where
+there used to be 10. What they did **not** do is give spending a way to *beat* holding: a fixed
+Fear discount cannot outrun an uncapped multiplier, and item 13 says so at length. So the
+balance concern here is softened rather than closed. The row that would actually close it pays
+in something scaling, and is still not designed.
 
 ### 12. Focus: spend Energy to shorten ability cooldowns mid-round — *built 2026-08-16*
 
@@ -458,6 +467,156 @@ kills, so the compounding per-purchase cost is already wave-gated in practice �
 afford many Focus purchases before waves have produced the Energy for them, without a second
 wave-indexed formula stacked on top. The hard 30% floor is the actual safety valve against
 idle-game exponential Energy income, not a wave gate.
+
+### 13. Presence discount ladders for the seven automations — *built 2026-08-18*
+
+Seven repeatable Presence rows, one per automation, walking its Fear price down a shared ladder
+**500 · 400 · 300 · 200 · 100 · 50 · 25 · 10**. Rungs cost **5 · 10 · 25 · 50 · 100 · 250 ·
+500** Presence by how many have been taken; a row's rung count is read off where its automation
+already sits, so the whole set is 1,795 Presence. Full design in
+[05-progression.md](../spec/05-progression.md#the-discount-ladders) and
+[04-economy-formulas.md](../spec/04-economy-formulas.md#the-automation-discount-ladders); the
+registry table is in
+[07-content-registry.md](../spec/07-content-registry.md#the-rows-that-lower-a-price). Covered by
+six new checks in `tests/ascension.test.js`.
+
+This is the "automation discount" that item 5 and the *What Is Not Yet Progression* list had
+been asking for, and it is the first repeatable Presence row of any kind. It answers the sink
+problem directly: before it the entire Presence catalogue cost 10 points and everything a
+player earned past that had nowhere to go.
+
+**What it does not answer, and this is on the record deliberately:** it does not give spending
+Presence a way to beat *holding* it. The hold bonus is +1% Fear generated per point, uncapped
+and multiplicative; a discount saves a fixed number of Fear per cycle. Spending `P` to save `S`
+wins only while `cycleFearGenerated < 100 * S / P`, which for the deepest rung is a cycle
+generating under 3 Fear — while affording that rung implies cycles generating millions. So the
+early rungs are a good buy and the late ones are a sink, by construction rather than by
+accident. A row that genuinely competes with holding has to pay in something that *scales* — a
+multiplier, or a permanence that removes the per-cycle Fear price entirely rather than lowering
+it. That row is still not designed, and it is the honest successor to this item.
+
+**Why the floor is 10 Fear and not 0:** a row still owed something is still re-bought every
+cycle, so the automations stay purchases a cycle makes rather than switches a save carries. It
+keeps the "play this cycle actively, or pay to idle it" trade intact at the bottom of every
+ladder — what a fully-discounted run buys is that the toll stops being a *decision*, not that it
+disappears.
+
+### 14. Power cards — *designed 2026-08-18, not built*
+
+**Read [10-power-cards.md](../spec/10-power-cards.md) first.** It is the design and the source of
+every number below; this item is the build order and the notes an implementer needs that a spec
+should not carry. Nothing here is implemented — no state field, no constant, no card.
+
+Three parts in one feature: cards bought with **Presence** (three offered, one kept, on a 1.6
+ladder), handed to a round by **depth** (first at wave 25, then every 20), and cast like
+abilities. They bring two new mechanics with them — **Defense**, and **Blight that can fall** —
+and one new Fear row that shortens the drip.
+
+#### Decisions already made — do not re-open these while building
+
+- **Presence buys the board now.** "Presence never touches the board" is retired and replaced by
+  *Presence buys possibility, the round buys the moment*. The drip is what justifies it. See
+  [05-progression.md](../spec/05-progression.md#the-line-that-replaced-it).
+- **Blight can fall.** The surviving invariant is only that the round ends in the tick the
+  threshold is reached, so removal is preventive and never a rescue.
+- **A card is an ability.** Reuse `state.abilities`, `pendingAbilityTarget`, `tickCooldowns`,
+  `triggerAbility`, `resolveAbilityTarget`, Focus. Do not build a parallel runtime.
+- **Cooldowns are authored in beats**, `beats * TIME_SCALE`, like everything else.
+- **The draw offer is stored state**, not a render-time roll. A reload must not re-roll it.
+- **Nothing waits for input.** The re-draw is a button on an already-castable card, and casting
+  is accepting. No modal, no pause, no timer.
+- **Defense: no cap, expires one wave interval after first use, any use spends the whole pool,
+  total denial is measured against Defense alone and ignores `BLIGHT_FLOOR_FRACTION`.**
+- **No auto-cast for cards, at any price.**
+
+#### Numbers that are guesses, flagged as such
+
+Every figure in the design is a first pass and none has been played. The ones most likely to
+move, in order: the seven cards' Fear values (the four Fear-paying cards roughly quadruple a
+round's income); the Blight-removal cooldowns (the hand cancels something like half the island's
+peak Blight output, so round length may roughly double); `power_card_interval`'s ladder, whose
+rungs are lumpy by construction; and the flat 10/20/30 Energy re-draw fee, which goes stale by
+the round's third draw on purpose. Measure before re-tuning — `docs/spec/index.md` records that
+nothing about round depth or cycle income has been measured yet either.
+
+#### Where it lands
+
+- `engine.js` — a `POWER_CARDS` registry beside `ABILITIES`; an effect-step resolver; Defense in
+  `landPressure` / `resolveLandCombat`; Blight removal; the draw and the drip; one Fear row in
+  `UPGRADES`; one Presence row shape that is a draw rather than an upgrade; normalization.
+- `ui.js` — cards in the ability bar, the re-draw button, Tsunami's switch, the draw shop panel,
+  Defense on the board and in the pressure chip.
+- `tests/` — new `cards.test.js` and `defense.test.js`, registered in `tests.html` and
+  `tests/harness.js` the same way the existing suites are. `setRng` is what makes the draw
+  testable; use it rather than asserting on distributions.
+
+#### Build order
+
+Ten tasks. Each is meant to land and be tested on its own; the order puts the two risky mechanics
+alone in their own step rather than arriving under a pile of cards.
+
+**T1 — The card framework, and one card.**
+`POWER_CARDS` registry with `pull_beneath` only. The effect-step resolver (`fear_flat` and
+`damage` kinds, plus the `terrain:` condition). `round.cards` state, `startRound` clearing it,
+normalization. The drip: `resolveWave` checks `wavesResolved` against `round.cards.nextDrawWave`,
+draws from `powerCards.owned`, adds a `state.abilities` slot at cooldown 0, advances
+`nextDrawWave`. `unlockedAbilityIds` gains `round.cards.handIds`. Cards render in the bar.
+No shop yet — grant a card through a test hook or the playtest bar.
+*Done when:* a granted card arrives at wave 25, casts on a land click, cools down, and dies with
+the round.
+
+**T2 — The Presence draw.**
+The draw row, `powerCardDrawCost` / `powerCardRerollCost`, the stored offer, the choose-one flow,
+and the re-roll with its two-new-cards guarantee and its disabled state at three or fewer
+unowned. `ascend` keeps `powerCards.owned`. This is where a card first becomes ownable in a real
+game.
+*Done when:* an offer survives a save/load round-trip unchanged, a paid re-roll returns at least
+two cards the previous offer did not hold, and a re-roll is refused with three unowned.
+
+**T3 — The re-draw on arrival.**
+The Energy fee, the narrowing pool (neither in hand nor already rejected this draw), the button
+on the card, and the rule that the first cast removes it.
+*Done when:* there is no click order that casts a card and then swaps it.
+
+**T4 — Blight removal, and `accelerated_rot`.**
+The `remove_blight` step, both targeting rules (clicked land if it has Blight; most-blighted land
+for an untargeted card), and the invariant that `blight` and `blightByLand` fall together while
+`blightProgress` does not. Land this **alone** — it is the change most likely to move round
+length, and it wants measuring before three more cards do the same thing.
+*Done when:* a round's Blight can fall, and a removal in the tick the threshold is reached does
+not save the round.
+
+**T5 — `uncanny_melting`.** Adds `fear_per_invader` and the independent-clauses case.
+
+**T6 — `song_of_sanctity`.** Adds `destroy_units` (through `creditDefeat`, so it pays Fear and
+Energy) and `push_all` (the shared push rule with no count cap), plus the `else` condition.
+
+**T7 — Defense, and `natures_resilience`.**
+`round.defense` and `round.defenseExpiry`, the `defend` step, the reduction and the total-denial
+case in `landPressure`, the expiry driven off `round.elapsedSeconds`, the whole-pool spend, and
+the push-destination reranking. The second risky mechanic, alone in its own step for the same
+reason T4 was.
+*Done when:* a ward denies a land completely at or above its gross, reduces it below that, waits
+indefinitely on a quiet land, and lapses exactly one wave interval after the first tick in which
+it did anything.
+
+**T8 — `encompassing_ward`.** Adds `scope: "all"`. Needs T7 settled first.
+
+**T9 — `tsunami`.** Adds `destroy_dahan` (pays nothing; must reset `dahanProgress` when it
+empties a land), coastal-only targeting, the secondary-lands pass in ascending land id, and
+`ui.cardOptions.tsunami` as a sliding switch on the card.
+
+**T10 — `power_card_interval`.** The Fear row. Reads through the round's upgrade snapshot like
+every other tier, so buying it mid-round pays off next round.
+
+#### The trap worth naming before it is built
+
+Defense expiring at the **next wave boundary** rather than one interval after first use makes the
+cast time against the visible wave clock decide whether a ward is worth twenty seconds or one.
+That was the first draft and it is rejected: it is a rule a HUD countdown teaches good players to
+exploit and never teaches anyone else at all. Store the deadline in `round.defenseExpiry[land]`
+off `elapsedSeconds` — the speed dial and the wave gate then need no special case, since both
+already move that clock.
 
 ---
 
