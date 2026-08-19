@@ -877,6 +877,13 @@ is not a line down here.
 
 ### Balance questions
 
+- Focus, the two things still on the derived defaults: `innate_power` (one floor per tier, and
+  its flat `focusBaseCost: 25` anchor wants revisiting tier by tier) and every power card bought
+  with Presence. Same beat-by-beat shape the four kit abilities now use - see
+  [04-economy-formulas.md](../spec/04-economy-formulas.md#the-tuned-ladders)
+- once all of them are tuned: reword the Focus button and log line so they say what is by then
+  true of every ladder - one purchase always takes one beat off the timer, 2 seconds at the 1x
+  speed dial. The percentage the log quotes today is a leftover from the multiplicative curve
 - Innate tiers 2 and 3 cut 50/250 -> 40/150; still unmeasured against a played round
 - Wash Away: cooldown cut 35 -> 30 beats; still 20 Energy to unlock, unchanged
 - general balancing pass

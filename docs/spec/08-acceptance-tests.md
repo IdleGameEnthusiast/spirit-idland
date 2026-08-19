@@ -441,32 +441,43 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 [04-economy-formulas.md](../spec/04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown)
 for the formulas these checks hold.
 
-1. **The curve.** `abilityFocusMultiplierForPurchases(0)` is 1. The first purchase is exactly
-   `* 0.95`. The rate re-derived from each step's own previous value never exceeds `0.95` above
-   70% remaining, `0.97` between 50% and 70%, or `0.98` below 50%, and the multiplier never
-   drops under `FOCUS_FLOOR_MULT` (0.3) however many purchases are asked for — 400 in a row
-   both cross both thresholds and still land pinned at the floor.
-2. **Cost anchors to what the ability already costs.** The first Focus purchase on
-   `rivers_bounty`, `flash_floods` or `wash_away` costs exactly that ability's own
-   `abilityUnlockCost`. `boon_of_vigor` (`unlockCost: 0`) falls back to a flat 3. `innate_power`
-   (also `unlockCost: 0`) does not share that fallback — it carries its own `focusBaseCost: 25`,
-   because it is the one ability that keeps growing stronger after it is bought.
+1. **The ladders.** Each tuned ability is walked rung by rung against the table in
+   [04-economy-formulas.md](../spec/04-economy-formulas.md#the-tuned-ladders) — the price quoted
+   before each purchase and the whole number of beats left after it. All four kit ladders are walked:
+   `boon_of_vigor` eight rungs from 12 beats down to 4, `rivers_bounty` ten from 15 to 5,
+   `flash_floods` sixteen from 25 to 9, `wash_away` twenty from 30 to 10. An untouched ability
+   sits at its catalogue cooldown.
+   **The derived defaults.** An ability naming no floor takes one third of its own cooldown,
+   rounded up, one beat a rung — `innate_power` 3 over 5 rungs at tier 1, and every power card
+   from its own cooldown. A named floor wins over the derived one. The figures are
+   read off the tier standing in the slot, so buying Innate tier 2 moves its floor from 3 to 5,
+   and purchases past a shortened ladder's end rest on the floor rather than driving the
+   cooldown below it.
+2. **Cost anchors to what the ability already costs, unless it names its own anchor.** The
+   first Focus purchase on `rivers_bounty` — which names none — costs exactly its own
+   `abilityUnlockCost`. `boon_of_vigor` (`unlockCost: 0`) falls back to a flat 3. A named
+   `focusBaseCost` wins over the unlock price: `innate_power` 25 (it is the one ability that
+   keeps growing stronger after it is bought), `flash_floods` 5 and `wash_away` 6 — both
+   **under** their own unlock prices, because a beat off a 25- or 30-beat clock is only a 4%
+   and a 3% gain. Growth is per ability too: 1.5 by default, 1.3 for the Floods, 1.25 for Wash
+   Away, the two ladders long enough that 1.5 would price their tails out of every round.
 3. **Cost grows 1.5x per purchase, compounding, per ability.** Buying Focus for one ability
-   never moves the price on any other. Past the floor, the cost reads `Infinity` — the same
-   refusal shape `abilityUpgradeCost` uses at the top of a tier ladder — and a further purchase
-   spends nothing.
+   never moves the price on any other. At the end of the ladder the cost reads `Infinity` — the
+   same refusal shape `abilityUpgradeCost` uses at the top of a tier ladder — and a further
+   purchase spends nothing. Spending 1e18 Energy at `boon_of_vigor` buys exactly its eight rungs
+   and leaves it resting on 4 beats.
 4. **The gate.** A purchase is refused, however much Energy is on hand, until
    `presence_current_quickens` is bought. It is further refused for an ability that is not
    unlocked this round, and between rounds — the same `round.status === "running"` rule every
    other Energy spend follows.
 5. **A successful purchase** spends the quoted Energy, records one more purchase in
    `round.abilityFocus[id]`, and shortens `abilityCooldownSeconds` for that ability by exactly
-   the multiplier the curve says. Made while the ability is mid-cooldown, it clamps
+   one step — `TIME_SCALE` seconds to the beat. Made while the ability is mid-cooldown, it clamps
    `cooldownRemaining` down to the new, shorter maximum rather than leaving it stranded above
    one; made while the ability sits comfortably under the new maximum already, it changes
    nothing. It applies to the tiered Innate exactly as it does to any other ability.
-6. **Reset.** `round.abilityFocus` and its multiplier both return to their untouched state at
-   the next `startRound`, same as the Energy that paid for them. `abilityFocusUnlocked` itself
+6. **Reset.** `round.abilityFocus` and the cooldowns it shortened both return to their
+   untouched state at the next `startRound`, same as the Energy that paid for them. `abilityFocusUnlocked` itself
    is not round-scoped — the Presence purchase survives every round boundary, only the
    purchases made with Energy die with the round.
 7. **Save round-trip.** Purchase counts survive a save. An unknown ability id, or a

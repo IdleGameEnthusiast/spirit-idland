@@ -701,17 +701,17 @@ A failure logs "no valid target" and leaves the cooldown unspent, per
 ### Cooldown scaling
 
 ```txt
-abilityCooldownSeconds(id) = max(1, ABILITIES[id].cooldownSeconds
-                                     * round.abilityCooldownMult
-                                     * abilityFocusMultiplier(id))
+abilityCooldownSeconds(id) = max(1, abilityFocusedCooldownSeconds(id)
+                                     * round.abilityCooldownMult)
 ```
 
 `ABILITIES[id].cooldownSeconds` is already `beats * TIME_SCALE`, so this returns real seconds
-and each multiplier is a pure percentage on top of it. Nothing here scales again.
+and the multiplier is a pure percentage on top of it. Nothing here scales again.
 
-Deliberately not rounded to whole seconds: at a 5% cut, one Boon-of-Vigor purchase is worth a
-bit over half of its 12 beats' first second, and rounding would flatten the diminishing curve
-into equal steps. The ability bar rounds up for display.
+`abilityFocusedCooldownSeconds` is the ability's own clock after the beats Focus has taken off
+it — whole beats, so it needs no rounding of its own. `round.abilityCooldownMult` is left
+unrounded on top of it so a permanent cut composes exactly. The ability bar rounds up for
+display.
 
 `round.abilityCooldownMult` is the permanent, shop-bought half — frozen at round setup, see
 [Round Reset Formula](#round-reset-formula) below. `abilityFocusMultiplier` is the live,
@@ -723,19 +723,23 @@ the first one (`cooldownReductionPct` is a stub read as `0`); the second is full
 
 ```txt
 purchases            = round.abilityFocus[id] or 0
-rate(mult)            = 0.95 if mult > 0.70
-                       = 0.97 if 0.50 < mult <= 0.70
-                       = 0.98 if FOCUS_FLOOR_MULT < mult <= 0.50
-abilityFocusMultiplier(id) =
-    fold `purchases` applications of `mult *= rate(mult)` over an initial mult of 1,
-    each result clamped to at least FOCUS_FLOOR_MULT (0.3)
+stepBeats(id)         = ABILITIES[id].focusStepBeats, if the record carries one
+                       = FOCUS_STEP_BEATS_DEFAULT (1), otherwise
+floorBeats(id)        = ABILITIES[id].focusFloorBeats, if the record carries one
+                       = ceil(cooldownBeats(id) / 3), otherwise
+maxPurchases(id)      = floor((cooldownBeats(id) - floorBeats(id)) / stepBeats(id))
 
-focusBaseCost(id)     = ABILITIES[id].unlockCost, if nonzero
-                       = ABILITIES[id].focusBaseCost, if the record carries one (only
-                         innate_power: 25 — see below)
+abilityFocusedCooldownSeconds(id) =
+    max(floorBeats(id),
+        cooldownBeats(id) - min(purchases, maxPurchases(id)) * stepBeats(id)) * TIME_SCALE
+
+focusBaseCost(id)     = ABILITIES[id].focusBaseCost, if the record carries one
+                       = ABILITIES[id].unlockCost, if nonzero
                        = FOCUS_BASE_COST_FALLBACK (3), otherwise (only boon_of_vigor)
-abilityFocusCost(id)  = round(focusBaseCost(id) * FOCUS_COST_GROWTH^purchases)
-                       = Infinity once abilityFocusMultiplier(id) has reached the floor
+costGrowth(id)        = ABILITIES[id].focusCostGrowth, if the record carries one
+                       = FOCUS_COST_GROWTH_DEFAULT (1.5), otherwise
+abilityFocusCost(id)  = round(focusBaseCost(id) * costGrowth(id)^purchases)
+                       = Infinity once purchases has reached maxPurchases(id)
 ```
 
 A purchase is a live, mid-round spend against the ability's own cooldown — not the same
@@ -743,34 +747,108 @@ mechanism as `round.abilityCooldownMult` above, which is a shop purchase frozen 
 Focus is closer in shape to buying an Innate tier: it spends the round's own Energy, while the
 round is running, and the result is visible immediately.
 
-The rate a purchase buys depends on where the multiplier **already stands**, not on how many
-purchases came before it — read live off the current value each time, the same "read live"
-idiom `DIFFICULTY_RUNGS` uses for the wave ladder, rather than a fixed table indexed by count. A
-purchase made exactly at a threshold (say, at 0.70 precisely) uses the cheaper zone's rate for
-that one purchase and can land past the next threshold — the zone is decided once, on entry,
-never split into a partial step.
+**A purchase buys whole beats, not a percentage.** Every rung takes `stepBeats` beats off the
+clock, and the ladder ends at `floorBeats`. That is a deliberate reversal: Focus used to cut a
+flat 5% (softening to 3% and 2%) against a price growing 1.5× a rung, which made value per
+Energy fall roughly fortyfold from the first rung to the last, so the ladder died of its price
+tag long before it reached its floor — on `boon_of_vigor` the first rung took 396 beats to pay
+for itself and the eighth took 13 819. Subtracting a beat inverts that: each rung buys **more**
+throughput than the one before it, because a beat off 5 is worth far more than a beat off 12,
+and the price is left free to grow without leaving dead rungs behind it. What ends the ladder
+is the floor.
 
-The three rates soften as the multiplier falls, so the cut is felt hardest at the very first
-purchases and tapers on its own approaching `FOCUS_FLOOR_MULT` — no cooldown Focus buys can ever
-fall under 30% of what the round froze it at, however much Energy a deep, idle-scaled round
-produces. That cap is deliberately **tighter** than `dahan_remember`'s own 50% haste ceiling
-(the only other cooldown-shortening mechanic in the game, [above](#the-interval-and-the-one-thing-that-shortens-it)):
-Focus is a per-ability, per-round toy the player can lean on hard early, not a second permanent
-haste source, and the floor is what keeps it from becoming one.
+The unlock price is only the **default** anchor — what an ability costs to have is a fair
+reading of what it is worth hastening — and the growth is only the default rate. Both are
+overridable per ability, because ladder length varies fourfold across the kit: 1.5 a rung is
+right for the Boon's eight rungs and would put Flash Floods' sixteenth rung at 2 189 Energy and
+Wash Away's twentieth past 9 000, a tail no round reaches, which is the exact failure the
+subtractive rework exists to end. `innate_power` and every power card already anchored
+themselves this way (`focusBaseCost: 25`, and each card's own cooldown in beats).
 
-Cost anchors to what the ability already costs to reach: `abilityUnlockCost`, when the ability
-has one, so a dearer ability's Focus costs more from the first purchase. Two abilities carry no
-unlock price at all (`unlockCost: 0`, both in the opening hand) and need a base of their own.
-`boon_of_vigor` falls through to the flat `FOCUS_BASE_COST_FALLBACK`. `innate_power` does not:
-it is the one ability that keeps growing stronger *after* it is bought — three tiers, each a
-bigger swing than the last — so a flat floor would make it the cheapest ability in the kit to
-Focus despite being the strongest, and its catalogue record carries its own `focusBaseCost: 25`
-instead. Growth per purchase (`FOCUS_COST_GROWTH`, 1.5x) is deliberately gentler than the Fear
-shop's `UPGRADE_COST_GROWTH` (1.6x): this is a same-round repeatable spend, not a permanent
-tier, and it resets to nothing every round along with the Energy that bought it.
+The floor defaults to a third of the ability's own cooldown, so any ability tops out at three
+times the cast rate the round started it at, however long its ladder is. It is read off the
+ability's *current* record, so a tiered ability answers for the tier standing in the slot —
+`innate_power` floors at 3 beats at tier 1 and at 5 beats once tier 2 is bought. Purchases are
+never spent back by a tier change: a count above the new ladder's length simply rests on the
+floor.
 
-`presence_current_quickens` (5 Presence) is what makes any of this purchasable at all — see
-[Presence prices, and why they are not on this curve](#presence-prices-and-why-they-are-not-on-this-curve).
+That cap is deliberately **tighter** than `dahan_remember`'s own 50% haste ceiling (the only
+other cooldown-shortening mechanic in the game,
+[above](#the-interval-and-the-one-thing-that-shortens-it)): Focus is a per-ability, per-round
+toy the player can lean on hard, not a second permanent haste source, and the floor is what
+keeps it from becoming one.
+
+#### The tuned ladders
+
+All four kit abilities are tuned. Every rung is one beat; what differs is where the ladder
+starts, how fast the price climbs, and how many rungs there are.
+
+`boon_of_vigor` — anchored on `FOCUS_BASE_COST_FALLBACK` (3), growth 1.5, 12 beats down to 4:
+
+```txt
+rung   1    2    3    4    5    6    7    8
+price  3    5    7   10   15   23   34   51     (cumulative 148)
+beats 11   10    9    8    7    6    5    4
+```
+
+`rivers_bounty` — anchored on its own 5 Energy unlock price, growth 1.5, 15 beats down to 5:
+
+```txt
+rung   1    2    3    4    5    6    7    8    9   10
+price  5    8   11   17   25   38   57   85  128  192     (cumulative 566)
+beats 14   13   12   11   10    9    8    7    6    5
+```
+
+The Boon's ladder is the cheaper of the two at every rung because it is the one ability that
+pays Focus back in the currency Focus is bought with; the Bounty pays in Dahan, so each of its
+rungs competes with unlocking Wash Away (20) or an Innate tier (40) rather than funding itself.
+Neither ladder is bought out inside an early round — 20–40 Energy is a round's baseline income —
+which is what keeps the deep rungs a thing round *length* buys, the same way `blight_resilience`
+is.
+
+`flash_floods` — anchored at 5, **under** its own 10 Energy unlock, growth **1.3**, 25 beats
+down to 9:
+
+```txt
+rung   1    2    3    4    5    6    7    8
+price  5    7    8   11   14   19   24   31
+beats 24   23   22   21   20   19   18   17
+
+rung   9   10   11   12   13   14   15   16
+price 41   53   69   90  116  151  197  256     (cumulative 1092)
+beats 16   15   14   13   12   11   10    9
+```
+
+`wash_away` — anchored at 6, growth **1.25**, 30 beats down to 10, twenty rungs:
+
+```txt
+rung   1    2    3    4    5    6    7    8    9   10
+price  6    8    9   12   15   18   23   29   36   45
+beats 29   28   27   26   25   24   23   22   21   20
+
+rung  11   12   13   14   15   16   17   18   19   20
+price 56   70   87  109  136  171  213  266  333  416     (cumulative 2058)
+beats 19   18   17   16   15   14   13   12   11   10
+```
+
+Both long ladders open **below** their own unlock price, which neither short one does. A beat
+off 25 is a 4.2% gain and a beat off 30 is 3.4%, against 8.3% for a beat off the Boon's 12 —
+charging the unlock price for that would make each ability's opening rung the worst purchase in
+the game. 5 and 6 are what parity with the Boon's opening rung costs once a Floods cast is
+counted at more than an Energy and a Wash cast at about twice a Floods cast, which is what their
+unlock prices (10 and 20) already say.
+
+The two ladders are checked against each other cumulatively rather than rung by rung, since
+they are different lengths: the Floods reaches 1.11 casts a wave for 1 092 Energy, Wash Away
+reaches 1.00 for 2 058 — about twice the price for a slightly slower clock, on a cast worth
+about twice as much. Wash Away's last rungs are the strongest purchase in the game and priced
+to say so: a 10-beat Wash removes two units from the island every wave, indefinitely, and
+removal is the one effect that does not decay against the invader health ladder.
+
+What is left on the derived defaults (step 1, floor a third, unlock price as anchor, growth
+1.5), each pending its own pass: `innate_power` 8→3 / 15→5 / 22→8 by tier, and each power card
+from its own cooldown down to a third of it. See
+[implementation-microtasks.md](../tasks/implementation-microtasks.md#idea-inbox).
 
 ## Round Reset Formula
 

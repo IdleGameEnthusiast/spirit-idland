@@ -85,6 +85,12 @@ const ABILITIES = {
     id: "boon_of_vigor",
     unlockCost: 0,
     cooldownSeconds: 12 * TIME_SCALE,
+    // Focus, in full: eight rungs at 3/5/7/10/15/23/34/51 Energy taking it 12 -> 4 beats, one
+    // beat at a time. Both numbers are the derived defaults written out - a third of 12 is
+    // exactly 4 - and they are stated here anyway, because this is the ability the ladder was
+    // tuned on and a later change to its cooldown must not quietly move its floor with it.
+    focusStepBeats: 1,
+    focusFloorBeats: 4,
     needsTarget: false,
     effect: "gain_energy",
     amount: 1
@@ -97,6 +103,12 @@ const ABILITIES = {
     id: "rivers_bounty",
     unlockCost: 5,
     cooldownSeconds: 15 * TIME_SCALE,
+    // Ten rungs at 5/8/11/17/25/38/57/85/128/192 Energy, 15 -> 5 beats. Its own unlock price
+    // anchors the ladder, which is why it costs half again what the Boon's does at every rung:
+    // the Boon pays Focus back in the currency Focus is bought with and this does not, so a
+    // rung here competes with unlocking Wash Away rather than funding itself.
+    focusStepBeats: 1,
+    focusFloorBeats: 5,
     needsTarget: false,
     effect: "add_dahan",
     amount: 1
@@ -105,6 +117,15 @@ const ABILITIES = {
     id: "flash_floods",
     unlockCost: 10,
     cooldownSeconds: 25 * TIME_SCALE,
+    // Sixteen rungs, 25 -> 9 beats. Two departures from the kit's defaults, both forced by the
+    // length of that ladder. It opens at 5 rather than at its own 10 Energy unlock, because one
+    // beat off 25 is a 4% gain and 10 Energy for 4% would be the worst purchase in the game;
+    // and it grows at 1.3 rather than 1.5, which over sixteen rungs is the difference between a
+    // 256 Energy last rung and a 2189 one nobody would ever see.
+    focusStepBeats: 1,
+    focusFloorBeats: 9,
+    focusBaseCost: 5,
+    focusCostGrowth: 1.3,
     needsTarget: true,
     effect: "flood_damage",
     damage: 1,
@@ -120,6 +141,17 @@ const ABILITIES = {
     // as it did on wave 1.
     unlockCost: 20,
     cooldownSeconds: 30 * TIME_SCALE,
+    // The longest ladder in the kit: twenty rungs, 30 -> 10 beats, 2058 Energy end to end. It
+    // opens at 6 for the same reason the Floods opens at 5 - a beat off 30 is only 3.4% - and
+    // 6 is what parity with the Floods' opening rung costs once a Wash cast is counted at
+    // roughly twice a Floods cast, which is what their unlock prices already say. The check on
+    // 1.25 is cumulative-to-equal-rate: the Floods reaches 1.11 casts a wave for 1092, this
+    // reaches 1.00 for 2058 - about twice the price for a slightly slower clock, on a cast
+    // worth about twice as much.
+    focusStepBeats: 1,
+    focusFloorBeats: 10,
+    focusBaseCost: 6,
+    focusCostGrowth: 1.25,
     needsTarget: true,
     effect: "wash_invaders",
     pushCount: 3,

@@ -342,9 +342,11 @@ Fields the first draft of this contract did not have. Each earns its place:
 - **`round.abilityFocus`** — Focus purchase counts, keyed by ability id (`{ [abilityId]:
   purchases }`, absent or 0 dropped). Round-scoped exactly like `round.abilityTiers` and
   `round.purchasedAbilityIds` beside it: it is bought with the round's own Energy, so it is
-  wiped by the same `startRound` that wipes them. Not the multiplier itself — that is
-  `abilityFocusMultiplierForPurchases(purchases)`, a pure function of the count, recomputed
-  live rather than cached, so the two can never disagree. See
+  wiped by the same `startRound` that wipes them. Not the cooldown itself — that is
+  `abilityFocusedCooldownSeconds(id)`, replayed from the count against the ability's current
+  record, so the two can never disagree. A count above the ability's ladder length is kept as
+  bought and simply rests on the floor, which is what lets an Innate tier change shorten the
+  ladder without spending purchases back. See
   [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown).
 
 ## `abilities` Shape

@@ -116,6 +116,8 @@ shared damage rule, and the shared push rule.
 - Cooldown: 12 beats
 - Needs target: no
 - Effect: gain 1 Energy. It never fails — it needs nothing on the board.
+- Focus: `focusStepBeats: 1`, `focusFloorBeats: 4` — eight rungs at 3/5/7/10/15/23/34/51 Energy,
+  taking it 12 → 4 beats. See [04-economy-formulas.md](./04-economy-formulas.md#the-tuned-ladders).
 - It is the round's only income that is not a kill, and at one Energy every 12 beats it is the floor
   under a round that is going badly.
 
@@ -130,6 +132,10 @@ shared damage rule, and the shared push rule.
   land with the fewest Dahan on the board, same tie-break, so it never fails.
 - The Dahan is **created**, not gathered. An earlier draft moved one out of the fullest
   neighbour, which made the ability a redistribution rather than a reinforcement.
+- Focus: `focusStepBeats: 1`, `focusFloorBeats: 5` — ten rungs at 5/8/11/17/25/38/57/85/128/192
+  Energy, taking it 15 → 5 beats. Dearer than the Boon's ladder at every rung because it pays in
+  Dahan rather than in the currency that bought it. See
+  [04-economy-formulas.md](./04-economy-formulas.md#the-tuned-ladders).
 - It picks its own land because "where is this most needed" has exactly one answer at any
   moment, and asking the player for it would be asking them to re-derive it under time pressure.
 
@@ -140,6 +146,10 @@ shared damage rule, and the shared push rule.
 - Needs target: yes, one land holding at least one invader
 - Effect: 1 damage, +1 more if the target land is coastal. Spent by the shared kill-first rule,
   so a point left over after a kill carries to the next target rather than being lost.
+- Focus: `focusStepBeats: 1`, `focusFloorBeats: 9`, `focusBaseCost: 5`, `focusCostGrowth: 1.3` —
+  sixteen rungs from 5 to 256 Energy, taking it 25 → 9 beats. It opens under its own unlock
+  price, and grows more gently than the 1.5 default, because sixteen rungs at 1.5 would end at
+  2 189. See [04-economy-formulas.md](./04-economy-formulas.md#the-tuned-ladders).
 
 #### `wash_away`
 
@@ -156,6 +166,10 @@ shared damage rule, and the shared push rule.
   defeat does. This is the kit's only removal that is not damage, and the reason the ability
   still earns its cooldown once the invader health ladder has outgrown 2 damage.
 - Cities never move and never drown: a City is built into the land.
+- Focus: `focusStepBeats: 1`, `focusFloorBeats: 10`, `focusBaseCost: 6`, `focusCostGrowth: 1.25`
+  — twenty rungs from 6 to 416 Energy, taking it 30 → 10 beats. The longest and dearest ladder
+  in the kit, 2 058 Energy end to end. See
+  [04-economy-formulas.md](./04-economy-formulas.md#the-tuned-ladders).
 
 ## Permanent Upgrades
 

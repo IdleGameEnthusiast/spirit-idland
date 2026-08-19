@@ -436,9 +436,11 @@ function normalizeState(raw) {
   merged.round.abilityTiers = tiers;
 
   // Same rule as abilityTiers just above: an unknown ability id is dropped, and a purchase
-  // count is only ever a non-negative integer. No upper clamp against FOCUS_FLOOR_MULT is
-  // needed - abilityFocusMultiplierForPurchases already stops moving once it reaches the
-  // floor, so a doctored save with an absurd count reads exactly like one that stopped there.
+  // count is only ever a non-negative integer. No upper clamp against the ladder's length is
+  // needed - abilityFocusedCooldownSeconds spends at most abilityFocusMaxPurchases of them, so
+  // a doctored save with an absurd count reads exactly like one that stopped at the floor. It
+  // deliberately is not clamped on load either: a count is kept as bought, and a tier change
+  // that shortens the ladder must not silently spend the purchases back.
   const focus = {};
   for (const [id, value] of Object.entries(merged.round.abilityFocus || {})) {
     // Cards take Focus too, so the test is "is this castable at all" rather than "is this in

@@ -1,11 +1,11 @@
 /* Focus: spending Energy mid-round to shorten one ability's cooldown -
  * docs/tasks/implementation-microtasks.md#12.
  *
- * Two halves, tested separately. `abilityFocusMultiplierForPurchases` is a pure function of a
- * purchase count - three thresholds, each gentler than the last, pinned at a hard floor - and
- * is checked against its own rule directly, the same way haste.test.js checks
- * dahanHasteFraction before it ever touches a purchase. `purchaseAbilityFocus` is the stateful
- * half: the Presence gate, the Energy spend, and the round-state write. */
+ * Two halves, tested separately. The ladder itself is a table - a price and a whole number of
+ * beats per rung, per ability - and the tuned ones are asserted rung by rung against the
+ * figures the balance pass set, rather than against a re-derivation of the formula that
+ * produced them. `purchaseAbilityFocus` is the stateful half: the Presence gate, the Energy
+ * spend, and the round-state write. */
 
 (function () {
   const {
@@ -13,64 +13,153 @@
     newGame, grantPresence, unlockAllAbilities
   } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
-  const FLOOR = engine.FOCUS_FLOOR_MULT;
+  const beats = (state, id) => engine.abilityCooldownSeconds(state, id) / engine.TIME_SCALE;
 
-  /* ---------- The pure curve ---------- */
+  // A round with Focus open, every ability unlocked, and more Energy than any ladder costs.
+  function focusReady(energy) {
+    const { state } = newGame();
+    unlockAllAbilities(state);
+    grantPresence(state, "presence_current_quickens");
+    state.resources.energy = energy === undefined ? 1000 : energy;
+    return state;
+  }
 
-  test("focus: no purchases leaves the multiplier at 1", () => {
-    assertEqual(engine.abilityFocusMultiplierForPurchases(0), 1, "an untouched ability is untouched");
+  // Walks a whole ladder rung by rung: the price quoted before the purchase, the cooldown left
+  // after it, then the refusal at the top. Both tuned abilities are checked this way, so a
+  // change to either table breaks here with the rung it moved rather than with a total.
+  function assertLadder(abilityId, rungs) {
+    const state = focusReady(1e6);
+    const base = engine.ABILITIES[abilityId].cooldownSeconds / engine.TIME_SCALE;
+    assertEqual(beats(state, abilityId), base, `${abilityId} starts at its catalogue cooldown`);
+    assertEqual(engine.abilityFocusMaxPurchases(state, abilityId), rungs.length, `${abilityId} ladder length`);
+
+    rungs.forEach(([price, left], i) => {
+      assertEqual(engine.abilityFocusCost(state, abilityId), price, `${abilityId} rung ${i + 1} price`);
+      assert(engine.purchaseAbilityFocus(state, abilityId), `${abilityId} rung ${i + 1} is affordable`);
+      assertEqual(beats(state, abilityId), left, `${abilityId} rung ${i + 1} cooldown`);
+    });
+
+    assertEqual(engine.abilityFocusCost(state, abilityId), Infinity, `${abilityId} quotes no price past the floor`);
+    assert(!engine.purchaseAbilityFocus(state, abilityId), `${abilityId} refuses a purchase past the floor`);
+    assertEqual(beats(state, abilityId), rungs[rungs.length - 1][1], `${abilityId} rests on its floor`);
+  }
+
+  /* ---------- The ladders ---------- */
+
+  // The tables the balance pass set, exactly as they are written in 04-economy-formulas.md.
+  // Prices are the ability's own anchor times 1.5 per rung already bought, rounded; cooldowns
+  // come off one whole beat at a time.
+  const BOON_LADDER = [[3, 11], [5, 10], [7, 9], [10, 8], [15, 7], [23, 6], [34, 5], [51, 4]];
+  const BOUNTY_LADDER = [
+    [5, 14], [8, 13], [11, 12], [17, 11], [25, 10],
+    [38, 9], [57, 8], [85, 7], [128, 6], [192, 5]
+  ];
+  const FLOODS_LADDER = [
+    [5, 24], [7, 23], [8, 22], [11, 21], [14, 20], [19, 19], [24, 18], [31, 17],
+    [41, 16], [53, 15], [69, 14], [90, 13], [116, 12], [151, 11], [197, 10], [256, 9]
+  ];
+  const WASH_LADDER = [
+    [6, 29], [8, 28], [9, 27], [12, 26], [15, 25], [18, 24], [23, 23], [29, 22], [36, 21], [45, 20],
+    [56, 19], [70, 18], [87, 17], [109, 16], [136, 15], [171, 14], [213, 13], [266, 12], [333, 11], [416, 10]
+  ];
+
+  test("focus: boon_of_vigor runs eight rungs of one beat, 12 down to 4", () => {
+    assertLadder("boon_of_vigor", BOON_LADDER);
   });
 
-  test("focus: the first purchase is a flat 5% cut", () => {
-    assertClose(engine.abilityFocusMultiplierForPurchases(1), 0.95, 1e-9);
+  test("focus: rivers_bounty runs ten rungs of one beat, 15 down to 5", () => {
+    assertLadder("rivers_bounty", BOUNTY_LADDER);
   });
 
-  test("focus: the floor is 30% of the original, not 30% off it", () => {
-    assertEqual(FLOOR, 0.3, "70% max reduction, not 30%");
-    assertClose(engine.abilityFocusMultiplierForPurchases(1000), FLOOR, 1e-9, "a doctored count still stops at the floor");
+  test("focus: flash_floods runs sixteen rungs of one beat, 25 down to 9", () => {
+    assertLadder("flash_floods", FLOODS_LADDER);
   });
 
-  // Re-derives the rule from the multiplier's own previous step rather than restating fixed
-  // purchase counts, so this breaks on a wrong rate or a wrong threshold rather than only on a
-  // wrong step count - and confirms both thresholds and the floor are actually reached within
-  // a realistic number of purchases.
-  test("focus: the rate softens at 70% and again at 50%, and never breaches the floor", () => {
-    let prevMult = 1;
-    let sawZone2 = false;
-    let sawZone3 = false;
-    for (let n = 1; n <= 400; n += 1) {
-      const mult = engine.abilityFocusMultiplierForPurchases(n);
-      assert(mult <= prevMult + 1e-9, `purchase ${n} must not raise the multiplier`);
-      assert(mult >= FLOOR - 1e-9, `purchase ${n} must not breach the floor`);
+  test("focus: wash_away runs twenty rungs of one beat, 30 down to 10", () => {
+    assertLadder("wash_away", WASH_LADDER);
+  });
 
-      if (prevMult > 0.7) {
-        assertClose(mult, prevMult * 0.95, 1e-9, `zone 1 (>70%) step at purchase ${n}`);
-      } else if (prevMult > 0.5) {
-        assertClose(mult, prevMult * 0.97, 1e-9, `zone 2 (50-70%) step at purchase ${n}`);
-        sawZone2 = true;
-      } else if (prevMult > FLOOR) {
-        assertClose(mult, Math.max(FLOOR, prevMult * 0.98), 1e-9, `zone 3 (30-50%) step at purchase ${n}`);
-        sawZone3 = true;
-      } else {
-        assertEqual(mult, FLOOR, `pinned at the floor by purchase ${n}`);
-      }
-      prevMult = mult;
+  // The two long ladders opted out of the 1.5 growth every short one keeps. This is the reason
+  // in one assertion: at 1.5 their last rungs would cost more than any round could ever hold.
+  test("focus: the long ladders grow gently enough to be finishable", () => {
+    const state = focusReady();
+    assertEqual(engine.abilityFocusCostGrowth(state, "boon_of_vigor"), 1.5, "the default");
+    assertEqual(engine.abilityFocusCostGrowth(state, "rivers_bounty"), 1.5, "the default");
+    assertEqual(engine.abilityFocusCostGrowth(state, "flash_floods"), 1.3);
+    assertEqual(engine.abilityFocusCostGrowth(state, "wash_away"), 1.25);
+
+    const floodsTop = FLOODS_LADDER[FLOODS_LADDER.length - 1][0];
+    assert(floodsTop < Math.round(5 * Math.pow(1.5, 15)) / 4, "1.3 keeps the last rung inside a played round");
+  });
+
+  test("focus: no purchases leaves the cooldown at the catalogue figure", () => {
+    const state = focusReady();
+    assertEqual(engine.abilityFocusPurchases(state, "boon_of_vigor"), 0);
+    assertEqual(beats(state, "boon_of_vigor"), 12, "untouched is untouched");
+  });
+
+  // All four kit ladders are tuned now; the Innate and the seven cards are what is left on the
+  // derived rule, and this is where their ladders stop until their own pass moves them.
+  test("focus: an ability that names no floor falls to a third of its cooldown, rounded up", () => {
+    const state = focusReady();
+    assertEqual(engine.abilityFocusFloorBeats(state, "innate_power"), 3, "tier 1 is 8 beats");
+    assertEqual(engine.abilityFocusStepBeats(state, "innate_power"), 1);
+    assertEqual(engine.abilityFocusMaxPurchases(state, "innate_power"), 5);
+
+    // A card is on the same derived rule, off its own cooldown - 10 beats down to 4 here.
+    for (const id of Object.keys(engine.POWER_CARDS)) {
+      const cardBeats = engine.POWER_CARDS[id].cooldownSeconds / engine.TIME_SCALE;
+      assertEqual(engine.abilityFocusFloorBeats(state, id), Math.ceil(cardBeats / 3), `${id} floor`);
     }
-    assert(sawZone2, "400 purchases should cross the 70% threshold");
-    assert(sawZone3, "400 purchases should cross the 50% threshold");
-    assertEqual(prevMult, FLOOR, "400 purchases is enough to bottom out");
+  });
+
+  test("focus: a named floor wins over the derived one", () => {
+    const state = focusReady();
+    assertEqual(engine.ABILITIES.boon_of_vigor.focusFloorBeats, 4, "written in the catalogue");
+    assertEqual(engine.abilityFocusFloorBeats(state, "boon_of_vigor"), 4);
+    assertEqual(engine.abilityFocusFloorBeats(state, "rivers_bounty"), 5);
+    assertEqual(engine.abilityFocusFloorBeats(state, "flash_floods"), 9);
+    assertEqual(engine.abilityFocusFloorBeats(state, "wash_away"), 10);
+  });
+
+  // The Innate is the one ability whose record changes under it mid-round, and the floor is
+  // read off the tier standing in the slot rather than off the one the round opened with.
+  test("focus: a tiered ability's floor moves with the tier it is standing at", () => {
+    const state = focusReady(1000);
+    assertEqual(engine.abilityFocusFloorBeats(state, "innate_power"), 3, "tier 1 is 8 beats");
+    assert(engine.upgradeAbility(state, "innate_power"), "buy tier 2");
+    assertEqual(engine.abilityFocusFloorBeats(state, "innate_power"), 5, "tier 2 is 15 beats");
+  });
+
+  // Purchases outlive a tier change, so a shorter ladder has to hold them rather than let a
+  // stale count push the cooldown under the new tier's floor.
+  test("focus: purchases past a shorter ladder's end are held at its floor, never below it", () => {
+    const state = focusReady(1e6);
+    for (let i = 0; i < 5; i += 1) assert(engine.purchaseAbilityFocus(state, "boon_of_vigor"));
+    state.round.abilityFocus.boon_of_vigor = 500;
+    assertEqual(beats(state, "boon_of_vigor"), 4, "pinned at the floor, not driven negative");
+    assertEqual(engine.abilityFocusCost(state, "boon_of_vigor"), Infinity, "and nothing left to sell");
   });
 
   /* ---------- What it costs ---------- */
 
-  test("focus: the first purchase costs exactly the ability's own unlock price", () => {
-    const { state } = newGame();
-    unlockAllAbilities(state);
-    grantPresence(state, "presence_current_quickens");
+  test("focus: the unlock price anchors the ladder for any ability naming no anchor of its own", () => {
+    const state = focusReady();
 
+    assertEqual(engine.ABILITIES.rivers_bounty.focusBaseCost, undefined, "names none");
     assertEqual(engine.abilityFocusCost(state, "rivers_bounty"), engine.abilityUnlockCost(state, "rivers_bounty"));
-    assertEqual(engine.abilityFocusCost(state, "flash_floods"), engine.abilityUnlockCost(state, "flash_floods"));
-    assertEqual(engine.abilityFocusCost(state, "wash_away"), engine.abilityUnlockCost(state, "wash_away"));
+  });
+
+  // The two long ladders open below their own unlock price, which no short ladder does: a beat
+  // off 25 or 30 is a 4% and a 3% gain, and the unlock price would make the opening rung of
+  // each the worst purchase in the game.
+  test("focus: a named anchor wins over the unlock price", () => {
+    const state = focusReady();
+
+    assertEqual(engine.abilityFocusBaseCost(state, "flash_floods"), 5, "under its own 10 unlock");
+    assertEqual(engine.abilityFocusBaseCost(state, "wash_away"), 6, "well under its own 20");
+    assertEqual(engine.abilityFocusCost(state, "flash_floods"), 5);
+    assertEqual(engine.abilityFocusCost(state, "wash_away"), 6);
   });
 
   test("focus: boon_of_vigor falls back to the flat floor cost, unlockCost 0 and all", () => {
@@ -125,17 +214,18 @@
   });
 
   test("focus: past the floor, the cost is refused as Infinity, the same shape as a maxed tier", () => {
-    const { state } = newGame();
-    unlockAllAbilities(state);
-    grantPresence(state, "presence_current_quickens");
     // Deliberately absurd: the point of the floor is that no amount of Energy buys past it, so
     // the test has to actually try to spend past it rather than stop just short.
-    state.resources.energy = 1e18;
+    const state = focusReady(1e18);
 
+    let bought = 0;
     for (let i = 0; i < 500; i += 1) {
       if (!engine.purchaseAbilityFocus(state, "boon_of_vigor")) break;
+      bought += 1;
     }
-    assertClose(engine.abilityFocusMultiplier(state, "boon_of_vigor"), FLOOR, 1e-9, "bottomed out");
+    assertEqual(bought, BOON_LADDER.length, "the ladder ends where the table says");
+    assertEqual(beats(state, "boon_of_vigor"), 4, "bottomed out on the floor");
+    assertClose(engine.abilityFocusMultiplier(state, "boon_of_vigor"), 4 / 12, 1e-9, "which the log reads as a third");
     assertEqual(engine.abilityFocusCost(state, "boon_of_vigor"), Infinity, "no price left to quote");
     const spentAtFloor = state.resources.energy;
     assert(!engine.purchaseAbilityFocus(state, "boon_of_vigor"), "a further purchase is refused");
@@ -200,7 +290,7 @@
 
     assertEqual(state.resources.energy, 100 - cost, "Energy spent");
     assertEqual(engine.abilityFocusPurchases(state, "wash_away"), 1, "one purchase on record");
-    assertClose(engine.abilityCooldownSeconds(state, "wash_away"), before * 0.95, 1e-9, "5% shorter");
+    assertClose(engine.abilityCooldownSeconds(state, "wash_away"), before - engine.TIME_SCALE, 1e-9, "one beat shorter");
   });
 
   test("focus: a purchase made mid-cooldown clamps the ability's remaining wait down with it", () => {
@@ -257,7 +347,7 @@
 
     const before = engine.abilityCooldownSeconds(state, "innate_power");
     assert(engine.purchaseAbilityFocus(state, "innate_power"));
-    assertClose(engine.abilityCooldownSeconds(state, "innate_power"), before * 0.95, 1e-9);
+    assertClose(engine.abilityCooldownSeconds(state, "innate_power"), before - engine.TIME_SCALE, 1e-9);
   });
 
   test("focus: resets with the round, same as the Energy that bought it", () => {
@@ -271,7 +361,7 @@
 
     engine.startRound(state);
     assertEqual(engine.abilityFocusPurchases(state, "rivers_bounty"), 0, "cleared");
-    assertClose(engine.abilityFocusMultiplier(state, "rivers_bounty"), 1, 1e-9, "back to full cooldown");
+    assertEqual(engine.abilityCooldownSeconds(state, "rivers_bounty") / engine.TIME_SCALE, 15, "back to full cooldown");
   });
 
   test("focus: the Presence unlock itself survives a round boundary - only the purchases die", () => {
