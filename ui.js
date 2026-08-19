@@ -1371,16 +1371,13 @@ function renderShop(state) {
   // repeatables first, one-offs after. Splitting the passes keeps a maxed ladder from landing
   // under the "One-off" divider it has nothing to do with just because it sorted next to one.
   //
-  // A row still waiting on its Presence unlock is not drawn at all. It used to sit here dead
-  // with a note naming the Presence row that opens it, on the argument that a row nobody can
-  // see is not a reason to ascend - but the Presence catalogue names what each of its rows
-  // unlocks, so that reason is already stated where the player can act on it, and the dead row
-  // only put an unbuyable price in the middle of the list they are shopping from. The lock
-  // itself is unchanged: purchaseUpgrade still refuses (see upgradeNeedsPresence).
+  // Every row in the catalogue is drawn, because every row is buyable - the Presence lock that
+  // used to hide two of them is gone (see the note where upgradeNeedsPresence was). What
+  // Presence does to this list now shows up through `maxedId`: a granted automation reads as
+  // owned via upgradeTier, so it sinks into the sold-out fold and stays there across the wipe.
   const maxedId = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
-  const offered = UPGRADE_IDS.filter((id) => !upgradeNeedsPresence(state, id));
-  const buyable = offered.filter((id) => !maxedId(id));
-  const soldOut = offered.filter(maxedId);
+  const buyable = UPGRADE_IDS.filter((id) => !maxedId(id));
+  const soldOut = UPGRADE_IDS.filter(maxedId);
 
   function renderDivider(label, extraClass) {
     const rule = document.createElement("div");
@@ -1544,24 +1541,22 @@ function renderPresenceShop(state) {
   dom.presenceList.appendChild(renderCardShop(state));
 
   function renderRow(presenceId, soldOutRow, parent) {
+    // Every Presence row is a one-off now, so the tier chip and the "Maxed" button label both
+    // went with the discount ladders (see presenceUpgradeText): there is no rung to report and
+    // "owned" is the only way a row can be finished.
     const maxed = presenceUpgradeMaxed(state, presenceId);
     const cost = presenceUpgradeCost(state, presenceId);
     const affordable = !maxed && state.meta.presence >= cost;
-    const laddered = presenceUpgradeMaxTier(presenceId) > 1;
-
-    const statusText = presenceUpgradeStatusText(state, presenceId);
-    const status = statusText ? `<span class="upgrade-tier">${statusText}</span>` : "";
 
     const row = document.createElement("div");
-    row.className = `upgrade is-presence${laddered ? "" : " is-one-off"}${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
+    row.className = `upgrade is-presence is-one-off${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${presenceUpgradeName(state, presenceId)}</span>
-        ${status}
         <span class="upgrade-text">${presenceUpgradeText(state, presenceId)}</span>
       </div>
       <button type="button" class="upgrade-buy" data-presence="${presenceId}" ${maxed || !affordable ? "disabled" : ""}>
-        ${maxed ? (laddered ? t.presenceMaxedBtn : t.presenceOwnedBtn) : template(t.presenceCostLabel, { cost })}
+        ${maxed ? t.presenceOwnedBtn : template(t.presenceCostLabel, { cost })}
       </button>
     `;
     (parent || dom.presenceList).appendChild(row);

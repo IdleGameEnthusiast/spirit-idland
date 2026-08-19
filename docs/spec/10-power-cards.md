@@ -75,8 +75,11 @@ POWER_CARD_REROLL_DIVISOR = 4
 | cumulative | 10 | 26 | 52 | 93 | 159 | 264 | **432** |
 | re-roll | 3 | 4 | 7 | 11 | 17 | 27 | 42 |
 
-432 Presence for all seven, against a first Reclaim paying about 5 and the full discount
-ladders costing 1,045. It sits as a mid-cycle sink, and since the ladders were shortened it is
+432 Presence for all seven, against a first Reclaim paying about 5 and the whole automation
+catalogue costing 10. It is now by a wide margin the largest Presence sink in the game — the
+discount ladders that used to carry 1,045 of it are deleted (see
+[04-economy-formulas.md](./04-economy-formulas.md#what-a-grant-is-worth-against-holding-presence)),
+so it is
 the larger half of what a late purse has to spend on.
 
 **This is the first Presence row that out-earns holding, and that is the point.** Unspent

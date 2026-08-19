@@ -315,22 +315,17 @@ island board, and the between-round shop.
   the row reads `42.71% faster`, to two decimals, because one Fear is a hundredth of a percent
   and a readout that printed the same number for `+1` and `+10` would say a purchase did
   nothing (`upgradeStatusText`)
-- A **Presence-locked** row (see
-  [07-content-registry.md](./07-content-registry.md#permanent-upgrades)) **is not drawn at
-  all** until its Presence purchase is made. The shop lists what Fear can buy; a row Fear
-  cannot buy at any price is not part of that list
-- It used to stay on the list, dead, wearing a note naming the Presence row that opens it, on
-  the argument that a row nobody can see is not a reason to ascend. The ascension panel makes
-  that argument better: its catalogue is headed *what Presence unlocks* and every row there
-  names what it opens, so the reason to ascend is already stated where the player can act on
-  it. The dead row only put a price they could not pay in the middle of the list they were
-  shopping from
-- **The lock itself is unchanged** — `purchaseUpgrade` still refuses a locked row before it
-  looks at the price. Only the drawing of it is gone, along with `shopLockedHint`,
-  `.upgrade.is-locked` and `.upgrade-locked`
-- Because a Presence purchase now decides which rows *exist*, what the Presence catalogue owns
-  is part of the shop's render signature. Nothing else in the Fear list moves when one is
-  bought, so without it the newly opened row would not appear until the next purchase
+- **Every row in the Fear catalogue is drawn**, because every row is buyable. Two of them used
+  to be hidden until a Presence purchase opened them, and before that a dead row sat on the
+  list wearing a note naming the Presence row it was waiting on. Neither problem exists: there
+  is no lock left to hide or explain
+- **An automation granted by Presence appears sold out and stays there** across a Reclaim. It
+  reads as owned through `upgradeTier` like any other bought row, so it sinks into the sold-out
+  fold by the ordinary rule and needs no separate treatment — the one visible difference from a
+  Fear purchase is that the wipe does not bring it back
+- Because a Presence purchase decides which rows are *sold out*, what the Presence catalogue
+  owns is part of the shop's render signature. Nothing else in the Fear list moves when one is
+  bought, so without it the newly granted rows would keep offering a Buy until the next purchase
 
 5a. The ascension panel — in the rail, below the shop
 - Drawn **once ascension is unlocked** (`ascensionPayout >= ASCENSION_UNLOCK_PRESENCE`) **or
@@ -366,9 +361,18 @@ island board, and the between-round shop.
 - **Disabled while a round runs**, like the round controls, and for the same reason ascension
   is a between-rounds action. It stays visible rather than hidden, so the panel does not change
   height at every round boundary
-- A Presence row reads like a shop row and deliberately so — name, what it unlocks, price,
+- A Presence row reads like a shop row and deliberately so — name, what it grants, price,
   buy — but in the Presence colour rather than the Fear one. The two catalogues must not be
   mistakable for each other at a glance, because the currencies are not interchangeable
+- **Every Presence row is a one-off**, so each carries `is-one-off`, the bought label is
+  *Unlocked* and never *Maxed*, and no row shows a tier chip. All three followed the discount
+  ladders out — `presenceUpgradeStatusText`, `presenceMaxedBtn` and the laddered branch are
+  deleted rather than left answering constants
+- A Presence row's text names the Fear rows it grants, and where it quotes a price it does so
+  **in words**, not from `baseCost`. That is a deliberate exception to the live-price rule the
+  Fear ladders follow: a grant is bought once and its worth is "these rows, forever", so there
+  is no number that moves. The row granting all five auto-casts quotes no price at all — five
+  prices summed into one figure is arithmetic the player did not ask for
 - A bought Presence row sinks into its own sold-out block, folded shut behind a count, exactly
   as a bought one-off does in the Fear shop
 

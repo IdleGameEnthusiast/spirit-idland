@@ -312,14 +312,17 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     300 (kills with damage, which the invader health ladder erodes), `auto_wash_away` 400
     (removes outright, which it does not). All three sit under `auto_start_round`'s 500, and
     the Bounty sits under the last rung of the `dahan_reinforcement` ladder.
-11. `auto_buy_abilities` (200) and `auto_start_round` (500) are refused while their Presence
-    unlock is unbought, however much Fear is banked, and the shop does not list a row it cannot
-    sell: neither appears until its Presence row is bought. Buying `presence_tide_returns` opens `auto_start_round` and leaves
-    `auto_buy_abilities` shut, and vice versa — the two locks are independent. Once unlocked,
-    the Fear price is owed normally, and it is owed **again** after an ascension: the Presence
-    row survives the wipe and the Fear purchase does not. No other row in the catalogue is
-    locked by anything, and there is no completion gate: maxing every other upgrade changes
-    nothing about these two.
+11. **No row in the catalogue is locked.** Every row, `auto_buy_abilities` (200) and
+    `auto_start_round` (500) included, is buyable at its catalogue price on a fresh save with
+    Fear alone and no Presence in hand — so a first cycle that saves 700 Fear can buy both and
+    idle itself without ever ascending. Neither the completion gate nor the Presence unlock that
+    replaced it exists any more.
+11a. **A granted automation is owned outright and cannot be bought again.** With
+    `presence_all_unbidden` owned, all five ability auto-casts read tier 1 through
+    `upgradeTier`, `upgradeGrantedForever` is true of each, the shop refuses them as maxed, no
+    Fear changes hands, and nothing is written to `upgrades.purchased`. Each grant reaches only
+    the rows it names: `presence_tide_returns` leaves the other six automations at 0. A Fear
+    purchase and a grant of the same row never stack past tier 1.
 12. `headwaters` pays its tier's Energy into every round start and nothing else: without it a
     round still opens on an empty purse, and a round that ended holding 40 Energy still opens
     the next one at the ladder's figure rather than at 40. Its gain table climbs strictly
@@ -339,8 +342,8 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     number of single clicks would have; one larger than the pool's remaining room buys only
     what is left and is charged for only that; one the purse cannot cover is refused whole
     rather than part-paid. The Max count is bounded by the purse and by the room left. The pool
-    stands in front of nothing: an empty one and a full one leave the two Presence-locked rows
-    exactly as reachable as each other. Fear poured in mid-round leaves the
+    stands in front of nothing: an empty one and a full one leave `auto_start_round` and
+    `auto_buy_abilities` exactly as reachable, and priced the same, as each other. Fear poured in mid-round leaves the
     running round striking at its old rate and speeds up the next one. The row prints its haste
     to two decimals instead of a tier, quotes the strike interval in the speed dial's own
     seconds, and logs a purchase as Fear in and haste out.
@@ -404,29 +407,33 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    `cycleBestWave`. Ascending clears the second and not the first. A later round ending at wave
    20 raises `cycleBestWave` to 20 and leaves `bestWaveReached` at 60; neither ever decreases
    except `cycleBestWave` at an ascension.
-8. **Grandfathering.** A save carrying `auto_start_round` or `auto_buy_abilities` in
-   `upgrades.purchased` loads with the matching Presence row already owned, so a purchase made
-   under the old gate is not taken back. Loading the same save twice grants the same 1, never 2.
-9. **The third Presence row unlocks a capability, not a Fear row.** `presence_current_quickens`
-   carries no `unlocks` field; buying it flips `abilityFocusUnlocked` straight on rather than
-   opening a row in the Fear catalogue. The first Reclaim (which pays exactly the first two
-   rows' combined cost) does not also cover this one — see [Focus Checks](#focus-checks).
-10. **The discount ladders walk an automation down its price ladder.**
-    `presence_flood_remembered` takes `auto_flash_floods` from 300 Fear to 200 / 100 / 50 / 25 /
-    10 for 5 / 10 / 25 / 50 / 100 Presence, each rung deducting exactly its price; a sixth rung
-    is refused and the price floors at 10 rather than 0. The top two rows take the other ladder's
-    shape: `auto_start_round` goes 300 / 200 / 100 / 50 / 25 / 10 for 440 Presence in all and
-    `auto_wash_away` 200 / 100 / 50 / 25 / 10 for 190, so the whole set costs 1,045.
-11. **A ladder's length is read off the Fear catalogue, never written twice.** The seven rows
-    have 1 / 3 / 4 / 5 / 5 / 4 / 6 rungs, matching what each automation's `baseCost` leaves under
-    it on its own ladder, and every discounted automation is priced on a rung of one of the two
-    ladders and maps back to the row that discounts it.
-12. **A discount is a meta purchase and not permission.** It survives the Reclaim that wipes the
-    automation it discounts, so the next cycle re-buys the automation at the lowered price; and a
-    Presence-locked row at 10 Fear is still refused with a million Fear banked until its
-    `presenceUnlock` is owned.
-13. **A save carrying a rung the ladder no longer has clamps to the row's top** and is priced as
-    the rung it now is, the same rule the Fear tiers follow.
+8. **A save owning an automation keeps it and gains nothing else.** A save carrying
+   `auto_start_round` or `auto_buy_abilities` in `upgrades.purchased` loads with those rows
+   still owned and an *empty* Presence catalogue — no row is invented for it, and
+   `upgradeGrantedForever` is false, so the next Reclaim still takes back what Fear bought. (The
+   loader used to hand out the matching Presence row; there is no lock left to grandfather
+   around.)
+9. **One Presence row grants nothing and gates a capability instead.**
+   `presence_current_quickens` carries no `grants` field; buying it flips `abilityFocusUnlocked`
+   straight on rather than handing over a Fear row. It is the only row allowed to do neither —
+   see [Focus Checks](#focus-checks).
+10. **A grant hands over every automation it names, for no Fear at all.** 5 Presence buys
+    `presence_all_unbidden`, deducting exactly 5, after which all five rows it names read tier 1
+    with `upgrades.purchased` still empty and `cycleFearSpent` still 0.
+11. **A granted automation survives the Reclaim that wipes the shop.** After an ascension, a row
+    bought with Fear is back at tier 0 and its full price, and every granted row is still at
+    tier 1 — with the ledger emptied. The new cycle's opening round reads all seven automations
+    live through `activeUpgradeTier`, so it runs itself from the first tick.
+12. **The grants are structurally sound.** Every id a `grants` list names is a real,
+    non-repeatable Fear row with exactly one tier; no automation is granted by two rows;
+    `PRESENCE_GRANT_BY_UPGRADE` agrees with the forward map and carries no strays. The three
+    grant rows cost 10 Presence between them and cover all seven automations.
+13. **A save carrying the seven deleted discount rows loses them and is paid back.** The dead
+    ids drop from `presenceUpgrades.purchased` like any unknown row, and the Presence their
+    rungs cost — priced 5 / 10 / 25 / 50 / 100 / 250 by rung, up to 515 for the full set —
+    is returned to `meta.presence`. The refund is paid on the load that drops the rows and never
+    again; a save that never held one is untouched. A save claiming a rung no row has any more
+    clamps to 1, the same rule the Fear tiers follow.
 
 ## Focus Checks
 

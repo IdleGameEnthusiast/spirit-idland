@@ -161,46 +161,24 @@ const I18N = {
     presenceNames: {
       presence_tide_returns: "Die Flut kehrt wieder",
       presence_river_knows: "Der Fluss weiß, was er braucht",
-      presence_current_quickens: "Die Strömung eilt",
-      // Eine Familie, weil es ein Mechanismus ist - siehe die englische Fassung. Jede Zeile
-      // nennt die Furchtzeile, die sie günstiger macht.
-      presence_boon_remembered: "Der Segen bleibt in Erinnerung",
-      presence_instinct_remembered: "Der Instinkt bleibt in Erinnerung",
-      presence_bounty_remembered: "Die Gabe bleibt in Erinnerung",
-      presence_flood_remembered: "Die Sturzflut bleibt in Erinnerung",
-      presence_current_remembered: "Die Strömung bleibt in Erinnerung",
-      presence_need_remembered: "Der Bedarf bleibt in Erinnerung",
-      presence_tide_remembered: "Die Flut bleibt in Erinnerung"
+      // Nimmt sich, was die fünf Furchtzeilen im Namen teilen - siehe die englische Fassung.
+      presence_all_unbidden: "Alles von selbst",
+      presence_current_quickens: "Die Strömung eilt"
     },
     presenceTexts: {
-      presence_tide_returns: "Öffnet \"Die Flut kehrt wieder\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu.",
-      presence_river_knows: "Öffnet \"Der Fluss weiß, was er braucht\" im Furchtladen. Die Furcht dafür ist weiter fällig - in jedem Zyklus neu.",
-      presence_current_quickens: "Schaltet Fokus frei: Abklingzeiten von Fähigkeiten lassen sich während der Runde mit Energie verkürzen, bis auf 30% ihrer Ausgangszeit.",
-      // Nur Rückfallebene - presenceUpgradeText baut diese Zeilen aus dem echten Preis.
-      presence_boon_remembered: "Senkt, was \"Segen von selbst\" im Furchtladen kostet, eine Stufe je Rang.",
-      presence_instinct_remembered: "Senkt, was \"Angeborener Instinkt\" im Furchtladen kostet, eine Stufe je Rang.",
-      presence_bounty_remembered: "Senkt, was \"Gabe des Flusses\" im Furchtladen kostet, eine Stufe je Rang.",
-      presence_flood_remembered: "Senkt, was \"Sturzflut von selbst\" im Furchtladen kostet, eine Stufe je Rang.",
-      presence_current_remembered: "Senkt, was \"Strömung von selbst\" im Furchtladen kostet, eine Stufe je Rang.",
-      presence_need_remembered: "Senkt, was \"Der Fluss weiß, was er braucht\" im Furchtladen kostet, eine Stufe je Rang.",
-      presence_tide_remembered: "Senkt, was \"Die Flut kehrt wieder\" im Furchtladen kostet, eine Stufe je Rang."
+      presence_tide_returns: "Schenkt dir \"Die Flut kehrt wieder\" (500 Furcht) für immer. Runden starten von selbst - in diesem Zyklus und in jedem danach.",
+      presence_river_knows: "Schenkt dir \"Der Fluss weiß, was er braucht\" (200 Furcht) für immer. Fähigkeiten kaufen sich von selbst - in diesem Zyklus und in jedem danach.",
+      presence_all_unbidden: "Schenkt dir alle fünf Fähigkeits-Automatiken für immer: Segen, Instinkt, Gabe, Sturzflut und Strömung.",
+      presence_current_quickens: "Schaltet Fokus frei: Abklingzeiten von Fähigkeiten lassen sich während der Runde mit Energie verkürzen, bis auf 30% ihrer Ausgangszeit."
     },
-    // Beide Hälften nennen den Preis, nicht den Rabatt - siehe die englische Fassung.
-    presenceNextTexts: {
-      discount: "{upgrade} kostet jeden Zyklus {current} Furcht. Nächste Stufe: {next}."
-    },
-    presenceMaxedTexts: {
-      discount: "{upgrade} kostet jeden Zyklus {current} Furcht - weniger verlangt die Insel nicht."
-    },
-    presencePurchased: "{upgrade} für {cost} Präsenz. {unlocks} steht jetzt im Laden.",
+    // Der Trenner für Namenslisten in Logzeilen - siehe die englische Fassung.
+    listSeparator: ", ",
+    presenceGranted: "{upgrade} für {cost} Präsenz. {unlocks} gehört jetzt für immer dir.",
     presencePurchasedDirect: "{upgrade} für {cost} Präsenz.",
-    presenceDiscounted: "{upgrade} für {cost} Präsenz. {unlocks} kostet jetzt {price} Furcht.",
     presenceOwned: "{upgrade} gehört dir bereits.",
-    presenceMaxed: "{upgrade} hat nichts mehr zurückzugeben.",
     presenceTooExpensive: "{upgrade} kostet {cost} Präsenz, du hast {presence}.",
     presenceCostLabel: "{cost} Präsenz",
     presenceOwnedBtn: "Freigeschaltet",
-    presenceMaxedBtn: "Vollständig",
     upgradeNames: {
       dahan_reinforcement: "Verstärkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
@@ -449,7 +427,6 @@ const I18N = {
     upgradeInvested: "{upgrade}: {cost} Furcht erinnert. Jetzt {pct}% schneller - ein Schlag alle {seconds}s.",
     upgradeTooExpensive: "{upgrade} kostet {cost} Furcht. Du hast {fear}.",
     upgradeMaxed: "{upgrade} ist bereits auf der höchsten Stufe.",
-    upgradeLocked: "{upgrade} bleibt verschlossen, bis {presence} mit Präsenz gekauft ist.",
 
     migrationReset: "Alter Spielstand (Version {version}) ist nicht mit dem Rundenmodus kompatibel und wurde zurückgesetzt.",
     saveWiped: "Spielstand gelöscht.",
@@ -589,51 +566,30 @@ const I18N = {
     presenceNames: {
       presence_tide_returns: "The Tide Returns",
       presence_river_knows: "The River Knows Its Own Need",
-      presence_current_quickens: "The Current Quickens",
-      // One family, because they are one mechanism: the island remembers what was already paid
-      // for and asks less the next time. Each names the Fear row it walks down, so the pairing
-      // is readable off the two shops without the player learning a mapping.
-      presence_boon_remembered: "The Boon Remembered",
-      presence_instinct_remembered: "The Instinct Remembered",
-      presence_bounty_remembered: "The Bounty Remembered",
-      presence_flood_remembered: "The Flood Remembered",
-      presence_current_remembered: "The Current Remembered",
-      presence_need_remembered: "The Need Remembered",
-      presence_tide_remembered: "The Tide Remembered"
+      // Takes the word the five Fear rows it grants already share - three of them are
+      // "Unbidden" and the German half of all five is "von selbst" - so the player reads the
+      // pairing off the two shops rather than learning a mapping.
+      presence_all_unbidden: "Everything Unbidden",
+      presence_current_quickens: "The Current Quickens"
     },
     presenceTexts: {
-      presence_tide_returns: "Opens \"The Tide Returns\" in the Fear shop. Its Fear price is still owed - every cycle, again.",
-      presence_river_knows: "Opens \"The River Knows Its Own Need\" in the Fear shop. Its Fear price is still owed - every cycle, again.",
-      presence_current_quickens: "Unlocks Focus: ability cooldowns can be shortened mid-round with Energy, down to 30% of where they started.",
-      // Fallbacks only - presenceUpgradeText builds these rows from the live price. Kept so the
-      // "every row has a text in both languages" test has something to find and so a row is
-      // never blank if the dynamic tables lose a key.
-      presence_boon_remembered: "Lowers what \"Boon Unbidden\" costs in the Fear shop, one rung a tier.",
-      presence_instinct_remembered: "Lowers what \"Innate Instinct\" costs in the Fear shop, one rung a tier.",
-      presence_bounty_remembered: "Lowers what \"The River Provides\" costs in the Fear shop, one rung a tier.",
-      presence_flood_remembered: "Lowers what \"The Flood Unbidden\" costs in the Fear shop, one rung a tier.",
-      presence_current_remembered: "Lowers what \"The Current Unbidden\" costs in the Fear shop, one rung a tier.",
-      presence_need_remembered: "Lowers what \"The River Knows Its Own Need\" costs in the Fear shop, one rung a tier.",
-      presence_tide_remembered: "Lowers what \"The Tide Returns\" costs in the Fear shop, one rung a tier."
+      presence_tide_returns: "Yours for good: \"The Tide Returns\" (500 Fear). Rounds start themselves, this cycle and every cycle after it.",
+      presence_river_knows: "Yours for good: \"The River Knows Its Own Need\" (200 Fear). Abilities buy themselves, this cycle and every cycle after it.",
+      presence_all_unbidden: "Yours for good: all five ability automations - the Boon, the Instinct, the Bounty, the Flood and the Current.",
+      presence_current_quickens: "Unlocks Focus: ability cooldowns can be shortened mid-round with Energy, down to 30% of where they started."
     },
-    // Both halves name the price rather than the discount. What the player is deciding is what
-    // the row will cost them next cycle, and "300, then 200" answers that where "-100 Fear"
-    // makes them do the arithmetic.
-    presenceNextTexts: {
-      discount: "{upgrade} costs {current} Fear every cycle. Next tier: {next}."
-    },
-    presenceMaxedTexts: {
-      discount: "{upgrade} costs {current} Fear every cycle - the least the island will ask."
-    },
-    presencePurchased: "{upgrade} for {cost} Presence. {unlocks} is in the shop now.",
+    // Says "for good", because that is the whole of what separates a Presence purchase from a
+    // Fear one. {unlocks} is one row for two of the three grants and five for the other, joined
+    // with listSeparator rather than given a line each - it was one purchase.
+    // How a list of row names is joined inside a log line. In the locale table rather than in
+    // the engine because it is punctuation, and punctuation is a language's business.
+    listSeparator: ", ",
+    presenceGranted: "{upgrade} for {cost} Presence. {unlocks} is yours for good.",
     presencePurchasedDirect: "{upgrade} for {cost} Presence.",
-    presenceDiscounted: "{upgrade} for {cost} Presence. {unlocks} costs {price} Fear now.",
     presenceOwned: "{upgrade} is already yours.",
-    presenceMaxed: "{upgrade} has nothing further to give back.",
     presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",
     presenceCostLabel: "{cost} Presence",
     presenceOwnedBtn: "Unlocked",
-    presenceMaxedBtn: "Maxed",
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
@@ -884,7 +840,6 @@ const I18N = {
     upgradeInvested: "{upgrade}: {cost} Fear remembered. Now {pct}% faster - a strike every {seconds}s.",
     upgradeTooExpensive: "{upgrade} costs {cost} Fear. You have {fear}.",
     upgradeMaxed: "{upgrade} is already at its highest tier.",
-    upgradeLocked: "{upgrade} stays sealed until {presence} is bought with Presence.",
 
     migrationReset: "The old save (version {version}) is not compatible with the round-based build and was reset.",
     saveWiped: "Save wiped.",

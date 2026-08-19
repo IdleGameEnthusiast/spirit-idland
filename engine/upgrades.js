@@ -10,12 +10,36 @@
  * Upgrades (05-progression.md)                                         *
  * ------------------------------------------------------------------ */
 
-// What the player owns. The shop reads this: it is what the next tier costs from, and what
-// "maxed" is measured against.
+/* What the player owns. The shop reads this: it is what the next tier costs from, and what
+ * "maxed" is measured against.
+ *
+ * Two sources, and the second is the whole of the automation grant. `upgrades.purchased` is
+ * what Fear bought this cycle and is wiped by `ascend`; a row named by a Presence row's
+ * `grants` reads as owned whatever that object says, and so survives the wipe. Folding it in
+ * here rather than at each reader is what makes the grant total for free: the shop shows the
+ * row sold out, `orderedUpgradeIds` sinks it, `purchaseUpgrade` refuses it as maxed,
+ * `snapshotUpgradeTiers` carries it into the round, and every auto-cast check already reads
+ * through `activeUpgradeTier`.
+ *
+ * A granted row answers 1, not "the highest tier it could have": every automation is a
+ * non-repeatable one-off, and a `grants` entry naming a repeatable row would be a content bug
+ * (see the structural test in tests/ascension.test.js) rather than a case to handle here.
+ *
+ * `rebuildSpentFear` deliberately does not come through this - it walks the saved `purchased`
+ * object directly, so a granted row is never billed as Fear the player spent.
+ */
 function upgradeTier(state, upgradeId) {
   const raw = state.upgrades && state.upgrades.purchased ? state.upgrades.purchased[upgradeId] : 0;
-  if (raw === true) return 1;
-  return Math.max(0, Math.floor(Number(raw) || 0));
+  const owned = raw === true ? 1 : Math.max(0, Math.floor(Number(raw) || 0));
+  if (owned > 0) return owned;
+  return upgradeGrantedForever(state, upgradeId) ? 1 : 0;
+}
+
+// Whether a Presence row has handed this automation over for good. Its own tier is what is
+// read, so a save carrying a Presence row the catalogue has dropped grants nothing.
+function upgradeGrantedForever(state, upgradeId) {
+  const presenceId = PRESENCE_GRANT_BY_UPGRADE[upgradeId];
+  return Boolean(presenceId) && presenceUpgradeTier(state, presenceId) > 0;
 }
 
 /* ---------- The Presence side of the same idea ----------
@@ -42,22 +66,15 @@ function presenceUpgradeOwned(state, presenceId) {
   return presenceUpgradeTier(state, presenceId) > 0;
 }
 
-/* How many rungs a row has, which for a discount row is a question about the Fear catalogue
- * rather than about this one: the automation's own price is a rung of one of the two ladders,
- * and what is left is everything under it on that same ladder.
+/* How many rungs a row has, which is one for every row in the catalogue: the discount ladders
+ * that made this a real question are gone (see the note above PRESENCE_UPGRADES).
  *
- * An automation priced off both ladders has no rungs at all rather than a guessed position - see
- * the structural test in tests/ascension.test.js, which is what actually keeps the two tables
- * agreeing.
+ * Kept as a function rather than folded away because it is the shape the Fear side has, and
+ * the next repeatable Presence row - if there is one - wants exactly this signature back. An
+ * unknown id answers 0, so `presenceUpgradeMaxed` is true for it and nothing tries to buy it.
  */
 function presenceUpgradeMaxTier(presenceId) {
-  const record = PRESENCE_UPGRADES[presenceId];
-  if (!record) return 0;
-  if (!record.discounts) return 1;
-  const target = UPGRADES[record.discounts];
-  const ladder = target ? automationLadder(target.baseCost) : null;
-  if (!ladder) return 0;
-  return ladder.length - 1 - ladder.indexOf(target.baseCost);
+  return PRESENCE_UPGRADES[presenceId] ? 1 : 0;
 }
 
 function presenceUpgradeMaxed(state, presenceId) {
@@ -65,14 +82,13 @@ function presenceUpgradeMaxed(state, presenceId) {
 }
 
 // Cost of the *next* rung, mirroring upgradeCost on the Fear side - which is why this takes a
-// state where it used to take an id alone. A flat row has one rung and answers with its price.
+// state where it used to take an id alone. Every row is one rung, so it answers with its price
+// until it is owned and Infinity after.
 function presenceUpgradeCost(state, presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return Infinity;
-  if (!record.discounts) return record.cost;
   if (presenceUpgradeMaxed(state, presenceId)) return Infinity;
-  const cost = PRESENCE_DISCOUNT_COSTS[presenceUpgradeTier(state, presenceId)];
-  return Number.isFinite(cost) ? cost : Infinity;
+  return record.cost;
 }
 
 function purchasePresenceUpgrade(state, presenceId) {
@@ -80,10 +96,10 @@ function purchasePresenceUpgrade(state, presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return false;
 
-  // "Owned" and "maxed" are the same sentence for the three flat rows, whose max tier is 1, and
-  // differ only for the ladders - so there is one check here rather than a branch.
+  // "Owned" and "maxed" are the same sentence now that every row is one rung, so there is one
+  // check here and one line for it.
   if (presenceUpgradeMaxed(state, presenceId)) {
-    addLog(state, template(record.discounts ? t.presenceMaxed : t.presenceOwned, {
+    addLog(state, template(t.presenceOwned, {
       upgrade: presenceUpgradeName(state, presenceId)
     }));
     return false;
@@ -102,30 +118,22 @@ function purchasePresenceUpgrade(state, presenceId) {
   state.meta.presence -= cost;
   state.presenceUpgrades.purchased[presenceId] = presenceUpgradeTier(state, presenceId) + 1;
 
-  // Names the Fear row it moved, not just itself. What a Presence purchase *does* is happen in
-  // the other shop, and a log line that did not say which row would be reporting a number going
-  // down and nothing going up. A discount row reports the new price, because the price is the
-  // whole of what it did; a row with no Fear-row counterpart (see PRESENCE_UPGRADES) has
-  // nothing to name and gets the plainer line instead.
-  if (record.discounts) {
-    addLog(state, template(t.presenceDiscounted, {
-      upgrade: presenceUpgradeName(state, presenceId),
-      unlocks: upgradeName(state, record.discounts),
-      price: upgradeBaseCost(state, record.discounts),
-      cost
-    }));
-  } else {
-    addLog(state, record.unlocks
-      ? template(t.presencePurchased, {
-          upgrade: presenceUpgradeName(state, presenceId),
-          unlocks: upgradeName(state, record.unlocks),
-          cost
-        })
-      : template(t.presencePurchasedDirect, {
-          upgrade: presenceUpgradeName(state, presenceId),
-          cost
-        }));
-  }
+  // Names the Fear rows it just handed over, not just itself. What a Presence purchase *does*
+  // happens in the other shop, and a line that did not say which rows would be reporting a
+  // number going down and nothing going up. `presence_all_unbidden` names five, joined rather
+  // than one line each - it is one purchase and it reads as one sentence. A row that grants
+  // nothing has nothing to name and gets the plainer line instead.
+  const granted = record.grants || [];
+  addLog(state, granted.length
+    ? template(t.presenceGranted, {
+        upgrade: presenceUpgradeName(state, presenceId),
+        unlocks: granted.map((id) => upgradeName(state, id)).join(t.listSeparator),
+        cost
+      })
+    : template(t.presencePurchasedDirect, {
+        upgrade: presenceUpgradeName(state, presenceId),
+        cost
+      }));
   return true;
 }
 
@@ -190,9 +198,14 @@ function fearToNextPresence(state) {
  *
  * `ui.*` surviving is the same rule that carries the language through a save migration: a
  * preference is not something the player earned, so taking it away is not part of the price.
- * The auto-cast switches in particular stay where they were set even though the automations
- * they switch have just been un-bought, so re-buying one next cycle gets it back in the state
- * the player last chose.
+ * The auto-cast switches in particular stay where they were set, so an automation the wipe
+ * un-buys comes back next cycle in the state the player last chose.
+ *
+ * `presenceUpgrades.purchased` is not touched here and that is what makes a granted automation
+ * permanent: the wipe below empties what Fear bought, and `upgradeTier` reads the grant from
+ * the Presence catalogue instead. So the rows a Presence row hands over are owned on the other
+ * side of this function, with their auto-cast switches still set, and the first round of the
+ * new cycle runs itself.
  */
 function ascend(state) {
   const t = locale(state);
@@ -286,30 +299,22 @@ function upgradeMaxTier(upgradeId) {
   return Number.isFinite(record.maxTier) ? record.maxTier : Infinity;
 }
 
-/* ---------- The two rows Fear alone cannot reach ----------
+/* ---------- No row is locked any more ----------
  *
- * A row naming a `presenceUnlock` is locked until that Presence row is bought, whatever the
- * Fear purse holds. The lock is about a different currency than the price, which is why
- * purchaseUpgrade tests it *before* the price: a player holding 500 Fear in front of a dead
- * button deserves the real reason.
+ * `upgradePresenceUnlock` and `upgradeNeedsPresence` lived here, and with them the rule that
+ * `auto_start_round` and `auto_buy_abilities` could not be bought until a Presence row opened
+ * them. A Presence row *grants* an automation now (see PRESENCE_UPGRADES), so the row that
+ * used to open those two buys them outright and a lock in front of a price nobody pays twice
+ * is nothing but a dead button. Every row in the Fear catalogue is buyable at its listed price
+ * from the first round of the first cycle.
  *
- * This replaces `gatedUpgradesUnlocked`, which asked whether the whole catalogue was finished.
- * That question no longer has an answer worth having - the Fear catalogue is not a thing that
- * finishes, because Presence is what grows it - and a test for a state that never arrives is
- * a wall rather than a gate. Deleted with it: GATED_UPGRADE_IDS, upgradeIsLocked,
- * upgradeRequiredForGate, the `requiredForGate` field, and upgradeIsSoftCapped, which lost its
- * last caller when the three Fear ladders got a maxTier.
+ * That is the third gate this catalogue has shed, and they failed the same way. First
+ * `gatedUpgradesUnlocked`, which refused the two until every other row was maxed - a test for
+ * a state that never arrives, since the Fear catalogue does not finish. Then `presenceUnlock`,
+ * which asked for an ascension first and then asked for the Fear again every cycle after.
+ * Deleted across the three: GATED_UPGRADE_IDS, upgradeIsLocked, upgradeRequiredForGate,
+ * `requiredForGate`, upgradeIsSoftCapped, `presenceUnlock`, and the two functions above.
  */
-function upgradePresenceUnlock(upgradeId) {
-  const record = UPGRADES[upgradeId];
-  return (record && record.presenceUnlock) || null;
-}
-
-function upgradeNeedsPresence(state, upgradeId) {
-  const required = upgradePresenceUnlock(upgradeId);
-  if (!required) return false;
-  return presenceUpgradeTier(state, required) <= 0;
-}
 
 // The 1.6 curve unless the row names its own. A `costGrowth` of 1 is what makes a row a pool
 // rather than a ladder (see dahan_remember): every unit costs what the first one did.
@@ -319,19 +324,18 @@ function upgradeCostGrowth(upgradeId) {
   return Number.isFinite(growth) && growth > 0 ? growth : UPGRADE_COST_GROWTH;
 }
 
-/* What a row's first rung costs *this cycle*, which is its catalogue price unless a Presence
- * discount row has walked it down its ladder.
+/* What a row's first rung costs, which is its catalogue price - the Presence discount ladders
+ * that made this a live question are gone (see the note above PRESENCE_UPGRADES), and Presence
+ * now takes a row out of the shop rather than marking it down.
  *
- * Every Fear price in the game goes through here rather than reading `baseCost` directly, so
- * there is one place a discount can apply and no path - shop label, purchase, affordability -
- * that can disagree with another about what a row costs.
+ * Every Fear price in the game still goes through here rather than reading `baseCost` directly.
+ * It is a pass-through today and kept anyway: it is the one seam a future price modifier would
+ * land on, and there is no path - shop label, purchase, affordability - that can reach a price
+ * without crossing it. `state` is unused for that reason and stays in the signature.
  */
 function upgradeBaseCost(state, upgradeId) {
   const record = UPGRADES[upgradeId];
-  if (!record) return Infinity;
-  const presenceId = PRESENCE_DISCOUNT_BY_UPGRADE[upgradeId];
-  if (!presenceId) return record.baseCost;
-  return automationPriceAtTier(upgradeId, presenceUpgradeTier(state, presenceId));
+  return record ? record.baseCost : Infinity;
 }
 
 // Cost of the *next* tier. Rounded to whole Fear so the shop never shows 6.4 Fear.
@@ -490,16 +494,6 @@ function purchaseUpgrade(state, upgradeId, count) {
   const room = upgradeMaxTier(upgradeId) - tier;
   if (!(room > 0)) {
     addLog(state, template(t.upgradeMaxed, { upgrade: upgradeName(state, upgradeId) }));
-    return false;
-  }
-
-  // Before the price check, because a locked row's price is not the reason it is refused and
-  // a player with the Fear in hand deserves the real reason - which is a different currency.
-  if (upgradeNeedsPresence(state, upgradeId)) {
-    addLog(state, template(t.upgradeLocked, {
-      upgrade: upgradeName(state, upgradeId),
-      presence: presenceUpgradeName(state, upgradePresenceUnlock(upgradeId))
-    }));
     return false;
   }
 

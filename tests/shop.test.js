@@ -437,60 +437,66 @@
    * currency, and the checks below are the ones that break if the two ever get confused.
    * ------------------------------------------------------------------ */
 
-  const PRESENCE_LOCKED = [
-    ["auto_start_round", "presence_tide_returns"],
-    ["auto_buy_abilities", "presence_river_knows"]
+  const AUTOMATIONS = [
+    "auto_boon", "auto_innate", "auto_bounty", "auto_flash_floods",
+    "auto_wash_away", "auto_buy_abilities", "auto_start_round"
   ];
 
-  test("shop: the two automations are sealed until Presence opens them", () => {
+  // The rule that replaced two gates: nothing in the catalogue is locked. `auto_start_round` and
+  // `auto_buy_abilities` sat behind a Presence row - and before that behind maxing every other
+  // row - and both gates are gone, so a first cycle that saves the Fear can buy anything in the
+  // shop including the two that idle the game.
+  test("shop: every row in the catalogue is buyable on a fresh save", () => {
     const { state } = newGame();
     state.meta.fear = 1e9;
 
-    for (const [upgradeId] of PRESENCE_LOCKED) {
-      assert(engine.upgradeNeedsPresence(state, upgradeId), `${upgradeId} is locked on a fresh save`);
-      assert(!engine.purchaseUpgrade(state, upgradeId), "and all the Fear in the world does not buy it");
-      assertEqual(engine.upgradeTier(state, upgradeId), 0, "still unowned");
-    }
-
-    assert(!engine.upgradeNeedsPresence(state, "auto_boon"), "nothing else in the shop is locked");
-    assert(engine.purchaseUpgrade(state, "auto_boon"), "and the rest sells as it always did");
-  });
-
-  // The regression the deleted gate would have caused if it had been left in: finishing the
-  // catalogue used to be the thing that opened these two, and now it means nothing at all.
-  test("shop: maxing the whole catalogue does not open them", () => {
-    const { state } = newGame();
-    state.meta.fear = 1e9;
-
-    for (const id of engine.UPGRADE_IDS) {
-      if (engine.upgradePresenceUnlock(id)) continue;
-      state.upgrades.purchased[id] = engine.upgradeMaxTier(id);
-    }
-
-    for (const [upgradeId] of PRESENCE_LOCKED) {
-      assert(engine.upgradeNeedsPresence(state, upgradeId), `${upgradeId} is still Presence's to open`);
+    for (const upgradeId of engine.UPGRADE_IDS) {
+      assert(engine.purchaseUpgrade(state, upgradeId), `${upgradeId} sells for Fear alone`);
+      assert(engine.upgradeTier(state, upgradeId) > 0, `${upgradeId} is owned`);
     }
   });
 
-  test("shop: the two locks are independent of each other", () => {
+  test("shop: the two that idle the game cost their catalogue price, with no Presence in hand", () => {
+    const { state } = newGame();
+    state.meta.fear = 700;
+
+    assertEqual(engine.upgradeCost(state, "auto_start_round"), 500, "the milestone price");
+    assertEqual(engine.upgradeCost(state, "auto_buy_abilities"), 200, "and the cheaper one");
+    assert(engine.purchaseUpgrade(state, "auto_start_round"), "bought");
+    assert(engine.purchaseUpgrade(state, "auto_buy_abilities"), "and bought");
+    assertEqual(state.meta.fear, 0, "for exactly the 700 between them");
+    assertEqual(state.meta.presence, 0, "and no Presence was ever involved");
+  });
+
+  // The other half of the same change: a Presence row hands its automations over, so they read
+  // as owned with no Fear spent and the shop has nothing left to sell on those rows.
+  test("shop: a granted automation is owned outright and refuses to be bought again", () => {
     const { state } = newGame();
     state.meta.fear = 1e9;
+    grantPresence(state, "presence_all_unbidden");
+
+    for (const upgradeId of ["auto_boon", "auto_innate", "auto_bounty", "auto_flash_floods", "auto_wash_away"]) {
+      assertEqual(engine.upgradeTier(state, upgradeId), 1, `${upgradeId} is granted`);
+      assert(engine.upgradeGrantedForever(state, upgradeId), "and knows it was granted");
+      assert(!engine.purchaseUpgrade(state, upgradeId), "so the shop refuses it");
+    }
+    assertEqual(state.meta.fear, 1e9, "no Fear changed hands");
+    assertEqual(state.upgrades.purchased.auto_boon, undefined, "and nothing was written to the cycle's ledger");
+  });
+
+  test("shop: the three grants reach only the rows they name", () => {
+    const { state } = newGame();
     grantPresence(state, "presence_tide_returns");
 
-    assert(!engine.upgradeNeedsPresence(state, "auto_start_round"), "the one it opened is open");
-    assert(engine.purchaseUpgrade(state, "auto_start_round"), "and it sells");
-    assert(engine.upgradeNeedsPresence(state, "auto_buy_abilities"), "the other is untouched");
-    assert(!engine.purchaseUpgrade(state, "auto_buy_abilities"), "and still refused");
-  });
+    assertEqual(engine.upgradeTier(state, "auto_start_round"), 1, "the one it names");
+    for (const upgradeId of AUTOMATIONS) {
+      if (upgradeId === "auto_start_round") continue;
+      assertEqual(engine.upgradeTier(state, upgradeId), 0, `${upgradeId} is untouched`);
+    }
 
-  test("shop: a locked row is refused for being locked, not for being unaffordable", () => {
-    const { state } = newGame();
-    state.meta.fear = 1e9;
-    const before = (state._log || []).length;
-
-    assert(!engine.purchaseUpgrade(state, "auto_buy_abilities"), "refused");
-    assert((state._log || []).length > before, "and it says why");
-    assertEqual(state.meta.fear, 1e9, "no Fear changed hands");
+    grantPresence(state, "presence_river_knows");
+    assertEqual(engine.upgradeTier(state, "auto_buy_abilities"), 1, "and the second names one more");
+    assertEqual(engine.upgradeTier(state, "auto_boon"), 0, "the five still wait on their own row");
   });
 
   test("shop: an ability defeat during a round feeds the purse the shop spends, once banked", () => {

@@ -470,7 +470,7 @@ afford many Focus purchases before waves have produced the Energy for them, with
 wave-indexed formula stacked on top. The hard 30% floor is the actual safety valve against
 idle-game exponential Energy income, not a wave gate.
 
-### 13. Presence discount ladders for the seven automations — *built 2026-08-18*
+### 13. Presence discount ladders for the seven automations — *built 2026-08-18, **deleted 2026-08-19** — see item 17*
 
 Seven repeatable Presence rows, one per automation, walking its Fear price down a shared ladder
 **500 · 400 · 300 · 200 · 100 · 50 · 25 · 10**. Rungs cost **5 · 10 · 25 · 50 · 100 · 250 ·
@@ -792,6 +792,65 @@ exists for. Ship without the clamp and watch.
 Also moves with it: `fearToNextPresence` becomes `(payout + 1)^2 * PRESENCE_FEAR_DIVISOR -
 credit - generated`, or the HUD overstates every gap by the credit. Nothing here has been
 played - the numbers are a first pass like the rest of the layer.
+
+---
+
+### 17. Automations become permanent Presence grants — *built 2026-08-19*
+
+Deletes item 13 outright and changes what a Presence purchase *is*. A Presence row no longer
+opens a Fear row or marks one down: it **hands the automation over permanently**, on the far
+side of every future Reclaim.
+
+```txt
+presence_tide_returns      2   grants auto_start_round                  (retires 500 Fear a cycle)
+presence_river_knows       3   grants auto_buy_abilities                (retires 200)
+presence_all_unbidden      5   grants the five ability auto-casts       (retires 1,025)
+                          --
+                          10   every automation in the game, forever
+```
+
+**Why item 13 had to go, in one line of arithmetic.** Walking all seven discount ladders to the
+bottom cost **515 Presence** to save **975 Fear a cycle**. Holding those same 515 Presence is
+**+515% Fear generated**, uncapped, forever. Break-even is a cycle generating **189 Fear** —
+and `ASCENSION_UNLOCK_PRESENCE` forbids a Reclaim until the cycle has generated **2,500**. The
+rows lost to doing nothing by 13× at the earliest moment they could be bought and by more every
+cycle after: not a weak rung, a strictly dominated one, and seven rows of the Presence catalogue
+that were never correct to buy. Item 13's own spec text admitted the trade and argued the rows
+were an endgame sink worth having anyway; a sink nobody should ever buy is not a sink.
+
+A grant clears the same bar the discount could not, and it is the shape
+[04-economy-formulas.md](../spec/04-economy-formulas.md#what-a-grant-is-worth-against-holding-presence)
+had already named as the only one that can: *a multiplier, or a permanence*. The discount was a
+fixed Fear amount. A grant is the permanence.
+
+**What else came out with it.** The `presenceUnlock` gate that made `auto_start_round` and
+`auto_buy_abilities` unreachable without an ascension — and then charged their Fear again every
+cycle after — is deleted too, because a row that a Presence purchase now *buys* has nothing left
+to be locked behind. **No row in the Fear catalogue is locked any more**, so a first cycle that
+saves 700 Fear can idle itself without ever ascending; what ascending buys is not having to do
+it again. Gone with them: `AUTOMATION_PRICE_LADDERS`, `PRESENCE_DISCOUNT_COSTS`,
+`automationLadder`, `automationPriceAtTier`, `PRESENCE_DISCOUNT_BY_UPGRADE`,
+`upgradeNeedsPresence`, `upgradePresenceUnlock`, `presenceUpgradeStatusText`, the `discounts`
+and `presenceUnlock` fields, the `upgradeLocked` / `presenceDiscounted` / `presenceMaxed`
+strings and the ladder half of `presenceUpgradeText`.
+
+**The mechanism is one branch in `upgradeTier`.** A row named by a Presence row's `grants` reads
+as owned whatever `upgrades.purchased` says, so the grant is total for free: the shop shows it
+sold out, `purchaseUpgrade` refuses it as maxed, `snapshotUpgradeTiers` carries it into the
+round, and every auto-cast already reads through `activeUpgradeTier`. `rebuildSpentFear`
+deliberately walks the saved object instead, so a granted row is never billed as Fear spent.
+
+**Saves are paid back for item 13.** `normalizeState` drops the seven dead ids like any unknown
+row, then prices their rungs at what they cost and returns the Presence — up to 515 of it,
+against a replacement catalogue costing 10. Idempotent: paid on the load that drops the rows and
+never again.
+
+**The open number, deliberately left as asked for.** The two dearest automations in the Fear
+shop (500 and 200) are the two cheapest in Presence, so the first Reclaim's ~5 Presence ends the
+hand-played round loop outright and `presence_all_unbidden` waits for the second. Staging it the
+other way round — first ascension smooths the round, second stops needing a hand on it — wants
+roughly **5 / 8 / 15** in place of 2 / 3 / 5. Nothing here has been played; it is a three-number
+edit when a cycle says which reads better.
 
 ---
 

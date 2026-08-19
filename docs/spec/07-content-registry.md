@@ -298,35 +298,30 @@ removes. Each rung up is a stronger claim on the round than the one under it.
   and an automation cannot. Switchable off
   from the card without being un-bought — the reason the toggle exists at all, since 400 Fear
   used to remove the ability from active play permanently.
-The last two rows are behind **Presence** rather than behind Fear alone (`upgradeNeedsPresence`,
-read from the Presence catalogue below). Each names a Presence row in `presenceUnlock`, and
-until that row is bought the Fear row is locked whatever the purse holds. Between them they
-hand over the last two things still done by hand each round.
+The last two rows hand over the last two things still done by hand each round, and **nothing
+gates either of them**. They are ordinary Fear rows at 200 and 500, buyable from the first
+round of the first cycle by anyone who saves the Fear.
 
-They were behind a completion gate until the ascension layer landed — refused until every
-other row in the catalogue was maxed, which was ~2,674 Fear and roughly ninety hand-played
-rounds. That gate is deleted along with the idea it rested on, that the shop is a thing which
-finishes; see
-[05-progression.md](./05-progression.md#the-shop-no-longer-terminates). `purchaseUpgrade` still
-refuses a locked row **before** it looks at the price: the unlock is the reason, never the
-purse.
+They have shed two gates to get here. First a completion gate — refused until every other row
+in the catalogue was maxed, ~2,674 Fear and roughly ninety hand-played rounds; deleted along
+with the idea it rested on, that the shop is a thing which finishes (see
+[05-progression.md](./05-progression.md#the-shop-no-longer-terminates)). Then a
+`presenceUnlock`, which asked for an ascension before the row appeared and then asked for the
+Fear again every cycle after. That went with the discount ladders, and for the same reason:
+`upgradeNeedsPresence`, `upgradePresenceUnlock` and the `presenceUnlock` field are all deleted.
 
-The shop **does not draw a locked row at all** — see
-[06-ui-contract.md](./06-ui-contract.md#required-screen-sections). The two rows below therefore describe
-what the player sees *after* the matching Presence purchase; before it, the only place either is
-named is the ascension panel's catalogue, which is where the decision to open them is made.
+**What Presence does to these rows now is buy them outright.**
+`presence_tide_returns` (2 Presence) grants `auto_start_round` and `presence_river_knows`
+(3 Presence) grants `auto_buy_abilities`, permanently and across every future Reclaim — so the
+Fear price below is what the cycles *before* that purchase pay, and nothing after it pays at
+all. See [the Presence catalogue](#the-presence-catalogue) below.
 
-**The Fear price is still owed, and owed again every cycle.** A Presence unlock puts the row in
-the shop; it does not buy the row. So each cycle opens hand-played and 500 Fear is a live
-decision against the five tiers of `rising_dread` it would otherwise buy — play this cycle
-actively, or pay to idle it.
-
-- `auto_buy_abilities` — one-time, Presence-locked behind `presence_river_knows`. Each tick,
+- `auto_buy_abilities` — one-time, granted permanently by `presence_river_knows`. Each tick,
   this round's Energy spends itself on the
   ability bar: the locked kit abilities first, cheapest before dearest (5 / 10 / 20), then one
-  rung of the Innate's tier ladder if the Energy is still there. `baseCost` 200 — cheap for
-  where it sits, deliberately: Presence is what holds it back, and what it sells is less than
-  the automations under it. It spends Energy the round was already going to spend, in the order
+  rung of the Innate's tier ladder if the Energy is still there. `baseCost` 200 — under the
+  three ability automations it sits beside, because what it sells is less than they do. It
+  spends Energy the round was already going to spend, in the order
   a settled player already spends it, and buys back the clicks rather than any new power.
   Unlocks come before tiers for two reasons that point the same way: an unlock is the cheaper
   claim on the same Energy, and it is what the three cast automations are waiting on — each of
@@ -334,7 +329,7 @@ actively, or pay to idle it.
   in the tick, so an ability it buys (which arrives ready, exactly as a clicked unlock does)
   can fire on the same tick. Purchases go through `unlockAbility` / `upgradeAbility`, so an
   automated buy and a clicked one are the same buy: same refusals, same log line.
-- `auto_start_round` — one-time, Presence-locked behind `presence_tide_returns`, an ended round
+- `auto_start_round` — one-time, granted permanently by `presence_tide_returns`, an ended round
   starts the next one by itself, subject to a toggle the player can switch off. `baseCost` 500
   — the most expensive one-off in the shop and the only one that changes the shape of the game
   rather than a number in it.
@@ -350,64 +345,81 @@ The ascension layer's shop, in `PRESENCE_UPGRADES`, keyed into `presenceUpgrades
 Bought with `meta.presence`, which only `ascend()` pays out, and never lost to an ascension.
 
 **Presence never touches the board.** It buys no Dahan, shortens no clock, adds no damage. That
-is the rule the whole two-currency design rests on, and it is what makes the two impossible to
-price against each other — see [05-progression.md](./05-progression.md#the-two-layers). What a
-row buys instead is one of three things: permission for a Fear row to exist, a capability
-directly, or a lower price on a Fear row.
+is the rule the whole two-currency design rests on — see
+[05-progression.md](./05-progression.md#the-two-layers). What a row buys instead is one of two
+things: a Fear row handed over permanently, or a capability directly.
 
-### The rows that open something
+### The rows that grant an automation
 
-| id | opens | cost |
+Each names its Fear rows in a `grants` array and hands them over **for the rest of the run**.
+`upgradeTier` reads the grant out of this catalogue rather than out of `upgrades.purchased`, so
+a granted row is owned on the far side of the Reclaim that empties the shop — which is the
+whole of what separates a Presence purchase from a Fear one.
+
+| id | grants | Fear a cycle it retires | cost |
+| --- | --- | --- | --- |
+| `presence_tide_returns` — *Die Flut kehrt wieder* / The Tide Returns | `auto_start_round` | 500 | 2 |
+| `presence_river_knows` — *Der Fluss weiß, was er braucht* / The River Knows Its Own Need | `auto_buy_abilities` | 200 | 3 |
+| `presence_all_unbidden` — *Alles von selbst* / Everything Unbidden | `auto_boon`, `auto_innate`, `auto_bounty`, `auto_flash_floods`, `auto_wash_away` | 1,025 | 5 |
+
+**Ten Presence buys every automation in the game.** The three names are the ones the Fear rows
+already carried in the I18N table, kept rather than invented — the Presence row and the Fear
+row it grants are the same idea at two prices, and separate names would make a player learn the
+pairing. `presence_all_unbidden` names five rows at once and takes the word they already share:
+three of them are *Unbidden* in English, and all five are *von selbst* in German.
+
+The five ability auto-casts are one row rather than five because the Presence catalogue's
+problem was dead rows, not too few of them, and because "which ability do I automate first" is
+a decision worth nobody's second Reclaim. Their Fear rows keep their prices and their spread
+(25 / 100 / 200 / 300 / 400), because the first cycle still shops from them and `auto_boon` at
+25 is plausibly the first purchase a new player ever makes.
+
+`presenceUpgradeMaxTier` answers 1 for every row here — see
+[The rows that used to lower a price](#the-rows-that-used-to-lower-a-price).
+
+### The row that grants nothing
+
+| id | does | cost |
 | --- | --- | --- |
-| `presence_tide_returns` — *Die Flut kehrt wieder* / The Tide Returns | `auto_start_round` in the Fear shop | 2 |
-| `presence_river_knows` — *Der Fluss weiß, was er braucht* / The River Knows Its Own Need | `auto_buy_abilities` in the Fear shop | 3 |
-| `presence_current_quickens` — *Die Strömung eilt* / The Current Quickens | Focus, directly — no Fear row, `abilityFocusUnlocked` reads it | 5 |
+| `presence_current_quickens` — *Die Strömung eilt* / The Current Quickens | unlocks Focus directly — no Fear row, `abilityFocusUnlocked` reads it | 5 |
 
-The first two names are the ones the Fear rows already carried in the I18N table, kept rather
-than invented: the Presence row and the Fear row it opens are the same idea at two prices, and
-giving them separate names would make a player learn the pairing. `presence_current_quickens`
-has no Fear row to name itself after, carries no `unlocks`, and is the first row in the
-catalogue to touch the board through what it opens.
+It has no Fear row to name itself after, carries no `grants`, and is the one row in the
+catalogue to touch the board through what it opens rather than through a Fear row. A structural
+test allows exactly this id to grant nothing; any other row that granted nothing would be a
+purchase the game never reacts to.
 
-The first two together cost exactly what a first Reclaim is shaped to pay (about 5), so the
-first ascension buys both. That is deliberate — the first one should read as an unambiguous
-win. Focus is priced past that first payout on purpose, as the catalogue's first real dilemma.
+The first two grants together cost exactly what a first Reclaim is shaped to pay (about 5), so
+the first ascension buys both. That is deliberate — the first one should read as an unambiguous
+win. Focus and `presence_all_unbidden` are both priced at that whole payout on purpose, as the
+point where the catalogue starts asking questions. See
+[05-progression.md](./05-progression.md#the-presence-catalogue) for the note on why that
+ordering may be worth retuning to 5 / 8 / 15.
 
-### The rows that lower a price
+### The rows that used to lower a price
 
-Seven repeatable ladders, one per automation, each carrying `discounts` instead of `unlocks`.
-A rung walks its automation one step down whichever of the two Fear ladders its price sits on —
-**500 · 300 · 200 · 100 · 50 · 25 · 10** or **400 · 200 · 100 · 50 · 25 · 10** — which share a
-tail from 200 down and differ only in that each top row skips a rung on its first step. Rungs
-cost **5 · 10 · 25 · 50 · 100 · 250** Presence by how many have already been taken.
+Seven repeatable rows lived here — `presence_boon_remembered` and its family — each carrying a
+`discounts` field and walking its automation's Fear price down a shared ladder at
+5 · 10 · 25 · 50 · 100 · 250 Presence a rung. **They are deleted.** Walking all seven to the
+bottom cost 515 Presence to save 975 Fear a cycle, against which simply holding those 515
+Presence is +515% Fear generated forever — a trade the discount loses from the first cycle in
+which it could be made, by 13× and widening. See
+[04-economy-formulas.md](./04-economy-formulas.md#what-a-grant-is-worth-against-holding-presence)
+for the arithmetic and [05-progression.md](./05-progression.md#why-the-discount-ladders-were-deleted)
+for what went with them.
 
-| id | discounts | Fear price | rungs | Presence for all |
-| --- | --- | --- | --- | --- |
-| `presence_boon_remembered` — *Der Segen bleibt in Erinnerung* / The Boon Remembered | `auto_boon` | 25 | 1 | 5 |
-| `presence_instinct_remembered` — *Der Instinkt bleibt in Erinnerung* / The Instinct Remembered | `auto_innate` | 100 | 3 | 40 |
-| `presence_bounty_remembered` — *Die Gabe bleibt in Erinnerung* / The Bounty Remembered | `auto_bounty` | 200 | 4 | 90 |
-| `presence_flood_remembered` — *Die Sturzflut bleibt in Erinnerung* / The Flood Remembered | `auto_flash_floods` | 300 | 5 | 190 |
-| `presence_current_remembered` — *Die Strömung bleibt in Erinnerung* / The Current Remembered | `auto_wash_away` | 400 | 5 | 190 |
-| `presence_need_remembered` — *Der Bedarf bleibt in Erinnerung* / The Need Remembered | `auto_buy_abilities` | 200 | 4 | 90 |
-| `presence_tide_remembered` — *Die Flut bleibt in Erinnerung* / The Tide Remembered | `auto_start_round` | 500 | 6 | 440 |
+Deleted alongside: `AUTOMATION_PRICE_LADDERS`, `PRESENCE_DISCOUNT_COSTS`, `automationLadder`,
+`automationPriceAtTier`, `PRESENCE_DISCOUNT_BY_UPGRADE`, the `discounts` field, and the tier
+chip `presenceUpgradeStatusText` drew beside a Presence row. `upgradeBaseCost` survives as a
+pass-through to `baseCost` — the one seam a future price modifier would land on.
 
-One naming family, because it is one mechanism: the island remembers what was already paid for
-and asks less the next time. Each names the Fear row it walks down, so the pairing is readable
-off the two shops without a mapping to learn.
+With them went the last repeatable Presence row, so **every row in this catalogue is flat and
+one-off**, and `presenceUpgradeMaxTier` answers 1 for all of them. A repeatable row added later
+wants a hand-written table or growth nearer 1.3–1.5: Presence income is root-shaped, and the
+Fear catalogue's 1.6 curve would kill a Presence ladder inside three tiers.
 
-**A rung count is never written here or in the catalogue** — `presenceUpgradeMaxTier` reads it
-off where the automation's own `baseCost` sits on its ladder, so repricing an automation resizes
-its descent. An automation priced off both ladders gets no rungs and keeps its full price, which
-a structural test in `tests/ascension.test.js` catches.
-
-Two further properties worth keeping straight:
-
-- **A discount is not permission.** `auto_start_round` at 10 Fear is still refused until
-  `presence_tide_returns` is bought. Two Presence rows now point at the same Fear row — one for
-  the lock, one for the price — and neither knows about the other.
-- **The floor is 10 Fear, not 0**, so an automation is still re-bought every cycle and the Fear
-  catalogue keeps its shape. See
-  [05-progression.md](./05-progression.md#the-discount-ladders).
+**A save that bought them is paid back.** `normalizeState` drops the seven dead ids like any
+unknown row, then prices their rungs and returns the Presence to the purse — up to 515, against
+a replacement catalogue that costs 10.
 
 ### The row that is not an upgrade
 
@@ -417,15 +429,16 @@ Cards are cast like abilities, reach a round only through a wave-25 drip, and su
 like every Presence purchase. The whole feature — records, Defense, Blight removal, the Fear row
 that shortens the drip — is in [10-power-cards.md](./10-power-cards.md).
 
-It is also the catalogue's first row that out-earns *holding* Presence, which is the gap the
-ladders above deliberately do not close.
+It is also the catalogue's largest sink by a wide margin, now that the discount ladders that
+used to hold 1,045 Presence are gone.
 
 ### What the catalogue still has no row for
 
 No cap extension, and nothing that pays in a *scaling* quantity. Unspent Presence multiplies Fear
-generation 1% a point, uncapped, so a fixed Fear discount cannot beat holding at any serious
-income. The ladders above are a sink and an early investment, not an answer to that — see
-[04-economy-formulas.md](./04-economy-formulas.md#these-rows-do-not-out-earn-holding-presence-and-are-not-meant-to).
+generation 1% a point, uncapped, so a fixed Fear *discount* cannot beat holding at any serious
+income — which is why the seven that tried are deleted. The grants beat it because they pay
+their rows' price every cycle for the rest of the run rather than once; see
+[04-economy-formulas.md](./04-economy-formulas.md#what-a-grant-is-worth-against-holding-presence).
 The card draw beats holding, but it terminates: seven draws and the row is finished. Its
 designed successor, a repeat draw that upgrades a card already owned, would be the first row
 that neither terminates nor loses to holding — see

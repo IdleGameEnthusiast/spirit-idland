@@ -246,40 +246,25 @@ function presenceUpgradeName(state, presenceId) {
   return (t.presenceNames && t.presenceNames[presenceId]) || presenceId;
 }
 
-/* A discount row's honest description is a price and the next price, both of which move as it is
- * bought - so it is built rather than translated, the same way the three ladders on the Fear side
- * are (see NEXT_TIER_UPGRADE_TEXT). The static `presenceTexts` entry stays in both locale tables
- * regardless, so a row is never blank because a translation is missing a key.
+/* Every Presence row is translated flat. The rows that used to be built here rather than
+ * translated were the discounts, whose honest description was a price and the next price - both
+ * of which moved as the row was bought. The discount ladders are gone (see PRESENCE_UPGRADES),
+ * and what a grant does reads the same sentence before and after it is bought, so `presenceTexts`
+ * can simply say it.
+ *
+ * Deleted with them: presenceNextTexts, presenceMaxedTexts, and presenceUpgradeStatusText - the
+ * tier chip beside a Presence row, which had no rung left to report once every row was one rung.
+ *
+ * A grant row's text names the Fear rows it hands over, and where it quotes a price at all it
+ * does so in words rather than from `baseCost`. That is a deliberate step back from the
+ * live-price rule the Fear ladders follow (see NEXT_TIER_UPGRADE_TEXT): a grant is bought once,
+ * its worth is "these rows, forever", and a number re-read every render buys nothing here that
+ * the sentence does not already say. `presence_all_unbidden` quotes none - five prices summed
+ * into one figure is arithmetic the player did not ask for, and the row names all five anyway.
  */
 function presenceUpgradeText(state, presenceId) {
   const t = locale(state);
-  const record = PRESENCE_UPGRADES[presenceId];
-  if (record && record.discounts) {
-    const parts = {
-      upgrade: upgradeName(state, record.discounts),
-      current: upgradeBaseCost(state, record.discounts)
-    };
-    if (presenceUpgradeMaxed(state, presenceId)) {
-      return template((t.presenceMaxedTexts || {}).discount, parts);
-    }
-    return template((t.presenceNextTexts || {}).discount, {
-      ...parts,
-      next: automationPriceAtTier(record.discounts, presenceUpgradeTier(state, presenceId) + 1)
-    });
-  }
   return (t.presenceTexts && t.presenceTexts[presenceId]) || "";
-}
-
-// The chip above a Presence row's note, matching upgradeStatusText on the Fear side: the rung a
-// ladder stands on, nothing at all for the three flat rows that were never on one.
-function presenceUpgradeStatusText(state, presenceId) {
-  const record = PRESENCE_UPGRADES[presenceId];
-  if (!record || !record.discounts) return "";
-  const t = locale(state);
-  return template(t.shopTierLabelMax, {
-    tier: presenceUpgradeTier(state, presenceId),
-    max: presenceUpgradeMaxTier(presenceId)
-  });
 }
 
 /* ---------- The rows that describe where they stand ----------

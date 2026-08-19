@@ -132,21 +132,23 @@
   /* ---------- The pool is behind nothing ---------- */
 
   // It used to carry `requiredForGate: false`, because 10000 Fear standing between the player
-  // and the last two purchases was a wall rather than a gate. There is no gate now: the two
-  // rows are behind Presence, which the pool has nothing to do with. This is the check that an
-  // empty pool leaves them exactly as reachable as a full one.
+  // and the last two purchases was a wall rather than a gate. There is no gate of any kind now.
+  // This is the check that an empty pool leaves the two rows exactly as reachable as a full one
+  // - which is to say entirely, at their catalogue price, in either state.
   test("haste: the pool does not stand in front of anything", () => {
     const { state } = newGame();
-    grantPresence(state, "presence_tide_returns");
-    grantPresence(state, "presence_river_knows");
+    state.meta.fear = 1e9;
 
     for (const id of ["auto_start_round", "auto_buy_abilities"]) {
-      assert(!engine.upgradeNeedsPresence(state, id), `${id} is for sale with an empty pool`);
+      assert(engine.purchaseUpgrade(state, id), `${id} is for sale with an empty pool`);
     }
 
-    grantUpgrade(state, "dahan_remember", FULL);
+    const other = newGame().state;
+    other.meta.fear = 1e9;
+    grantUpgrade(other, "dahan_remember", FULL);
     for (const id of ["auto_start_round", "auto_buy_abilities"]) {
-      assert(!engine.upgradeNeedsPresence(state, id), `${id} is no more for sale with a full one`);
+      assertEqual(engine.upgradeCost(other, id), engine.UPGRADES[id].baseCost, `${id} is priced the same beside a full pool`);
+      assert(engine.purchaseUpgrade(other, id), `${id} is no less for sale with a full one`);
     }
   });
 

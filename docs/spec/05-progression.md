@@ -25,22 +25,20 @@ of it. It is no longer literally true and has a successor — see
 first, because every row in the catalogue except the last two was built against it.
 
 Presence never touches the board directly. It buys no Dahan, shortens no clock, and adds no
-damage. What its Presence *shop* purchases buy is **permission**: a row that was not in the
-Fear catalogue is now in it, and the player still owes Fear for it. So the two currencies can
-never be balanced against each other on that axis, because a Presence purchase is not the same
-kind of thing as a Fear one — there is no exchange rate to get wrong, and no future Presence
-row can quietly do a Fear row's job at a different price.
+damage. What its *shop* purchases buy is **an automation, permanently** — a row the Fear
+catalogue already has, handed over for the rest of the run instead of rented for a cycle. So
+the two currencies are still not the same kind of thing: Fear buys power for one cycle, and
+Presence buys the right to stop paying for it.
 
-**The discount ladders sit inside that rule rather than breaking it.** They change what a Fear
-row *costs*, never what it does, so Presence still buys nothing the board can see — a
-discounted automation is the same automation. What they do introduce is an exchange rate of a
-kind, since Presence spent there is measurable in Fear saved per cycle, and
-[04-economy-formulas.md](./04-economy-formulas.md#these-rows-do-not-out-earn-holding-presence-and-are-not-meant-to)
-prices that rate out honestly rather than pretending it does not exist.
+**A grant does not change what a row does, only who owes for it.** A granted automation is the
+same automation at the same strength — Presence still buys nothing the board can see that Fear
+could not have bought. What it introduces is an exchange rate of a kind, since a grant is
+measurable in Fear saved per cycle, and that rate is priced out honestly in
+[04-economy-formulas.md](./04-economy-formulas.md#what-a-grant-is-worth-against-holding-presence).
 
 It also means the Fear shop is the only place power is bought *through spending*, which keeps
-one catalogue to balance rather than two. A Presence purchase changes the *shape* of that
-catalogue and nothing about the numbers inside it.
+one catalogue to balance rather than two. A Presence purchase changes who pays a row's price,
+never the numbers inside it.
 
 **Holding Presence is the one exception.** Presence still sitting unspent multiplies every Fear
 source by 1% a point — see [Presence multiplies Fear generation, and does not
@@ -163,12 +161,14 @@ magnitudes are not balanced yet.
 | `high_water_mark` | Every 10th wave pays 10% of its own number as Fear | Yes, max tier 10 | 12 |
 | `dahan_remember` | Fear invested shortens the Dahan strike clock, to half at 10000 | Yes, a pool: max tier 10000 | 1 (flat) |
 | `unlock_<ability_id>` | Unlocks a new ability for the ability bar | No, one-time | — |
-| `auto_buy_abilities` | Energy spends itself on the bar | No, one-time. **Presence-locked** | 200 |
-| `auto_start_round` | An ended round starts the next one | No, one-time. **Presence-locked** | 500 |
+| `auto_buy_abilities` | Energy spends itself on the bar | No, one-time | 200 |
+| `auto_start_round` | An ended round starts the next one | No, one-time | 500 |
 
-The two Presence-locked rows are **absent from the shop** until their Presence purchase is
-made, not listed and dead: the shop lists what Fear can buy, and until then the only place
-either is named is the ascension panel's catalogue, which is where they are opened from.
+**No row here is locked.** The last two shed a completion gate and then a Presence unlock, and
+both are gone: a first cycle that saves 700 Fear can buy them and idle itself without ever
+ascending. What a Presence row does to these seven automations is hand them over permanently,
+so the price above stops being owed at all — see
+[The Presence catalogue](#the-presence-catalogue).
 
 ### headwaters
 
@@ -358,76 +358,77 @@ reads better than a run that remembers every attempt.
 
 ### The Presence catalogue
 
-Three shapes of row. The first two unlock a Fear row that already exists and is currently
-behind nothing at all. The third unlocks a capability directly, with no Fear row behind it. The
-seven after that change what a Fear row *costs* without touching what it buys.
+Two shapes of row. Three of them **grant** Fear rows outright and forever; the fourth unlocks a
+capability directly, with no Fear row behind it.
 
-| Presence id | Unlocks | Presence cost |
-| --- | --- | --- |
-| `presence_tide_returns` | `auto_start_round` in the Fear shop (500 Fear) | 2 |
-| `presence_river_knows` | `auto_buy_abilities` in the Fear shop (200 Fear) | 3 |
-| `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | 5 |
-| the seven `*_remembered` rows | one rung off an automation's Fear price — see [The discount ladders](#the-discount-ladders) | 5 → 250 by rung |
+| Presence id | Grants | Fear price it retires | Presence cost |
+| --- | --- | --- | --- |
+| `presence_tide_returns` | `auto_start_round` | 500 a cycle | 2 |
+| `presence_river_knows` | `auto_buy_abilities` | 200 a cycle | 3 |
+| `presence_all_unbidden` | all five ability auto-casts | 1,025 a cycle | 5 |
+| `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | — | 5 |
 
-A first Reclaim pays about 5, so it buys exactly the first two — that is deliberate, and it is
-the reason `presence_current_quickens` is priced *past* that first payout rather than inside
-it: the first ascension should still read as an unambiguous win, and the third row is the first
-real dilemma the catalogue asks, not a freebie that rides along with the other two.
+**Ten Presence buys every automation in the game, for the rest of the run.** A granted row is
+owned on the far side of a Reclaim: `ascend` empties `upgrades.purchased`, and `upgradeTier`
+reads the grant out of the Presence catalogue instead, so the new cycle's first round already
+runs itself.
 
-**The Fear price is still owed, every cycle** — for the first two rows. Unlocking *The Tide
-Returns* does not hand the player an automated round; it puts a 500 Fear row in the shop. So
-each cycle opens hand-played and the player buys their way back to idle, and 500 Fear is a real
-decision against the five tiers of `rising_dread` it would otherwise buy. **That is the trade
-those two rows are for: play this cycle actively, or pay to idle it.** `presence_current_quickens`
-is a different shape of purchase — see [The two layers](#the-two-layers) for why, and
-[04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown)
-for what it actually costs to use once bought.
+A first Reclaim pays about 5, so it buys the first two with nothing left over — deliberate, and
+the reason the other two rows are priced at exactly that payout rather than inside it: the
+first ascension should read as an unambiguous win, and the second is where the catalogue starts
+asking questions.
 
-### The discount ladders
+**A note on the ordering, which is the one figure here most worth retuning after a played
+cycle.** The two dearest automations in the Fear shop are the two cheapest in Presence, so the
+first Reclaim ends the hand-played round loop outright and `presence_all_unbidden` — five rows
+worth 1,025 Fear a cycle for 5 Presence — waits for the second. Staging it the other way round,
+so the first ascension smooths the round and the second stops needing a hand on it, wants
+roughly **5 / 8 / 15** in place of 2 / 3 / 5.
 
-Seven repeatable rows, one per automation, each walking its automation down a price ladder.
-There are two, sharing a tail from 200 Fear down: **500 · 300 · 200 · 100 · 50 · 25 · 10** and
-**400 · 200 · 100 · 50 · 25 · 10**. A row's rung count is whatever is left under its automation's
-current price, so *The Flood Unbidden* at 300 Fear has five rungs and *Boon Unbidden* at 25 has
-one. Rungs cost **5 · 10 · 25 · 50 · 100 · 250 Presence** by how many have already been taken,
-which makes the full set 1,045 Presence. The per-row arithmetic is in
-[04-economy-formulas.md](./04-economy-formulas.md#the-automation-discount-ladders).
+**Nothing in the Fear catalogue is locked.** Before the grants, `auto_start_round` and
+`auto_buy_abilities` sat behind a Presence row and owed their Fear price again every cycle
+after it. Both halves are gone: every row is buyable at its listed price from the first round
+of the first cycle, and what Presence sells is not permission but the end of the bill. A first
+cycle that saves 500 Fear can idle itself without ever ascending; what ascending buys is not
+having to do it again.
 
-Four decisions inside that, each load-bearing:
+### Why the discount ladders were deleted
 
-- **The floor is 10 Fear, not 0.** A row still owed something is still re-bought every cycle, so
-  the automations stay purchases a cycle makes rather than switches a save carries. That keeps
-  the shape of the trade above — *play this cycle actively, or pay to idle it* — intact even at
-  the bottom of every ladder. What a fully-discounted run buys is that the toll stops being a
-  decision, not that it disappears.
-- **The price ladders are shared, not per-row.** Two descents to learn instead of seven, and a
-  row's remaining rungs are readable off where its price already sits. The second exists only to
-  shorten the top two rows: below 300 the two ladders are the same list, so every row a player
-  meets early descends exactly as it always did.
-- **The cost curve is steep and the payoff shrinks.** Deliberately: the first rungs are a good
-  early investment and the last are an endgame sink — though a smaller one than it was, since
-  cutting the Presence costs at the end took each shortened row's *most expensive* rung and
-  brought the set down from 1,795. See
-  [04-economy-formulas.md](./04-economy-formulas.md#these-rows-do-not-out-earn-holding-presence-and-are-not-meant-to)
-  for the arithmetic, and for the honest admission that no rung beats simply holding the
-  Presence once a cycle's income gets large.
-- **They are the first repeatable Presence rows, and the third shape in the catalogue.** A
-  discount is not permission: a Presence-locked row stays locked at 10 Fear exactly as it was at
-  500. Two Presence rows can now point at the same Fear row — one for the lock, one for the
-  price — and they do not know about each other.
+Seven repeatable rows used to sit here, one per automation, each walking its automation's Fear
+price down a shared ladder at 5 · 10 · 25 · 50 · 100 · 250 Presence a rung. They are gone, and
+the reason is arithmetic rather than taste.
 
-They are also the answer to the sink problem the layer shipped with: before them the whole
-Presence catalogue cost 10 points, and everything a player earned past that had nowhere to go.
+Walking all seven to the bottom cost **515 Presence** and saved **975 Fear a cycle**. Holding
+those same 515 Presence instead is **+515% Fear generated**, uncapped, for the rest of the run
+(see [Presence](#presence)). Those two break even at about **190 Fear generated in a cycle** —
+and the ascension gate will not let a player Reclaim at all until they have generated 2,500. So
+the rows lost to *doing nothing with the Presence* by a factor of thirteen at the earliest
+moment they could be bought, and by more every cycle after. They were not a weak rung on a good
+ladder; they were seven rows that were never correct to buy, which is a worse thing for a
+prestige catalogue to contain than no rows at all.
+
+The old design defended a property that went with them: the ladders bottomed out at **10 Fear
+rather than 0**, so that an automation stayed "a purchase a cycle makes rather than a switch a
+save carries." That is now false by design. What the property was really protecting was a
+per-cycle chore, and a prestige layer whose reward is *do the shopping again, slightly cheaper*
+is the thing the grants exist to remove.
+
+**Saves are paid back.** `normalizeState` drops the seven dead ids like any other unknown row,
+then prices the rungs a save had bought and returns the Presence to the purse — up to 515 of
+it, against a replacement catalogue that costs 10. See
+[08-acceptance-tests.md](./08-acceptance-tests.md#ascension-and-presence).
 
 ## What Is Not Yet Progression
 
 - No additional spirit unlocks.
-- No Presence rows beyond the eleven now implemented. The eleventh is the **power card draw**
+- No Presence rows beyond the five now implemented. The fifth is the **power card draw**
   in [10-power-cards.md](./10-power-cards.md#buying-the-draw), a repeatable row on the same 1.6
   curve, three cards offered and one kept, 432 Presence for all seven.
-- That row is also the first answer to the gap this list has been carrying. A fixed Fear
-  discount cannot beat the passive +1%-a-point bonus unspent Presence returns (see
-  [Presence](#presence)), so no existing purchase out-earns holding. A card does: 432 Presence
+- That row is also an answer to the gap this list has been carrying, and the grants are the
+  other. A fixed Fear *discount* could not beat the passive +1%-a-point bonus unspent Presence
+  returns (see [Presence](#presence)) — which is why the seven that tried are deleted. A grant
+  can, because it is worth its rows' price every cycle for the rest of the run rather than once.
+  A card does too: 432 Presence
   held is worth about +1.5 Fear/s at a typical income, the four Fear-paying cards produce
   roughly the same **and** lengthen the round earning it. Spending wins by a factor of two or
   three — enough to be the obvious buy, not enough to make holding foolish. See

@@ -820,12 +820,13 @@ auto_innate          baseCost 100  one-off
 auto_bounty          baseCost 200  one-off
 auto_flash_floods    baseCost 300  one-off
 auto_wash_away       baseCost 400  one-off
-auto_buy_abilities   baseCost 200  one-off, Presence-locked
-auto_start_round     baseCost 500  one-off, Presence-locked
+auto_buy_abilities   baseCost 200  one-off
+auto_start_round     baseCost 500  one-off
 ```
 
 A cycle's whole catalogue, pool aside, is **7,031 Fear**: 699 + 47 + 903 for the three capped
-ladders, 1089 + 1089 + 2179 for the Fear ladders, and 1,025 + 700 for the seven automations.
+ladders, 1089 + 1089 + 2179 for the Fear ladders, and 1,025 + 700 for the seven automations
+(all seven still buyable with Fear alone; Presence grants them rather than unlocking them).
 That figure is worth knowing because it is what a cycle is measured against — and because
 every Fear purchase in it is given back at the next ascension.
 
@@ -929,12 +930,13 @@ finished any more — that is the point of
 that never arrives is not a gate, it is a wall, and the two rows behind it would have been
 unreachable rather than merely late.
 
-What replaces it is one predicate, `upgradeNeedsPresence(state, id)`, and it reads the
-Presence catalogue rather than the Fear one. A row is locked when its Presence unlock is
-unbought, and nothing about the Fear purse changes that — the same shape the old lock had, and
-`purchaseUpgrade` still refuses before it looks at the price. The shop reads the same predicate
-to decide the row is not drawn at all, so the refusal is a guard on the engine side rather than
-something a player can walk into.
+**Nothing replaces it.** A `presenceUnlock` predicate did for a while — a row was refused until
+its Presence row was bought, and the shop did not draw it — and it failed the same way one step
+further out: it asked for an ascension to reach the row and then asked for the Fear again every
+cycle after. Both are gone, along with `upgradeNeedsPresence`, `upgradePresenceUnlock` and the
+field itself. Every row in the Fear catalogue is buyable at its listed price from the first
+round of the first cycle. What Presence sells is not permission to pay but the end of the bill
+— see [What a grant is worth against holding Presence](#what-a-grant-is-worth-against-holding-presence).
 
 The growth rate is what keeps the shop from being a flat checklist, and it has not been
 checked against how much Fear a round actually earns at depth.
@@ -942,14 +944,18 @@ checked against how much Fear a round actually earns at depth.
 ### Presence prices, and why they are not on this curve
 
 ```txt
-presence_tide_returns      2 Presence   unlocks auto_start_round   (500 Fear, still owed)
-presence_river_knows       3 Presence   unlocks auto_buy_abilities (200 Fear, still owed)
-presence_current_quickens  5 Presence   unlocks Focus directly - no Fear row to still owe
+presence_tide_returns      2 Presence   grants auto_start_round     (500 Fear a cycle, retired)
+presence_river_knows       3 Presence   grants auto_buy_abilities   (200 Fear a cycle, retired)
+presence_all_unbidden      5 Presence   grants the five auto-casts (1025 Fear a cycle, retired)
+presence_current_quickens  5 Presence   unlocks Focus directly - no Fear row behind it
+                          --
+                          15 Presence   for the whole catalogue; 10 of it for every automation
 ```
 
-Flat prices, no curve, because none of the three rows is repeatable and there is nothing to
-shape. The seven discount ladders below are the repeatable ones, and they are priced by their
-own table rather than by any growth rate.
+Flat prices, no curve, because no row is repeatable and there is nothing to shape. There used
+to be seven repeatable discount ladders here priced by a table of their own; they are deleted,
+and [What a grant is worth against holding Presence](#what-a-grant-is-worth-against-holding-presence)
+is the arithmetic that killed them.
 
 `presence_current_quickens` breaks the pattern the first two set: it does not open a row in the
 Fear shop, it flips `abilityFocusUnlocked` directly (see
@@ -959,103 +965,55 @@ lump the Presence row unlocked. This is also the first Presence row to touch the
 than gate a Fear row; see [05-progression.md](./05-progression.md#the-two-layers) for how that
 sits against "Presence never touches the board."
 
-### The automation discount ladders
+### What a grant is worth against holding Presence
 
-```txt
-AUTOMATION_PRICE_LADDERS   500       300  200  100  50  25  10     (Fear)
-                                400       200  100  50  25  10     (Fear)
-PRESENCE_DISCOUNT_COSTS      5   10   25   50  100  250            (Presence, by rung taken)
-```
+A Presence row hands an automation over permanently. What it is worth is that automation's Fear
+price, **every cycle for the rest of the run** — against which the alternative is not another
+row but *not spending at all*, since Presence held pays
+[1% more Fear generated per point](#presence-multiplies-too-and-does-not-cap), uncapped.
 
-Every automation's Fear price is a rung of one of the two ladders, and each Presence rung bought
-walks it one step to the right along that same ladder. From 200 down the two are the same list,
-so the split only ever touches the top two rows: **500 steps straight to 300 and 400 straight to
-200**, each skipping a rung and so finishing one rung sooner. How many rungs a row has is read
-off where its automation already sits, never written twice:
-
-```txt
-auto_start_round     500 Fear   6 rungs    440 Presence for all of them
-auto_wash_away       400 Fear   5 rungs    190
-auto_flash_floods    300 Fear   5 rungs    190
-auto_bounty          200 Fear   4 rungs     90
-auto_buy_abilities   200 Fear   4 rungs     90
-auto_innate          100 Fear   3 rungs     40
-auto_boon             25 Fear   1 rung       5
-                                          ----
-                                          1,045 Presence for the whole set
-```
-
-`PRESENCE_DISCOUNT_COSTS` was cut **at the end** to match, dropping the 500 entry. That is what
-makes the set so much cheaper to finish than the 1,795 the single 500…10 ladder charged: a row
-that loses a rung loses its *most expensive* one, so `auto_start_round` falls 940 → 440 and
-`auto_wash_away` 440 → 190. Nothing anywhere costs 500 Presence a rung any more, and only
-`auto_start_round` ever reaches 250.
-
-Two notes on what this trades away, both accepted:
-
-- **Equal totals across unequal rows.** `auto_wash_away` and `auto_flash_floods` both finish at
-  190 Presence while saving 390 and 290 Fear a cycle, so the 300 row is the worse deal at an
-  identical price. Rung counts are integers and the cost list is positional, so rows of similar
-  length will always tie somewhere; the rows are not alternatives — a run buys all seven — so
-  the tie only sets purchase order, and buying the bigger saving first is already the right call.
-- **The endgame sink is much smaller.** The whole set now costs less than three times the seven
-  power cards (432 — see [10-power-cards.md](./10-power-cards.md)), and completes inside a cycle
-  a player is still paying attention to rather than long after the Fear stopped mattering.
-
-It bottoms out at 10 rather than 0 so the automations stay purchases a cycle makes rather than
-switches a save carries — see [05-progression.md](./05-progression.md#the-discount-ladders).
-
-**The value per Presence spent falls off a cliff, and that is the design.** Take the 500 Fear
-row rung by rung:
-
-| rung | step | Presence | Fear saved a cycle | Fear per Presence |
-| --- | --- | --- | --- | --- |
-| 1 | 500 → 300 | 5 | 200 | 40 |
-| 2 | 300 → 200 | 10 | 100 | 10 |
-| 3 | 200 → 100 | 25 | 100 | 4 |
-| 4 | 100 → 50 | 50 | 50 | 1 |
-| 5 | 50 → 25 | 100 | 25 | 0.25 |
-| 6 | 25 → 10 | 250 | 15 | 0.06 |
-
-The cost climbs 50× while what a rung saves falls from 200 Fear to 15, so the last rung is some
-650× worse than the first. **The early rungs are the investment and the late ones are a sink**,
-and they are meant to be read that way rather than as a ladder a player climbs evenly. The split
-sharpens the first rung in particular — 5 Presence for 200 Fear a cycle is the best single buy
-in either shop, and it lands on the two rows a player already feels most.
-
-### These rows do not out-earn holding Presence, and are not meant to
-
-The comparison that matters is not rung against rung, it is any rung against *not spending*.
-Presence held pays [1% more Fear generated per point](#presence-multiplies-too-and-does-not-cap),
-uncapped, so spending `P` Presence to save `S` Fear a cycle wins only while
+Spending `P` Presence to retire `S` Fear a cycle beats holding while
 
 ```txt
 cycleFearGenerated  <  100 * S / P
 ```
 
-which for the six rungs above is 4,000 / 1,000 / 400 / 100 / 25 / 6 Fear a cycle. And a purse
-holding 250 Presence implies cycles generating hundreds of thousands (the payout is a root — see
-[The ascension payout](#the-ascension-payout)). So a fixed Fear discount is a losing trade against
-the hold bonus at almost any income, and the deep rungs lose by orders of magnitude.
+```txt
+row                        P    S       break-even cycleFearGenerated
+presence_tide_returns      2    500     25,000
+presence_river_knows       3    200      6,667
+presence_all_unbidden      5   1025     20,500
+                          --   ----
+all three                 10   1725     17,250
+```
 
-That is known and accepted rather than an oversight. What these rows are for:
+Ten Presence retires 1,725 Fear a cycle, and holding that same 10 only catches up once a cycle
+generates 17,250. Even past that point the comparison is academic: 10 Presence is a rounding
+error against any purse that has seen a few Reclaims, so the grants are bought once, early, and
+never thought about again. That is what a cheap permanent purchase should feel like.
 
-- **Early, they are a genuinely good buy.** A cycle generating a couple of thousand Fear is one
-  where 200 Fear off a 500 Fear row is real money, and 5 Presence is a rung the second or third
-  Reclaim can reach. The split made this end of the curve better, not worse.
-- **Late, they are somewhere to put Presence.** Before them the catalogue held 10 Presence
-  total and every point past that had no in-system use at all. 1,045 is a floor under that
-  problem without capping the hold bonus, which stays uncapped on purpose — a lower floor than
-  the 1,795 the single ladder set, and the reason the power card draws
-  ([10-power-cards.md](./10-power-cards.md)) now carry more of the late sink than these do.
+**This is the comparison the deleted discount ladders failed.** They charged 515 Presence to
+save 975 Fear a cycle, which breaks even at a cycle generating **189** Fear — and
+`ASCENSION_UNLOCK_PRESENCE` forbids a Reclaim until the cycle has generated 2,500. They were
+behind holding by 13× at the earliest moment they could be bought, and further every cycle
+after. The old text in this section admitted as much and argued the rows were "an endgame sink"
+worth having anyway; a sink nobody should ever buy is not a sink, it is seven dead rows.
 
-The thing to get right if a *differently shaped* repeatable Presence row is added: **Presence
-income is root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth would
-outrun it inside three tiers and every rung past the third would be dead. The ladders above
-sidestep that with a hand-written table rather than a growth rate, and a new row wants either
-the same treatment or something nearer 1.3–1.5. A row meant to actually beat holding Presence
-has to pay in something that *scales* — a multiplier, or a permanence — because a fixed Fear
-amount provably cannot.
+It also settles the question the old section closed on. It said a row that beats holding must
+pay in something that *scales* — "a multiplier, or a permanence — because a fixed Fear amount
+provably cannot." A grant is the permanence. The discount was the fixed amount.
+
+**What it costs the Fear catalogue.** Once all three are bought, 1,725 Fear a cycle stops being
+spent on automations and goes to the three Fear ladders instead. That is intended — it is the
+whole reward — but it means every cycle after the second opens meaningfully richer than the
+first, and the ladders are where that surplus lands. Worth watching in a played cycle; nothing
+in the formulas compensates for it today.
+
+**If a differently shaped repeatable Presence row is added**, the thing to get right is that
+**Presence income is root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth
+would outrun it inside three tiers and every rung past the third would be dead. A new repeatable
+row wants a hand-written table or something nearer 1.3–1.5 growth, and — per the rule above —
+it has to pay in a multiplier or a permanence if it is meant to be worth buying at all.
 
 ## Offline Handling
 

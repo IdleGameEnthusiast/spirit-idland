@@ -189,6 +189,21 @@ function rebuildSpentFear(purchased) {
   return Math.max(0, Math.floor(spent));
 }
 
+/* The seven Presence rows deleted when automations became permanent grants, and what their
+ * rungs cost, kept only so normalizeState can pay a save back for them. Nothing else reads
+ * either: they describe a catalogue that no longer exists.
+ */
+const RETIRED_PRESENCE_DISCOUNT_IDS = [
+  "presence_boon_remembered",
+  "presence_instinct_remembered",
+  "presence_bounty_remembered",
+  "presence_flood_remembered",
+  "presence_current_remembered",
+  "presence_need_remembered",
+  "presence_tide_remembered"
+];
+const RETIRED_PRESENCE_DISCOUNT_COSTS = [5, 10, 25, 50, 100, 250];
+
 function normalizeState(raw) {
   const base = createInitialState();
   const input = raw && typeof raw === "object" ? raw : {};
@@ -327,9 +342,8 @@ function normalizeState(raw) {
 
   // Rebuilt from the Presence registry, never merged over it - the same rule upgrades.purchased
   // and ui.autoCast follow, so a save cannot smuggle in a row the catalogue no longer has.
-  // Clamped to the row's own top rather than to 1: the discount rows are ladders, and a save
-  // that names a rung the ladder no longer has is priced as the rung it now is - the same rule
-  // the Fear tiers above follow.
+  // Clamped to the row's own top, which is 1 for every row now that no Presence row is a
+  // ladder; the clamp stays in the shape the Fear tiers above use rather than assuming that.
   const presencePurchased = {};
   for (const id of PRESENCE_UPGRADE_IDS) {
     const value = (merged.presenceUpgrades.purchased || {})[id];
@@ -337,21 +351,39 @@ function normalizeState(raw) {
     if (tier > 0) presencePurchased[id] = Math.min(tier, presenceUpgradeMaxTier(id));
   }
 
-  /* Grandfathering, and the only place normalization *writes* a Presence row rather than
-   * reading one.
+  /* Refunding the seven discount rows, which the loop above has just dropped on the floor.
    *
-   * `auto_start_round` and `auto_buy_abilities` were bought with Fear alone under the old
-   * completion gate. Putting them behind Presence must not take back a purchase already made,
-   * so a save that owns the Fear row is handed the Presence row that now opens it.
+   * They were repeatable rows that walked an automation's Fear price down a ladder, deleted
+   * because holding the Presence beat buying them at every rung (see the note above
+   * PRESENCE_UPGRADES). Dropping an id the catalogue no longer has is the right rule and the
+   * one every other registry follows - but a save that had walked all seven to the bottom had
+   * 515 Presence in them, and silently keeping it would be taking back a purchase rather than
+   * replacing it. So the tiers are priced at what they cost and paid back into the purse, where
+   * the rows that replaced them are waiting at 2, 3 and 5.
    *
-   * Idempotent by construction: the grant is a set to 1, not an increment, so loading the same
-   * save twice cannot pay twice. And it runs off `purchased` above rather than the raw save,
-   * so a doctored id that was already dropped cannot mint Presence on the way past.
+   * The price table is inlined here rather than left in content.js. It is migration data now,
+   * not balance: nothing in the live game has rungs to price, and a constant kept in the
+   * catalogue for one loader to read is a constant the next reader has to rule out.
+   *
+   * The same three properties the grandfathering it replaces had:
+   *
+   * - It only fires when a dead id is present, and the write it does is to `presence`. A save
+   *   written after this change carries none of these ids, so it is never touched again.
+   * - It reads the raw save rather than `presencePurchased`, because the whole point is the ids
+   *   that did not survive the rebuild - but it prices only ids on the dead list, so a doctored
+   *   row cannot mint Presence here.
+   * - Tiers are clamped to the table's length before they are summed, so a save claiming rung
+   *   400 of a six-rung ladder is refunded the six it could actually have bought.
    */
-  for (const id of Object.keys(purchased)) {
-    const required = upgradePresenceUnlock(id);
-    if (required && PRESENCE_UPGRADES[required]) presencePurchased[required] = 1;
+  const rawPresence = (input.presenceUpgrades && input.presenceUpgrades.purchased) || {};
+  let refund = 0;
+  for (const id of RETIRED_PRESENCE_DISCOUNT_IDS) {
+    const raw = rawPresence[id];
+    const tier = raw === true ? 1 : Math.max(0, Math.floor(Number(raw) || 0));
+    const rungs = Math.min(tier, RETIRED_PRESENCE_DISCOUNT_COSTS.length);
+    for (let i = 0; i < rungs; i += 1) refund += RETIRED_PRESENCE_DISCOUNT_COSTS[i];
   }
+  if (refund > 0) merged.meta.presence = Math.max(0, Math.floor(Number(merged.meta.presence) || 0)) + refund;
 
   merged.presenceUpgrades.purchased = presencePurchased;
 
