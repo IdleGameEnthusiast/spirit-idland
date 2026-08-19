@@ -79,18 +79,26 @@ a whole record of its own:
   "id": "innate_power",
   "unlockCost": 0,
   "tiers": [
-    { "cooldownSeconds": 16, "needsTarget": true, "effect": "push_invaders", "pushCount": 1, "upgradeCost": 40 },
-    { "cooldownSeconds": 30, "needsTarget": true, "effect": "damage_and_push", "damage": 2, "pushCount": 3, "upgradeCost": 150 },
-    { "cooldownSeconds": 44, "needsTarget": true, "effect": "damage_each_invader", "damage": 2 }
+    { "cooldownSeconds": 16, "focusBaseCost": 3,  "focusCostGrowth": 1.5,  "focusFloorBeats": 3, "upgradeCost": 40 },
+    { "cooldownSeconds": 30, "focusBaseCost": 8,  "focusCostGrowth": 1.5,  "focusFloorBeats": 5, "upgradeCost": 150 },
+    { "cooldownSeconds": 44, "focusBaseCost": 25, "focusCostGrowth": 1.25, "focusFloorBeats": 8 }
   ]
 }
 ```
+
+(`needsTarget`, `effect` and the effect's own fields are elided above to keep the Focus columns
+readable; every tier carries them.)
 
 A tier replaces the record wholesale rather than modifying the one below it, so tier 2 is a
 different ability standing in the same slot and nothing has to reason about which fields a tier
 may override. **Read a record through `abilityRecord(state, id)`, never straight out of
 `ABILITIES`** — the raw entry for a tiered ability has no `cooldownSeconds` and no `effect` of
 its own, and a caller reaching past it gets a record that quietly does nothing.
+
+That "wholesale" rule is what lets the **Focus** fields be authored per tier, which
+`innate_power` is the only ability to need: `abilityFocusBaseCost` and `abilityFocusCostGrowth`
+read `abilityRecord` too, so a tier's anchor and growth answer for the tier standing in the
+slot. See [04-economy-formulas.md](./04-economy-formulas.md#the-innates-three-ladders).
 
 ### The Ability Set
 
@@ -109,6 +117,12 @@ shared damage rule, and the shared push rule.
   effect that per-unit health exists for: against 4 explorers, 2 towns and 2 cities it kills
   everything but the cities and leaves both of those at 1 health, which the old per-type damage
   model could not describe.
+- Focus: a ladder **per tier**, since one anchor cannot be right for three cooldowns — 3 / 1.5,
+  8 / 1.5, 25 / 1.25, running 8 → 3, 15 → 5 and 22 → 8 beats. Tier 1's whole ladder costs 40,
+  which is exactly what tier 2 costs. The Energy invested carries across an upgrade rather than
+  the rungs, so a tier change grants whatever rungs of the new ladder it covers and discounts
+  the next — nothing is lost. See
+  [04-economy-formulas.md](./04-economy-formulas.md#the-innates-three-ladders).
 
 #### `boon_of_vigor`
 
@@ -224,7 +238,13 @@ So every row can sink into the shop's sold-out half, and none shows a bare price
   Each tier shortens the gap between power-card draws by one wave, 20 at tier 0 down to 10 at
   tier 10; the first draw stays at wave 25. See
   [10-power-cards.md](./10-power-cards.md#the-fear-row) for the cost table and the honest note
-  that its rungs are lumpy against a 70-wave round.
+  that its rungs are lumpy against a 70-wave round. It is also the catalogue's only row with a
+  **`revealedBy`**: `"power_card_owned"` keeps it off the shop list until the player owns a
+  first power card, since until then its text prices a drip they have nothing to receive. A
+  reveal is not a lock — `upgradeRevealed` decides whether the row is printed and nothing
+  else, `purchaseUpgrade` never consults it, and `orderedUpgradeIds` simply leaves an
+  unrevealed row out of both halves. See
+  [10-power-cards.md](./10-power-cards.md#it-is-not-on-the-shelf-until-the-first-card-is-bought).
 - `unlock_<ability_id>` — one-time, adds an ability the active spirit's kit does not contain.
   **The machinery is implemented and no catalogue row uses it.** Unlocking a *kit* ability is
   now Energy's job and does not go through the shop at all; this key remains the path for a

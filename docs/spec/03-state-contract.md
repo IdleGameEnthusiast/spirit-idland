@@ -339,15 +339,24 @@ Fields the first draft of this contract did not have. Each earns its place:
   anything that should not survive one must be.
 - **`round.awaitingWave`** — the gate itself, described above. It is in `round` and not `ui`
   precisely because it *is* round state: it dies with the round that raised it.
-- **`round.abilityFocus`** — Focus purchase counts, keyed by ability id (`{ [abilityId]:
-  purchases }`, absent or 0 dropped). Round-scoped exactly like `round.abilityTiers` and
-  `round.purchasedAbilityIds` beside it: it is bought with the round's own Energy, so it is
-  wiped by the same `startRound` that wipes them. Not the cooldown itself — that is
-  `abilityFocusedCooldownSeconds(id)`, replayed from the count against the ability's current
-  record, so the two can never disagree. A count above the ability's ladder length is kept as
-  bought and simply rests on the floor, which is what lets an Innate tier change shorten the
-  ladder without spending purchases back. See
+- **`round.abilityFocusEnergy`** — Energy invested in Focus, keyed by ability id (`{
+  [abilityId]: energy }`, absent or 0 dropped). Round-scoped exactly like `round.abilityTiers`
+  and `round.purchasedAbilityIds` beside it: it is bought with the round's own Energy, so it is
+  wiped by the same `startRound` that wipes them.
+
+  **What is stored is the spend, not the rungs it bought.** Both the rung count
+  (`abilityFocusPurchases(id)`) and the cooldown (`abilityFocusedCooldownSeconds(id)`) are read
+  back off it against the ability's *current* record, so no two of the three can disagree. That
+  is what makes an Innate tier change lossless: each tier names its own ladder, and the same
+  investment re-read against a longer, dearer one buys however many of its rungs it covers,
+  leaving the remainder as a discount on the next. A sum above the current ladder's whole price
+  is kept as spent and simply rests on the floor — it is still owed the rungs of whatever tier
+  the ability lands on next. See
   [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown).
+
+  A save written while Focus counted rungs (`round.abilityFocus`) is migrated on load: each
+  count is priced on the ladder that save's own `abilityTiers` puts in front of it, and the
+  total is carried as Energy. The old field is deleted rather than left to disagree.
 
 ## `abilities` Shape
 

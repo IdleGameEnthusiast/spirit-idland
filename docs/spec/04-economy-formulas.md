@@ -722,25 +722,34 @@ the first one (`cooldownReductionPct` is a stub read as `0`); the second is full
 ### Focus: spending Energy mid-round to shorten a cooldown
 
 ```txt
-purchases            = round.abilityFocus[id] or 0
-stepBeats(id)         = ABILITIES[id].focusStepBeats, if the record carries one
+invested             = round.abilityFocusEnergy[id] or 0
+stepBeats(id)         = record(id).focusStepBeats, if the record carries one
                        = FOCUS_STEP_BEATS_DEFAULT (1), otherwise
-floorBeats(id)        = ABILITIES[id].focusFloorBeats, if the record carries one
+floorBeats(id)        = record(id).focusFloorBeats, if the record carries one
                        = ceil(cooldownBeats(id) / 3), otherwise
 maxPurchases(id)      = floor((cooldownBeats(id) - floorBeats(id)) / stepBeats(id))
 
-abilityFocusedCooldownSeconds(id) =
-    max(floorBeats(id),
-        cooldownBeats(id) - min(purchases, maxPurchases(id)) * stepBeats(id)) * TIME_SCALE
-
-focusBaseCost(id)     = ABILITIES[id].focusBaseCost, if the record carries one
+focusBaseCost(id)     = record(id).focusBaseCost, if the record carries one
                        = ABILITIES[id].unlockCost, if nonzero
                        = FOCUS_BASE_COST_FALLBACK (3), otherwise (only boon_of_vigor)
-costGrowth(id)        = ABILITIES[id].focusCostGrowth, if the record carries one
+costGrowth(id)        = record(id).focusCostGrowth, if the record carries one
                        = FOCUS_COST_GROWTH_DEFAULT (1.5), otherwise
-abilityFocusCost(id)  = round(focusBaseCost(id) * costGrowth(id)^purchases)
-                       = Infinity once purchases has reached maxPurchases(id)
+
+ladderTotal(id, n)    = sum over k in [0, n) of round(focusBaseCost(id) * costGrowth(id)^k)
+
+purchases(id)         = the largest n <= maxPurchases(id) with ladderTotal(id, n) <= invested
+abilityFocusCost(id)  = ladderTotal(id, purchases(id) + 1) - invested
+                       = Infinity once purchases(id) has reached maxPurchases(id)
+
+abilityFocusedCooldownSeconds(id) =
+    max(floorBeats(id),
+        cooldownBeats(id) - purchases(id) * stepBeats(id)) * TIME_SCALE
 ```
+
+`record(id)` throughout is `abilityRecord(state, id)` — the *tier* standing in the slot, not the
+raw catalogue entry — so a tiered ability answers for what it is right now, anchor and growth
+included. See [The Innate's three ladders](#the-innates-three-ladders) below, the only place
+that matters today.
 
 A purchase is a live, mid-round spend against the ability's own cooldown — not the same
 mechanism as `round.abilityCooldownMult` above, which is a shop purchase frozen at round setup.
@@ -757,20 +766,29 @@ throughput than the one before it, because a beat off 5 is worth far more than a
 and the price is left free to grow without leaving dead rungs behind it. What ends the ladder
 is the floor.
 
+**What the round stores is Energy invested, not rungs bought.** `purchases(id)` is a *reading*
+of that investment against the ladder in front of it, the same "replay it, never cache it" rule
+`difficultyLadder` follows — and `ladderTotal` sums the **rounded** rung prices, the ones the bar
+actually quoted, so paying each in turn lands the running total exactly on each rung. On a ladder
+climbed rung by rung that makes `abilityFocusCost` identical to the old sticker price
+`round(base * growth^purchases)`; the two part company only when the investment is re-read
+against a *different* ladder, which is exactly the case it exists to handle. See
+[What an upgrade does to the investment](#what-an-upgrade-does-to-the-investment).
+
 The unlock price is only the **default** anchor — what an ability costs to have is a fair
 reading of what it is worth hastening — and the growth is only the default rate. Both are
 overridable per ability, because ladder length varies fourfold across the kit: 1.5 a rung is
 right for the Boon's eight rungs and would put Flash Floods' sixteenth rung at 2 189 Energy and
 Wash Away's twentieth past 9 000, a tail no round reaches, which is the exact failure the
-subtractive rework exists to end. `innate_power` and every power card already anchored
-themselves this way (`focusBaseCost: 25`, and each card's own cooldown in beats).
+subtractive rework exists to end. Every power card anchors itself this way (its own cooldown in
+beats), and `innate_power` overrides both, per tier.
 
 The floor defaults to a third of the ability's own cooldown, so any ability tops out at three
 times the cast rate the round started it at, however long its ladder is. It is read off the
 ability's *current* record, so a tiered ability answers for the tier standing in the slot —
-`innate_power` floors at 3 beats at tier 1 and at 5 beats once tier 2 is bought. Purchases are
-never spent back by a tier change: a count above the new ladder's length simply rests on the
-floor.
+`innate_power` floors at 3 beats at tier 1 and at 5 beats once tier 2 is bought. Investment is
+never spent back by a tier change: Energy beyond the new ladder's whole price simply rests on
+the floor, still owed the rungs of whatever tier the ability lands on next.
 
 That cap is deliberately **tighter** than `dahan_remember`'s own 50% haste ceiling (the only
 other cooldown-shortening mechanic in the game,
@@ -845,10 +863,95 @@ about twice as much. Wash Away's last rungs are the strongest purchase in the ga
 to say so: a 10-beat Wash removes two units from the island every wave, indefinitely, and
 removal is the one effect that does not decay against the invader health ladder.
 
-What is left on the derived defaults (step 1, floor a third, unlock price as anchor, growth
-1.5), each pending its own pass: `innate_power` 8→3 / 15→5 / 22→8 by tier, and each power card
-from its own cooldown down to a third of it. See
+What is left on the derived defaults (step 1, floor a third, growth 1.5) is the seven power
+cards, each anchored on its own cooldown in beats and running from that cooldown down to a third
+of it, pending their own pass. See
 [implementation-microtasks.md](../tasks/implementation-microtasks.md#idea-inbox).
+
+#### The Innate's three ladders
+
+`innate_power` names no anchor for the ability as a whole. It is the one ability whose record
+changes under it mid-round, and a single anchor cannot be right for all three: the same beat
+off the clock is 12.5% of tier 1's throughput and 4.5% of tier 3's. So each tier names its own
+`focusBaseCost`, `focusCostGrowth` and `focusFloorBeats`, and `abilityFocusBaseCost` reads them
+through `abilityRecord`.
+
+**Tier 1** — anchor 3, growth 1.5, 8 beats down to 3:
+
+```txt
+rung   1    2    3    4    5
+price  3    5    7   10   15     (cumulative 40)
+beats  7    6    5    4    3
+```
+
+The Boon's ladder truncated, and priced there on purpose: one push is the cheapest cast in the
+kit, so it gets the cheapest rung the game has. **The whole ladder costs 40, which is exactly
+tier 2's `upgradeCost`** — so the round's first real question about the Innate is *run this one
+faster, or make it something bigger*, asked at one price.
+
+**Tier 2** — anchor 8, growth 1.5, 15 beats down to 5:
+
+```txt
+rung   1    2    3    4    5    6    7    8    9   10
+price  8   12   18   27   41   61   91  137  205  308     (cumulative 908)
+beats 14   13   12   11   10    9    8    7    6    5
+```
+
+The same length and the same 15-beat clock as `rivers_bounty`, priced at 1.6× it rung for rung.
+Two damage and three pushes is worth a good deal more than one Dahan, and unlike the Boon it
+pays back in nothing Focus can be bought with — so it sits above the Bounty for the same reason
+the Bounty sits above the Boon.
+
+**Tier 3** — anchor 25, growth **1.25**, 22 beats down to 8:
+
+```txt
+rung   1    2    3    4    5    6    7
+price 25   31   39   49   61   76   95
+beats 21   20   19   18   17   16   15
+
+rung   8    9   10   11   12   13   14
+price 119  149  186  233  291  364  455     (cumulative 2173)
+beats  14   13   12   11   10    9    8
+```
+
+The gentler 1.25 is the long-ladder rule again (`flash_floods`, `wash_away`): 1.5 over fourteen
+rungs would end at 8 400 and the tail would be decoration. 2 173 all told is a shade over Wash
+Away's 2 058, on a cast that hits *every* invader in the land rather than one — the two most
+expensive ladders in the game, and the two strongest casts.
+
+Tier 3's opening rung is the one in the game priced **above** an unlock, which the tuned kit
+ladders make a point of not doing. It is deliberate, and it is the carry below that makes it
+safe: the natural way to arrive at tier 3 is with tier 2's investment coming with you, which
+pays for the first several rungs outright. 25 is what the ladder costs the player who banked
+everything into tiers instead — who has the Energy, and has bought nothing with it yet.
+
+#### What an upgrade does to the investment
+
+Nothing, which is the point. `upgradeAbility` does not touch `round.abilityFocusEnergy`; the new
+tier simply re-reads the same number against its own ladder:
+
+```txt
+tier 1, five rungs bought          invested 40      8 beats -> 3
+buy tier 2 (40 Energy)             invested 40     15 beats -> 12
+
+  tier 2 cumulative:  8   20   38   65  106 ...
+  40 covers three rungs (38), so three are granted outright,
+  and the fourth is quoted at 65 - 40 = 25 rather than its sticker 27.
+```
+
+No Energy is lost and none is refunded — it was never spent on a *rung*, it was spent on the
+*ability*, and the ability still has it. The 2 Energy left over is not change handed back; it is
+credit against the next rung, and it comes out in the price the bar quotes.
+
+The reverse cannot happen either: an upgrade never grants **more** rungs than the investment
+already stood on, because each tier's ladder is dearer than the last at every cumulative point.
+Across the tier 2 → 3 seam the rung count can hold or fall — tier 3 is a longer, slower clock —
+but it can never climb for free.
+
+What the player gives up across a seam is beats, not Energy: 3 beats at tier 1 becomes 12 at
+tier 2. That is the tier design, not the Focus design — cooldowns rise with the tier because
+each tier buys a bigger swing (see `ABILITIES.innate_power`) — and Focus is what buys them back
+down, now without charging twice for the descent.
 
 ## Round Reset Formula
 

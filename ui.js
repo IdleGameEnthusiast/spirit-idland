@@ -835,9 +835,12 @@ function abilityBarSignature(state) {
   // whether Focus is unlocked at all can change mid-round, since buying the Presence row
   // carries no round-status check.
   // Over everything castable rather than over the kit, because a power card takes Focus too
-  // and its pill carries the same climbing price.
+  // and its pill carries the same climbing price. Keyed on the quoted price rather than on the
+  // rung count, because the price is what the pill prints: on the Innate a tier change re-reads
+  // the round's investment against a different ladder, which can move the price without moving
+  // the count (`tiers` above catches that too, and the two agreeing costs nothing).
   const focus = unlockedAbilityIds(state)
-    .map((id) => `${id}:${abilityFocusPurchases(state, id)}`)
+    .map((id) => `${id}:${abilityFocusCost(state, id)}`)
     .join(",");
   // What changes a card's shape: which cards are in hand, and whether the one just drawn still
   // carries its re-draw button - which it loses on its first cast, on the next draw, and when
@@ -868,12 +871,15 @@ function abilityBarSignature(state) {
 // only moves the number it sits beside. So it is drawn as a small pill on the top line rather
 // than a price bar in the foot, and the two stop reading as rungs on one ladder.
 //
-// The Innate is held back an extra beat: its tier 1 is the opening-hand freebie, so Focus on it
-// this early would be spent shrinking a cooldown players are about to outgrow anyway. It appears
-// once tier 2 is bought (abilityTier index >= 1), same as every other ability's Focus button.
+// No ability is held back, the Innate's tier 1 included. It used to be: tier 1 is the
+// opening-hand freebie, and Focus on it read as Energy poured into a cooldown about to be
+// outgrown. The Energy now carries across an upgrade onto the new tier's ladder (see
+// abilityFocusEnergy in engine/abilities.js), so a beat bought at tier 1 is credited against
+// tier 2's rungs rather than lost with the tier - and hiding the pill would be hiding the one
+// purchase that is never wasted. Tier 1 carries a real ladder of its own besides: five rungs
+// at 3/5/7/10/15, see ABILITIES.innate_power.
 function abilityFocusMarkup(state, abilityId) {
   if (!abilityFocusUnlocked(state)) return "";
-  if (abilityId === "innate_power" && abilityTier(state, abilityId) < 1) return "";
   const t = locale(state);
   const cost = abilityFocusCost(state, abilityId);
   if (!Number.isFinite(cost)) return "";
@@ -1219,6 +1225,11 @@ function shopSignature(state) {
   // cost. So a Presence purchase has to reach this signature; nothing else in the list moves
   // when one is made, and a discounted row would otherwise keep advertising its old price.
   const unlocks = PRESENCE_UPGRADE_IDS.map((id) => presenceUpgradeTier(state, id)).join(",");
+  // How many cards are owned, because the first one reveals a row (upgradeRevealed) and the
+  // card is bought in the panel *below* this one - so without this the shelf would grow a row
+  // that nothing here repaints, and the player would see it appear at some unrelated later
+  // moment. The count rather than the ids: no row's text depends on which cards are owned.
+  const cards = ownedPowerCardIds(state).length;
   return [
     currentLang(state),
     // The Dahan Remember prints its strike interval in real seconds, which the speed dial
@@ -1231,7 +1242,8 @@ function shopSignature(state) {
     formatFear(state.meta.fear),
     formatFear(state.round.fearEarned),
     tiers,
-    unlocks
+    unlocks,
+    cards
   ].join("|");
 }
 
@@ -1371,13 +1383,19 @@ function renderShop(state) {
   // repeatables first, one-offs after. Splitting the passes keeps a maxed ladder from landing
   // under the "One-off" divider it has nothing to do with just because it sorted next to one.
   //
-  // Every row in the catalogue is drawn, because every row is buyable - the Presence lock that
-  // used to hide two of them is gone (see the note where upgradeNeedsPresence was). What
-  // Presence does to this list now shows up through `maxedId`: a granted automation reads as
-  // owned via upgradeTier, so it sinks into the sold-out fold and stays there across the wipe.
+  // Every row on the shelf is drawn, because every row on the shelf is buyable - the Presence
+  // lock that used to hide two of them is gone (see the note where upgradeNeedsPresence was).
+  // What Presence does to this list now shows up through `maxedId`: a granted automation reads
+  // as owned via upgradeTier, so it sinks into the sold-out fold and stays there across the wipe.
+  //
+  // `upgradeRevealed` is the one thing that keeps a row off the shelf entirely, and it is a
+  // reveal rather than a lock: the card-interval row waits for the first power card, because
+  // until then its text prices a drip the player has nothing to receive. Filtered here rather
+  // than drawn disabled - a locked row invites a click, and this one has nothing to explain.
   const maxedId = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
-  const buyable = UPGRADE_IDS.filter((id) => !maxedId(id));
-  const soldOut = UPGRADE_IDS.filter(maxedId);
+  const shelf = UPGRADE_IDS.filter((id) => upgradeRevealed(state, id));
+  const buyable = shelf.filter((id) => !maxedId(id));
+  const soldOut = shelf.filter(maxedId);
 
   function renderDivider(label, extraClass) {
     const rule = document.createElement("div");

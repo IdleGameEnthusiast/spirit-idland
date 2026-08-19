@@ -447,20 +447,26 @@ for the formulas these checks hold.
    `boon_of_vigor` eight rungs from 12 beats down to 4, `rivers_bounty` ten from 15 to 5,
    `flash_floods` sixteen from 25 to 9, `wash_away` twenty from 30 to 10. An untouched ability
    sits at its catalogue cooldown.
+   **The Innate's three.** One ability, three ladders — one per tier, each walked standing at
+   its own tier against the table in
+   [04-economy-formulas.md](../spec/04-economy-formulas.md#the-innates-three-ladders): tier 1
+   five rungs from 8 beats to 3, tier 2 ten from 15 to 5, tier 3 fourteen from 22 to 8. Tier 1's
+   whole ladder costs 40, which is exactly `upgradeCost` for tier 2.
    **The derived defaults.** An ability naming no floor takes one third of its own cooldown,
-   rounded up, one beat a rung — `innate_power` 3 over 5 rungs at tier 1, and every power card
-   from its own cooldown. A named floor wins over the derived one. The figures are
-   read off the tier standing in the slot, so buying Innate tier 2 moves its floor from 3 to 5,
-   and purchases past a shortened ladder's end rest on the floor rather than driving the
-   cooldown below it.
+   rounded up, one beat a rung — every power card, from its own cooldown. A named floor wins
+   over the derived one; all three Innate tiers name theirs, and each is that tier's own third
+   written out. The figures are read off the tier standing in the slot, so buying Innate tier 2
+   moves its floor from 3 to 5, and Energy past a shortened ladder's end rests on the floor
+   rather than driving the cooldown below it.
 2. **Cost anchors to what the ability already costs, unless it names its own anchor.** The
    first Focus purchase on `rivers_bounty` — which names none — costs exactly its own
    `abilityUnlockCost`. `boon_of_vigor` (`unlockCost: 0`) falls back to a flat 3. A named
-   `focusBaseCost` wins over the unlock price: `innate_power` 25 (it is the one ability that
-   keeps growing stronger after it is bought), `flash_floods` 5 and `wash_away` 6 — both
+   `focusBaseCost` wins over the unlock price: `flash_floods` 5 and `wash_away` 6 — both
    **under** their own unlock prices, because a beat off a 25- or 30-beat clock is only a 4%
    and a 3% gain. Growth is per ability too: 1.5 by default, 1.3 for the Floods, 1.25 for Wash
    Away, the two ladders long enough that 1.5 would price their tails out of every round.
+   Both are read off `abilityRecord`, so a **tier** may name them: `innate_power` carries no
+   anchor of its own and its three tiers name 3, 8 and 25, growing 1.5, 1.5 and 1.25.
 3. **Cost grows 1.5x per purchase, compounding, per ability.** Buying Focus for one ability
    never moves the price on any other. At the end of the ladder the cost reads `Infinity` — the
    same refusal shape `abilityUpgradeCost` uses at the top of a tier ladder — and a further
@@ -470,19 +476,32 @@ for the formulas these checks hold.
    `presence_current_quickens` is bought. It is further refused for an ability that is not
    unlocked this round, and between rounds — the same `round.status === "running"` rule every
    other Energy spend follows.
-5. **A successful purchase** spends the quoted Energy, records one more purchase in
-   `round.abilityFocus[id]`, and shortens `abilityCooldownSeconds` for that ability by exactly
+5. **A successful purchase** spends the quoted Energy, adds exactly that Energy to
+   `round.abilityFocusEnergy[id]`, and shortens `abilityCooldownSeconds` for that ability by exactly
    one step — `TIME_SCALE` seconds to the beat. Made while the ability is mid-cooldown, it clamps
    `cooldownRemaining` down to the new, shorter maximum rather than leaving it stranded above
    one; made while the ability sits comfortably under the new maximum already, it changes
    nothing. It applies to the tiered Innate exactly as it does to any other ability.
-6. **Reset.** `round.abilityFocus` and the cooldowns it shortened both return to their
+6. **Reset.** `round.abilityFocusEnergy` and the cooldowns it shortened both return to their
    untouched state at the next `startRound`, same as the Energy that paid for them. `abilityFocusUnlocked` itself
    is not round-scoped — the Presence purchase survives every round boundary, only the
    purchases made with Energy die with the round.
-7. **Save round-trip.** Purchase counts survive a save. An unknown ability id, or a
-   non-positive count, is dropped on load rather than carried or clamped negative.
-8. Both locales name `presence_current_quickens` and carry the Focus button label and its two
+7. **Save round-trip.** The invested Energy survives a save. An unknown ability id, or a
+   non-positive sum, is dropped on load rather than carried or clamped negative. A save written
+   under the old rung-count field is migrated to the Energy those rungs cost on the ladder that
+   save's own tier puts in front of them, so it stands exactly where it stood.
+8. **A tier upgrade loses no Energy.** `round.abilityFocusEnergy[id]` is untouched by
+   `upgradeAbility`; the new tier's rung count and next price are re-read from it. Buying tier 1's
+   whole ladder (40) and then tier 2 grants three of tier 2's rungs outright — 15 beats down to
+   12 — and quotes its fourth at 25 rather than 27, the 2 Energy left over credited against it.
+   Across all three tiers, and at every rung of each: the quoted price is always
+   `abilityFocusLadderTotal(id, bought + 1) − abilityFocusEnergy(id)`, always above zero, always
+   buys exactly one rung, and the purse only ever moves by what was quoted. An upgrade never
+   grants *more* rungs than the investment already stood on, checked at every rung of tier 2 —
+   tier 3's ladder is dearer at every cumulative point, so the count can hold or fall across the
+   seam but never climb for free. With nothing invested, a new tier opens at its own anchor,
+   undiscounted.
+9. Both locales name `presence_current_quickens` and carry the Focus button label and its two
    log lines.
 
 ## Power Card Checks

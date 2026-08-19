@@ -79,6 +79,163 @@
     assertLadder("wash_away", WASH_LADDER);
   });
 
+  /* ---------- The Innate's three ladders ----------
+   *
+   * One ability, three ladders, because one anchor cannot be right for all three cooldowns:
+   * a beat is 12.5% of tier 1's clock and 4.5% of tier 3's. Each is walked rung by rung the
+   * same way the four kit ladders above are, standing at the tier it belongs to. */
+
+  const INNATE_LADDERS = [
+    [[3, 7], [5, 6], [7, 5], [10, 4], [15, 3]],
+    [
+      [8, 14], [12, 13], [18, 12], [27, 11], [41, 10],
+      [61, 9], [91, 8], [137, 7], [205, 6], [308, 5]
+    ],
+    [
+      [25, 21], [31, 20], [39, 19], [49, 18], [61, 17], [76, 16], [95, 15],
+      [119, 14], [149, 13], [186, 12], [233, 11], [291, 10], [364, 9], [455, 8]
+    ]
+  ];
+
+  // The kit's assertLadder reads a cooldown straight off the catalogue entry, which a tiered
+  // ability has none of - so this one stands the Innate at a tier first and reads the record.
+  function assertInnateLadder(tier, rungs) {
+    const state = focusReady(1e6);
+    state.round.abilityTiers.innate_power = tier;
+    const base = engine.ABILITIES.innate_power.tiers[tier].cooldownSeconds / engine.TIME_SCALE;
+
+    assertEqual(beats(state, "innate_power"), base, `tier ${tier + 1} starts at its catalogue cooldown`);
+    assertEqual(engine.abilityFocusMaxPurchases(state, "innate_power"), rungs.length, `tier ${tier + 1} ladder length`);
+
+    rungs.forEach(([price, left], i) => {
+      assertEqual(engine.abilityFocusCost(state, "innate_power"), price, `tier ${tier + 1} rung ${i + 1} price`);
+      assert(engine.purchaseAbilityFocus(state, "innate_power"), `tier ${tier + 1} rung ${i + 1} is affordable`);
+      assertEqual(beats(state, "innate_power"), left, `tier ${tier + 1} rung ${i + 1} cooldown`);
+    });
+
+    assertEqual(engine.abilityFocusCost(state, "innate_power"), Infinity, `tier ${tier + 1} quotes no price past the floor`);
+    assert(!engine.purchaseAbilityFocus(state, "innate_power"), `tier ${tier + 1} refuses a purchase past the floor`);
+  }
+
+  test("focus: innate tier 1 runs five rungs, 8 down to 3", () => {
+    assertInnateLadder(0, INNATE_LADDERS[0]);
+  });
+
+  test("focus: innate tier 2 runs ten rungs, 15 down to 5", () => {
+    assertInnateLadder(1, INNATE_LADDERS[1]);
+  });
+
+  test("focus: innate tier 3 runs fourteen rungs, 22 down to 8", () => {
+    assertInnateLadder(2, INNATE_LADDERS[2]);
+  });
+
+  test("focus: the three innate ladders climb at their own rates", () => {
+    const state = focusReady();
+    [1.5, 1.5, 1.25].forEach((growth, tier) => {
+      state.round.abilityTiers.innate_power = tier;
+      assertEqual(engine.abilityFocusCostGrowth(state, "innate_power"), growth, `tier ${tier + 1} growth`);
+    });
+  });
+
+  // The one balance figure worth pinning on its own: buying tier 1's Focus out costs exactly
+  // what tier 2 costs, so the round's first question about the Innate - run this faster, or
+  // make it something bigger - is asked at one price.
+  test("focus: tier 1's whole ladder costs exactly what tier 2 costs to buy", () => {
+    const state = focusReady(1e6);
+    const whole = INNATE_LADDERS[0].reduce((sum, [price]) => sum + price, 0);
+
+    assertEqual(whole, 40, "3 + 5 + 7 + 10 + 15");
+    assertEqual(engine.abilityFocusLadderTotal(state, "innate_power", 5), whole, "and the engine agrees");
+    assertEqual(engine.abilityUpgradeCost(state, "innate_power"), whole, "which is tier 2's price");
+  });
+
+  /* ---------- What an upgrade does to the investment ----------
+   *
+   * Nothing, is the answer, and that is the point: the round stores Energy, not rungs, so a
+   * tier change re-reads the same investment against a different ladder. Rungs it covers are
+   * granted outright and the remainder discounts the next one. No Energy is lost, and none is
+   * refunded either - it was never spent on a rung, it was spent on the ability. */
+
+  test("focus: a tier upgrade carries the whole investment onto the new ladder", () => {
+    const state = focusReady(1e6);
+    for (let i = 0; i < 5; i += 1) assert(engine.purchaseAbilityFocus(state, "innate_power"), `tier 1 rung ${i + 1}`);
+
+    assertEqual(engine.abilityFocusEnergy(state, "innate_power"), 40, "tier 1's whole ladder, paid");
+    assertEqual(beats(state, "innate_power"), 3, "and standing on tier 1's floor");
+
+    assert(engine.upgradeAbility(state, "innate_power"), "buy tier 2");
+
+    assertEqual(engine.abilityFocusEnergy(state, "innate_power"), 40, "the investment is untouched by the upgrade");
+    // Tier 2's ladder is cumulatively 8 / 20 / 38 / 65: 40 covers three rungs with 2 to spare.
+    assertEqual(engine.abilityFocusPurchases(state, "innate_power"), 3, "three of tier 2's rungs, granted outright");
+    assertEqual(beats(state, "innate_power"), 12, "15 beats less three");
+    assertEqual(engine.abilityFocusCost(state, "innate_power"), 65 - 40, "and the fourth is discounted by the change");
+  });
+
+  // The user-facing promise stated as an equation, over every rung of every tier: what the bar
+  // has taken out of the purse is always exactly what standing here costs, plus what the next
+  // rung still wants. A discount is the ladder crediting a spend, never the game handing back
+  // Energy it did not take.
+  test("focus: no Energy is lost or conjured anywhere across the two upgrades", () => {
+    const state = focusReady(1e6);
+    let spent = 0;
+
+    for (let tier = 0; tier < 3; tier += 1) {
+      if (tier > 0) {
+        const upgrade = engine.abilityUpgradeCost(state, "innate_power");
+        assert(engine.upgradeAbility(state, "innate_power"), `buy tier ${tier + 1}`);
+        spent += upgrade;
+      }
+
+      // Two rungs at each tier is enough to cross the seam and land back on the ladder proper.
+      for (let i = 0; i < 2; i += 1) {
+        const bought = engine.abilityFocusPurchases(state, "innate_power");
+        const quoted = engine.abilityFocusCost(state, "innate_power");
+        const owed = engine.abilityFocusLadderTotal(state, "innate_power", bought + 1);
+
+        assertEqual(quoted, owed - engine.abilityFocusEnergy(state, "innate_power"), `tier ${tier + 1} quotes the rest of the way up`);
+        assert(quoted > 0, "and never quotes a free rung");
+        assert(engine.purchaseAbilityFocus(state, "innate_power"));
+        spent += quoted;
+
+        assertEqual(engine.abilityFocusPurchases(state, "innate_power"), bought + 1, "one rung per purchase, always");
+        assertEqual(engine.abilityFocusEnergy(state, "innate_power"), owed, "and the running total lands on the rung");
+      }
+    }
+
+    assertEqual(state.resources.energy, 1e6 - spent, "the purse only ever moved by what was quoted");
+  });
+
+  // The other half of "nothing is lost": an upgrade may not hand out more haste than the
+  // Energy paid for. Tier 3's ladder is dearer than tier 2's at every cumulative point, so the
+  // rung count can only ever hold or fall across the seam - never climb for free.
+  test("focus: an upgrade never grants more rungs than the investment already stood on", () => {
+    for (let rungs = 1; rungs <= INNATE_LADDERS[1].length; rungs += 1) {
+      const state = focusReady(1e6);
+      state.round.abilityTiers.innate_power = 1;
+      for (let i = 0; i < rungs; i += 1) assert(engine.purchaseAbilityFocus(state, "innate_power"));
+
+      const invested = engine.abilityFocusEnergy(state, "innate_power");
+      assertEqual(engine.abilityFocusPurchases(state, "innate_power"), rungs, `${rungs} rungs of tier 2`);
+
+      assert(engine.upgradeAbility(state, "innate_power"), "buy tier 3");
+      assertEqual(engine.abilityFocusEnergy(state, "innate_power"), invested, "the investment survives");
+      assert(
+        engine.abilityFocusPurchases(state, "innate_power") <= rungs,
+        `tier 3 grants no more than the ${rungs} rungs already paid for`
+      );
+    }
+  });
+
+  test("focus: an upgrade with nothing invested opens the new ladder at its own anchor", () => {
+    const state = focusReady(1e6);
+    assert(engine.upgradeAbility(state, "innate_power"), "buy tier 2, having focused nothing");
+
+    assertEqual(engine.abilityFocusEnergy(state, "innate_power"), 0, "nothing to carry");
+    assertEqual(engine.abilityFocusPurchases(state, "innate_power"), 0, "nothing granted");
+    assertEqual(engine.abilityFocusCost(state, "innate_power"), 8, "tier 2's opening rung, undiscounted");
+  });
+
   // The two long ladders opted out of the 1.5 growth every short one keeps. This is the reason
   // in one assertion: at 1.5 their last rungs would cost more than any round could ever hold.
   test("focus: the long ladders grow gently enough to be finishable", () => {
@@ -98,18 +255,16 @@
     assertEqual(beats(state, "boon_of_vigor"), 12, "untouched is untouched");
   });
 
-  // All four kit ladders are tuned now; the Innate and the seven cards are what is left on the
-  // derived rule, and this is where their ladders stop until their own pass moves them.
+  // Every kit ladder is tuned now, the Innate's three included; the seven cards are what is
+  // left on the derived rule, and this is where their ladders stop until their own pass.
   test("focus: an ability that names no floor falls to a third of its cooldown, rounded up", () => {
     const state = focusReady();
-    assertEqual(engine.abilityFocusFloorBeats(state, "innate_power"), 3, "tier 1 is 8 beats");
-    assertEqual(engine.abilityFocusStepBeats(state, "innate_power"), 1);
-    assertEqual(engine.abilityFocusMaxPurchases(state, "innate_power"), 5);
 
-    // A card is on the same derived rule, off its own cooldown - 10 beats down to 4 here.
+    // A card is on the derived rule, off its own cooldown - 10 beats down to 4 here.
     for (const id of Object.keys(engine.POWER_CARDS)) {
       const cardBeats = engine.POWER_CARDS[id].cooldownSeconds / engine.TIME_SCALE;
       assertEqual(engine.abilityFocusFloorBeats(state, id), Math.ceil(cardBeats / 3), `${id} floor`);
+      assertEqual(engine.abilityFocusStepBeats(state, id), 1, `${id} step`);
     }
   });
 
@@ -122,6 +277,20 @@
     assertEqual(engine.abilityFocusFloorBeats(state, "wash_away"), 10);
   });
 
+  // Every tier of the Innate names its own floor, and each is the derived third of that tier's
+  // own cooldown written out - stated so a later cooldown change cannot quietly move a floor.
+  test("focus: each Innate tier names a floor, and each is its own third", () => {
+    const state = focusReady();
+    [[8, 3], [15, 5], [22, 8]].forEach(([cooldown, floor], tier) => {
+      const record = engine.ABILITIES.innate_power.tiers[tier];
+      assertEqual(record.cooldownSeconds / engine.TIME_SCALE, cooldown, `tier ${tier + 1} cooldown`);
+      assertEqual(record.focusFloorBeats, floor, `tier ${tier + 1} names its floor`);
+      assertEqual(floor, Math.ceil(cooldown / 3), `tier ${tier + 1} floor is its own third`);
+      state.round.abilityTiers.innate_power = tier;
+      assertEqual(engine.abilityFocusFloorBeats(state, "innate_power"), floor);
+    });
+  });
+
   // The Innate is the one ability whose record changes under it mid-round, and the floor is
   // read off the tier standing in the slot rather than off the one the round opened with.
   test("focus: a tiered ability's floor moves with the tier it is standing at", () => {
@@ -131,13 +300,14 @@
     assertEqual(engine.abilityFocusFloorBeats(state, "innate_power"), 5, "tier 2 is 15 beats");
   });
 
-  // Purchases outlive a tier change, so a shorter ladder has to hold them rather than let a
-  // stale count push the cooldown under the new tier's floor.
-  test("focus: purchases past a shorter ladder's end are held at its floor, never below it", () => {
+  // The investment outlives a tier change, so a shorter ladder has to hold it rather than let
+  // a carried-in sum push the cooldown under the new tier's floor.
+  test("focus: Energy past a shorter ladder's end is held at its floor, never below it", () => {
     const state = focusReady(1e6);
     for (let i = 0; i < 5; i += 1) assert(engine.purchaseAbilityFocus(state, "boon_of_vigor"));
-    state.round.abilityFocus.boon_of_vigor = 500;
+    state.round.abilityFocusEnergy.boon_of_vigor = 99999;
     assertEqual(beats(state, "boon_of_vigor"), 4, "pinned at the floor, not driven negative");
+    assertEqual(engine.abilityFocusPurchases(state, "boon_of_vigor"), 8, "capped at the ladder's length");
     assertEqual(engine.abilityFocusCost(state, "boon_of_vigor"), Infinity, "and nothing left to sell");
   });
 
@@ -171,18 +341,22 @@
     assertEqual(engine.abilityFocusCost(state, "boon_of_vigor"), 3, "the flat floor, not a free purchase");
   });
 
-  // The Innate is also unlockCost 0 - also in the opening hand - but it does not fall through
-  // to the same flat floor: it is the one ability that keeps growing stronger after it is
-  // bought, so its own focusBaseCost keeps Focus from being the cheap way into its strongest
-  // tier.
-  test("focus: innate_power overrides the flat floor with its own, higher base cost", () => {
-    const { state } = newGame();
-    unlockAllAbilities(state);
-    grantPresence(state, "presence_current_quickens");
+  // The Innate is also unlockCost 0 - also in the opening hand - but it names its anchor per
+  // tier rather than once, because the same beat is worth 12.5% of tier 1's clock and 4.5% of
+  // tier 3's. Tier 1 lands on the flat fallback's figure by choice, not by falling through.
+  test("focus: innate_power names its own anchor on every tier, and they differ", () => {
+    const state = focusReady(1e6);
 
     assertEqual(engine.abilityUnlockCost(state, "innate_power"), 0, "in the opening hand");
-    assertEqual(engine.ABILITIES.innate_power.focusBaseCost, 25, "its own price, not the flat floor");
-    assertEqual(engine.abilityFocusCost(state, "innate_power"), 25, "and the cost function actually charges it");
+    assertEqual(engine.ABILITIES.innate_power.focusBaseCost, undefined, "nothing named for the ability as a whole");
+
+    const anchors = [3, 8, 25];
+    anchors.forEach((anchor, tier) => {
+      state.round.abilityTiers.innate_power = tier;
+      assertEqual(engine.abilityTier(state, "innate_power"), tier, `standing at tier ${tier + 1}`);
+      assertEqual(engine.abilityFocusBaseCost(state, "innate_power"), anchor, `tier ${tier + 1} anchor`);
+      assertEqual(engine.abilityFocusCost(state, "innate_power"), anchor, `tier ${tier + 1} opening rung`);
+    });
   });
 
   test("focus: cost grows 1.5x, compounding, with every purchase already made", () => {
@@ -373,15 +547,36 @@
 
   /* ---------- Across a save ---------- */
 
-  test("focus: purchase counts survive a save, and an unknown ability id is dropped", () => {
+  test("focus: the invested Energy survives a save, and an unknown ability id is dropped", () => {
     const loaded = engine.normalizeState({
       schemaVersion: engine.VERSION,
-      round: { abilityFocus: { rivers_bounty: 3, made_up_ability: 9, flash_floods: -1 } }
+      round: { abilityFocusEnergy: { rivers_bounty: 24, made_up_ability: 9, flash_floods: -1 } }
     });
 
-    assertEqual(loaded.round.abilityFocus.rivers_bounty, 3, "the real one survives");
-    assertEqual(loaded.round.abilityFocus.made_up_ability, undefined, "the invented one is dropped");
-    assertEqual(loaded.round.abilityFocus.flash_floods, undefined, "a negative count floors to 0 and is dropped like any other zero");
+    assertEqual(loaded.round.abilityFocusEnergy.rivers_bounty, 24, "the real one survives");
+    assertEqual(engine.abilityFocusPurchases(loaded, "rivers_bounty"), 3, "and reads back as the rungs it bought");
+    assertEqual(loaded.round.abilityFocusEnergy.made_up_ability, undefined, "the invented one is dropped");
+    assertEqual(loaded.round.abilityFocusEnergy.flash_floods, undefined, "a negative sum floors to 0 and is dropped like any other zero");
+  });
+
+  // Saves written while Focus counted rungs are read back as the Energy those rungs cost, on
+  // the ladder the save's own tier puts in front of them - so a migrated save stands exactly
+  // where it stood, and carries the same credit forward as one written yesterday.
+  test("focus: a save holding the old rung counts migrates to the Energy they cost", () => {
+    const loaded = engine.normalizeState({
+      schemaVersion: engine.VERSION,
+      round: {
+        abilityTiers: { innate_power: 1 },
+        abilityFocus: { rivers_bounty: 3, innate_power: 2, made_up_ability: 4 }
+      }
+    });
+
+    assertEqual(loaded.round.abilityFocus, undefined, "the old field is gone, not left to disagree");
+    assertEqual(loaded.round.abilityFocusEnergy.rivers_bounty, 5 + 8 + 11, "priced on its own ladder");
+    assertEqual(loaded.round.abilityFocusEnergy.innate_power, 8 + 12, "and the Innate's on tier 2's");
+    assertEqual(engine.abilityFocusPurchases(loaded, "rivers_bounty"), 3, "standing exactly where it stood");
+    assertEqual(engine.abilityFocusPurchases(loaded, "innate_power"), 2);
+    assertEqual(loaded.round.abilityFocusEnergy.made_up_ability, undefined, "the invented one is still dropped");
   });
 
   /* ---------- Locale ---------- */

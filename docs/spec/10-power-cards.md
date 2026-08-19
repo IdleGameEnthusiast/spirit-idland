@@ -578,6 +578,22 @@ exactly — near-worthless to a player dying early, excellent to one pushing dee
 row's argument for existing. The alternative, four tiers of 20 → 17 → 14 → 11, makes every
 purchase visibly move something and is the fallback if the ladder reads dead in play.
 
+### It is not on the shelf until the first card is bought
+
+The row carries `revealedBy: "power_card_owned"`, and the shop prints it only once
+`powerCards.owned` is non-empty. Its whole text prices the gap between two cards, and to a
+player who has never held one that is a price on a mechanic they have not met — noise in the
+one list the shop expects them to read.
+
+**A reveal is not a lock.** `upgradeRevealed(state, id)` decides whether the row is *printed*
+and nothing else: no price moves, and `purchaseUpgrade` does not consult it, because a reveal
+that can refuse a buy is one of the three dead gates
+([05-progression.md](./05-progression.md)) wearing a new name. The condition is passed by
+playing rather than by shopping, and owned cards survive Reclaim — `ascend` wipes
+`upgrades.purchased` and never touches `powerCards.owned` — so a row revealed once stays
+revealed. An unknown `revealedBy` key reveals rather than hides, so a catalogue typo shows a
+row that meant to wait instead of deleting one from the shop.
+
 ## State
 
 All additive, so the save migration stays a no-op — see

@@ -158,7 +158,7 @@ function startRound(state) {
   state.resources.energy = totals.startingEnergy;
   state.round.purchasedAbilityIds = [];
   state.round.abilityTiers = {};
-  state.round.abilityFocus = {};
+  state.round.abilityFocusEnergy = {};
 
   // Cards die with the round that drew them, exactly like Energy and everything Energy bought.
   // What survives is `powerCards.owned`, which this never touches - the Presence bought the

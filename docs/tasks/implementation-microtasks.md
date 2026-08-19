@@ -852,6 +852,42 @@ other way round — first ascension smooths the round, second stops needing a ha
 roughly **5 / 8 / 15** in place of 2 / 3 / 5. Nothing here has been played; it is a three-number
 edit when a cycle says which reads better.
 
+### 18. The Innate's Focus: a ladder per tier, and the investment carries — *built 2026-08-20*
+
+From the Balance questions below: "`innate_power` (one floor per tier, and its flat
+`focusBaseCost: 25` anchor wants revisiting tier by tier)." Both halves landed, plus a third
+that fell out of doing them properly. Covered by `tests/focus.test.js`.
+
+**A ladder per tier.** One anchor cannot be right for three cooldowns — the same beat off the
+clock is 12.5% of tier 1's throughput and 4.5% of tier 3's, and a flat 25 made tier 1's opening
+rung the worst purchase in the game while making tier 3's the cheapest per point of throughput.
+`abilityFocusBaseCost` and `abilityFocusCostGrowth` now read `abilityRecord` rather than the raw
+catalogue entry, which is all the plumbing a per-tier ladder needs: a tier already replaces the
+record wholesale. Tiers name 3 / 1.5, 8 / 1.5 and 25 / 1.25, and each names its own floor (3, 5,
+8 — the derived third of its own cooldown, written out so a later cooldown change cannot move a
+floor by accident). Tables in
+[04-economy-formulas.md](../spec/04-economy-formulas.md#the-innates-three-ladders).
+
+**The investment carries across an upgrade.** The round used to store a rung *count*, which made
+a tier change either a windfall (five rungs of tier 1 became five much dearer rungs of tier 2,
+free) or — had it been clamped — a confiscation. It now stores the **Energy invested**, and the
+rung count is read back off it against whatever ladder is in front of it. Buying tier 1's whole
+ladder (40) and then tier 2 grants three of tier 2's rungs outright and quotes its fourth at 25
+instead of 27, the 2 left over credited against it. Nothing is lost, nothing is refunded, and
+the arithmetic needs no special case in `upgradeAbility` at all — it is the same number read
+twice. `round.abilityFocus` became `round.abilityFocusEnergy`; old saves are migrated by pricing
+their counted rungs on the ladder their own tier puts in front of them.
+
+**One number worth keeping:** tier 1's whole Focus ladder costs 40, which is exactly tier 2's
+`upgradeCost`. The round's first real question about the Innate — run this one faster, or make
+it something bigger — is asked at one price.
+
+**And the pill is open at tier 1 again.** `abilityFocusMarkup` in `ui.js` used to hide it until
+tier 2 was bought, on the reasoning that tier 1's cooldown is one players are about to outgrow.
+The carry is exactly what makes that no longer true — a beat bought at tier 1 is credited into
+tier 2's ladder — so the gate went with the change that killed its reason. Every unlocked
+ability now shows a Focus pill on the same rule.
+
 ---
 
 ## Idea Inbox
@@ -877,10 +913,12 @@ is not a line down here.
 
 ### Balance questions
 
-- Focus, the two things still on the derived defaults: `innate_power` (one floor per tier, and
-  its flat `focusBaseCost: 25` anchor wants revisiting tier by tier) and every power card bought
-  with Presence. Same beat-by-beat shape the four kit abilities now use - see
+- Focus, the one thing still on the derived defaults: every power card bought with Presence.
+  Same beat-by-beat shape the four kit abilities and the Innate's three tiers now use - see
   [04-economy-formulas.md](../spec/04-economy-formulas.md#the-tuned-ladders)
+- the Innate's three Focus ladders (item 18) are a first pass, unmeasured against a played
+  round. The figure to watch is tier 3's opening rung at 25: it is the only rung in the game
+  priced above an unlock, and it is only defensible because tier 2's investment usually pays it
 - once all of them are tuned: reword the Focus button and log line so they say what is by then
   true of every ladder - one purchase always takes one beat off the timer, 2 seconds at the 1x
   speed dial. The percentage the log quotes today is a leftover from the multiplicative curve

@@ -42,8 +42,9 @@ const SPIRITS = {
 // silently answer with its tier-1 self.
 //
 // Cooldowns rise with the tier on purpose. Throughput still improves at every step - tier 2
-// is three pushes and 2 damage per 8 beats against tier 1's one push per 4 - so the longer
-// wait buys a bigger swing rather than taxing the upgrade.
+// is three pushes and 2 damage per 15 beats against tier 1's one push per 8 - so the longer
+// wait buys a bigger swing rather than taxing the upgrade. Each tier carries its own Focus
+// ladder for the same reason the cooldowns differ: see the tiers below.
 //
 // Every cooldown here is written as beats times TIME_SCALE, the same dial the wave interval
 // turns on. That is what keeps a cast rate a cast rate: an ability that fired twice a wave at
@@ -52,16 +53,29 @@ const ABILITIES = {
   innate_power: {
     id: "innate_power",
     unlockCost: 0,
-    // Focus's own base price (see FOCUS_BASE_COST_FALLBACK) - the Innate outgrows the flat
-    // fallback because it outgrows every other ability, tier over tier, and Focus should not
-    // be the cheap way into the strongest cooldown in the kit.
-    focusBaseCost: 25,
+    // Focus is priced per tier, not once for the ability - see the three `focusBaseCost` lines
+    // below and 04-economy-formulas.md#the-innates-three-ladders. Nothing is named up here,
+    // because a single anchor cannot be right for all three: the same beat is worth 12.5% of
+    // tier 1's clock and 4.5% of tier 3's.
+    //
+    // The Energy carries across an upgrade rather than the rungs (abilityFocusPurchases reads
+    // the *investment*, not a count), so a tier change never burns a Focus purchase - it
+    // re-reads it against the new ladder and discounts the next rung by whatever is left over.
     tiers: [
       {
         cooldownSeconds: 8 * TIME_SCALE,
         needsTarget: true,
         effect: "push_invaders",
         pushCount: 1,
+        // Five rungs at 3/5/7/10/15, 8 -> 3 beats. The Boon's ladder truncated, and on purpose:
+        // one push is the cheapest cast in the kit, so its ladder is priced at the cheapest
+        // rung the game has. The whole ladder costs 40 Energy, which is exactly `upgradeCost`
+        // below - so the round's first real question about the Innate is "run this one faster,
+        // or make it something bigger", at one price.
+        focusBaseCost: 3,
+        focusCostGrowth: 1.5,
+        focusStepBeats: 1,
+        focusFloorBeats: 3,
         upgradeCost: 40
       },
       {
@@ -70,6 +84,14 @@ const ABILITIES = {
         effect: "damage_and_push",
         damage: 2,
         pushCount: 3,
+        // Ten rungs at 8/12/18/27/41/61/91/137/205/308, 15 -> 5 beats. The same length and the
+        // same 15-beat clock as rivers_bounty, priced at 1.6x it rung for rung: two damage and
+        // three pushes is worth a good deal more than one Dahan, and unlike the Boon it pays
+        // back in nothing Focus can be bought with.
+        focusBaseCost: 8,
+        focusCostGrowth: 1.5,
+        focusStepBeats: 1,
+        focusFloorBeats: 5,
         upgradeCost: 150
       },
       {
@@ -77,6 +99,20 @@ const ABILITIES = {
         needsTarget: true,
         effect: "damage_each_invader",
         damage: 2,
+        // Fourteen rungs at 25 growing 1.25, 22 -> 8 beats, 2173 Energy for the lot - a shade
+        // over wash_away's 2058, on a cast that hits every invader in the land rather than one.
+        // The gentler 1.25 is the long-ladder rule (see flash_floods): 1.5 over fourteen rungs
+        // would end at 8400 and the tail would be decoration.
+        //
+        // This is the one opening rung in the game priced *above* an unlock, and deliberately:
+        // the natural way to arrive here is with tier 2's Focus investment carried in, which
+        // pays for the first several rungs outright. 25 is what the ladder costs the player who
+        // banked everything into tiers instead - who has the Energy, and has bought nothing to
+        // show for it yet.
+        focusBaseCost: 25,
+        focusCostGrowth: 1.25,
+        focusStepBeats: 1,
+        focusFloorBeats: 8,
         upgradeCost: Infinity
       }
     ]
@@ -447,12 +483,19 @@ const UPGRADES = {
    * 20 -> 17 -> 14 -> 11, where every purchase visibly moves something.
    *
    * 5,448 Fear for the whole ladder, priced knowing it nearly doubles the catalogue's total.
+   *
+   * The one row in the catalogue that is not on the shelf from the start. It prices the gap
+   * between cards to a player who has never seen one - its whole text is about a drip they
+   * have no cards to receive - so it stays off the list until the first card is bought. That
+   * is `revealedBy`, a reveal and not a lock: see the note above upgradeRevealed for why the
+   * distinction is the whole point.
    */
   power_card_interval: {
     id: "power_card_interval",
     repeatable: true,
     maxTier: POWER_CARD_INTERVAL_MAX_TIER,
     effect: "power_card_interval_per_tier",
+    revealedBy: "power_card_owned",
     baseCost: 30
   },
 

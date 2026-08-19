@@ -132,9 +132,11 @@ function createInitialState() {
       // this round spent. `abilityTiers` maps a tiered ability id to its zero-based tier.
       purchasedAbilityIds: [],
       abilityTiers: {},
-      // Focus purchases, per ability - see abilityFocusPurchases. Round-scoped like the two
-      // fields above, and reset the same way: what Energy bought this round dies with it.
-      abilityFocus: {},
+      // Energy invested in Focus, per ability - see abilityFocusEnergy. What is stored is the
+      // spend, not the rung count it bought; the count is read back off it against whatever
+      // ladder the ability is standing on. Round-scoped like the two fields above, and reset
+      // the same way: what Energy bought this round dies with it.
+      abilityFocusEnergy: {},
       // The wards on the board, and the `elapsedSeconds` each one lapses at - null while it is
       // still unused, which is what lets a ward wait indefinitely on a quiet land. Storing the
       // deadline rather than a countdown means the speed dial and the wave gate need no
@@ -435,22 +437,45 @@ function normalizeState(raw) {
   }
   merged.round.abilityTiers = tiers;
 
-  // Same rule as abilityTiers just above: an unknown ability id is dropped, and a purchase
-  // count is only ever a non-negative integer. No upper clamp against the ladder's length is
-  // needed - abilityFocusedCooldownSeconds spends at most abilityFocusMaxPurchases of them, so
-  // a doctored save with an absurd count reads exactly like one that stopped at the floor. It
-  // deliberately is not clamped on load either: a count is kept as bought, and a tier change
-  // that shortens the ladder must not silently spend the purchases back.
+  // Same rule as abilityTiers just above: an unknown ability id is dropped, and the figure is
+  // only ever a non-negative integer. No upper clamp against the ladder's length is needed -
+  // abilityFocusPurchases stops at abilityFocusMaxPurchases, so a doctored save holding an
+  // absurd sum reads exactly like one that stopped at the floor. It deliberately is not clamped
+  // on load either: the Energy is kept as spent, and a tier change that shortens the ladder must
+  // not silently spend the investment back - that Energy is still owed the rungs of whatever
+  // tier the ability lands on next.
+  //
+  // Runs after the abilityTiers loop above on purpose: the migration below reads a tier.
   const focus = {};
-  for (const [id, value] of Object.entries(merged.round.abilityFocus || {})) {
-    // Cards take Focus too, so the test is "is this castable at all" rather than "is this in
-    // the kit" - a purchase against a card in hand must survive a save the same way one
-    // against the Innate does.
-    if (!abilityBaseRecord(id)) continue;
-    const purchases = Math.max(0, Math.floor(Number(value) || 0));
-    if (purchases > 0) focus[id] = purchases;
+  // Saves written before Focus was measured in Energy hold rung counts under `abilityFocus`.
+  // Converted rather than dropped, and converted the same way an upgrade converts: price the
+  // counted rungs on the ladder the save's own tier puts in front of them, and carry the total.
+  // Tested for emptiness rather than for absence, because `merged` already carries a fresh
+  // state's `abilityFocusEnergy: {}` under whatever the save brought - so "the save named none"
+  // and "the save has no such field" are the same thing here, and only a save that actually
+  // holds Energy outranks its own legacy counts.
+  const carried = merged.round.abilityFocusEnergy;
+  const legacy = merged.round.abilityFocus;
+  if (legacy && typeof legacy === "object" && (!carried || Object.keys(carried).length === 0)) {
+    const spent = {};
+    for (const [id, value] of Object.entries(legacy)) {
+      if (!abilityBaseRecord(id)) continue;
+      const rungs = Math.max(0, Math.floor(Number(value) || 0));
+      if (rungs > 0) spent[id] = abilityFocusLadderTotal(merged, id, rungs);
+    }
+    merged.round.abilityFocusEnergy = spent;
   }
-  merged.round.abilityFocus = focus;
+  delete merged.round.abilityFocus;
+
+  for (const [id, value] of Object.entries(merged.round.abilityFocusEnergy || {})) {
+    // Cards take Focus too, so the test is "is this castable at all" rather than "is this in
+    // the kit" - a spend against a card in hand must survive a save the same way one against
+    // the Innate does.
+    if (!abilityBaseRecord(id)) continue;
+    const energy = Math.max(0, Math.floor(Number(value) || 0));
+    if (energy > 0) focus[id] = energy;
+  }
+  merged.round.abilityFocusEnergy = focus;
 
   merged.round.number = Math.max(1, Math.floor(merged.round.number || 1));
   merged.round.status = merged.round.status === "ended" ? "ended" : "running";

@@ -285,11 +285,43 @@ function activeUpgradeTier(state, upgradeId) {
 // "nothing left here" from the shop's point of view, so they leave together rather than the
 // one-off keeping its spot at the bottom of a now-pointless ladder. Order is otherwise stable
 // within each half, so the split never reshuffles anything the player already learned.
+//
+// A row the player has not revealed yet is in neither half - see upgradeRevealed.
 function orderedUpgradeIds(state) {
   const maxed = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
-  const buyable = UPGRADE_IDS.filter((id) => !maxed(id));
-  const soldOut = UPGRADE_IDS.filter(maxed);
+  const shelf = UPGRADE_IDS.filter((id) => upgradeRevealed(state, id));
+  const buyable = shelf.filter((id) => !maxed(id));
+  const soldOut = shelf.filter(maxed);
   return buyable.concat(soldOut);
+}
+
+/* ---------- Revealing a row is not locking it ----------
+ *
+ * The note below is about the three gates this catalogue has shed, and none of them is coming
+ * back. This is a different thing: a row whose *text* means nothing yet. `power_card_interval`
+ * prices the gap between two power cards, and to a player who has never held one that is a
+ * price on a mechanic they have not met - noise in the one list the shop expects them to read.
+ *
+ * So it waits for the first card, and the difference from a gate is the whole point: nothing
+ * here refuses a purchase, moves a price, or asks the player to earn the row. `purchaseUpgrade`
+ * does not consult it, because a reveal that can refuse a buy is a lock wearing a new name.
+ * This decides whether the row is printed and nothing else, and the condition is one the player
+ * passes by playing rather than by shopping.
+ *
+ * Owned cards survive Reclaim - `ascend` wipes `upgrades.purchased` and does not touch
+ * `powerCards.owned` - so a row revealed once stays revealed for good.
+ */
+const UPGRADE_REVEALS = {
+  power_card_owned: (state) => ownedPowerCardIds(state).length > 0
+};
+
+function upgradeRevealed(state, upgradeId) {
+  const key = (UPGRADES[upgradeId] || {}).revealedBy;
+  if (!key) return true;
+  const test = UPGRADE_REVEALS[key];
+  // An unknown key reveals rather than hides: a typo in the catalogue should show a row that
+  // meant to wait, not silently delete one from the shop.
+  return test ? Boolean(test(state)) : true;
 }
 
 function upgradeMaxTier(upgradeId) {

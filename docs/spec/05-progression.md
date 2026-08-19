@@ -438,7 +438,7 @@ it, against a replacement catalogue that costs 10. See
   every card is owned; its designed successor — a repeat draw that upgrades a card already held
   — is named in [10](./10-power-cards.md#what-is-deliberately-not-designed) and is not designed.
 - No content unlocks beyond the placeholder ability-unlock row above.
-- Focus (`round.abilityFocus`, gated by `presence_current_quickens`) is the one exception to
+- Focus (`round.abilityFocusEnergy`, gated by `presence_current_quickens`) is the one exception to
   "everything in-round resets at round setup" — see
   [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown).
   It is still round-scoped, though: what it buys is gone at the next `startRound` exactly like

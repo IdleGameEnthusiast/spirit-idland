@@ -1,7 +1,7 @@
 /* Fear and shop checks - docs/spec/08-acceptance-tests.md#fear-and-shop-checks */
 
 (function () {
-  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities, grantUpgrade, grantPresence } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
+  const { engine, test, assert, assertEqual, assertClose, assertDeepEqual, newGame, advance, runUntilRoundEnds, clearBoard, setLand, unlockAllAbilities, grantUpgrade, grantPresence, ownCards } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   test("shop: Fear earned mid-round is still there when the round ends", () => {
     const ctx = newGame();
@@ -231,6 +231,9 @@
     const { state } = newGame();
     engine.endRound(state);
     state.meta.fear = 1e9;
+    // One card owned, which is what puts power_card_interval on the shelf at all - see the
+    // reveal check below. Everything this test is about is unaffected by it.
+    ownCards(state, "accelerated_rot");
 
     // dahan_reinforcement is maxed out, auto_boon is bought (also maxed, being a one-off).
     // blight_resilience and auto_innate are left untouched.
@@ -265,6 +268,32 @@
       ],
       "the two sold-out upgrades sink to the bottom, catalogue order preserved on both sides"
     );
+  });
+
+  test("shop: the card-interval row stays off the shelf until the first power card is owned", () => {
+    const { state } = newGame();
+    engine.endRound(state);
+    state.meta.fear = 1e9;
+
+    assert(!engine.upgradeRevealed(state, "power_card_interval"), "no card, no row");
+    assert(
+      !engine.orderedUpgradeIds(state).includes("power_card_interval"),
+      "and the shop list does not carry it"
+    );
+    assert(engine.upgradeRevealed(state, "rising_dread"), "every other row is on the shelf");
+
+    ownCards(state, "accelerated_rot");
+
+    assert(engine.upgradeRevealed(state, "power_card_interval"), "the first card reveals it");
+    assert(
+      engine.orderedUpgradeIds(state).includes("power_card_interval"),
+      "and it takes its catalogue place"
+    );
+
+    // A reveal is not a lock: what it hid was a row, never a purchase. Nothing about the
+    // hidden state should have made the buy behave differently once it is visible.
+    assert(engine.purchaseUpgrade(state, "power_card_interval"), "and it buys as any row does");
+    assertEqual(engine.upgradeTier(state, "power_card_interval"), 1, "tier 1");
   });
 
   /* ------------------------------------------------------------------ *

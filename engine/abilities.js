@@ -250,22 +250,34 @@ function abilityIsReady(state, abilityId) {
  * The floor defaults to a third of the ability's own cooldown, so every ability tops out at
  * three times the cast rate it started the round with however long its ladder is. An ability
  * that has had its own balance pass names both numbers itself in the catalogue.
+ *
+ * **What the round stores is Energy invested, not rungs bought.** The rung count is a reading
+ * of that investment against the ladder the ability is standing on right now - the same
+ * "replay it, never cache it" rule difficultyLadder follows. It is what makes an Innate tier
+ * change lossless: a tier names its own ladder (see ABILITIES.innate_power), and the Energy
+ * poured into tier 1's is read against tier 2's the moment tier 2 is bought, covering however
+ * many of its rungs it covers and leaving the remainder as a discount on the next one. Nothing
+ * is refunded because nothing was ever spent on a rung - it was spent on the ability.
  */
 const FOCUS_COST_GROWTH_DEFAULT = 1.5;
 const FOCUS_STEP_BEATS_DEFAULT = 1;
 const FOCUS_FLOOR_FRACTION = 1 / 3;
 // The fallback for an ability with unlockCost 0 - there is no unlock price to anchor the first
-// purchase to. `innate_power` is also unlockCost 0 but does not use this: its own
-// `focusBaseCost` overrides it, because it is the one ability that keeps growing after it is
-// bought and Focus should not be the cheap way into its strongest tier.
+// purchase to. `innate_power` is also unlockCost 0 and its tier 1 ladder does open on this
+// exact figure, but by naming it per tier rather than by falling through here: its three tiers
+// price their ladders apart (3 / 8 / 25), and only the first of them agrees with the fallback.
 const FOCUS_BASE_COST_FALLBACK = 3;
 
 function abilityFocusUnlocked(state) {
   return presenceUpgradeOwned(state, "presence_current_quickens");
 }
 
-function abilityFocusPurchases(state, abilityId) {
-  const raw = state.round && state.round.abilityFocus ? state.round.abilityFocus[abilityId] : 0;
+// The round's record of Focus: Energy put into this ability, cumulative, in the currency it was
+// paid in. Everything else on this page is derived from it.
+function abilityFocusEnergy(state, abilityId) {
+  const raw = state.round && state.round.abilityFocusEnergy
+    ? state.round.abilityFocusEnergy[abilityId]
+    : 0;
   return Math.max(0, Math.floor(Number(raw) || 0));
 }
 
@@ -301,16 +313,68 @@ function abilityFocusMaxPurchases(state, abilityId) {
   return Math.max(0, Math.floor(room / abilityFocusStepBeats(state, abilityId)));
 }
 
-// Replayed from the purchase count rather than stored as its own field, so the cooldown and
-// the count that produced it can never disagree - the same reason difficultyLadder reads
+// Where a ladder starts. The unlock price is the default anchor - what an ability costs to
+// have is a fair reading of what it is worth hastening - but it is only a default, and an
+// ability whose own balance pass wanted a different opening rung says so with `focusBaseCost`.
+// A card carries no unlockCost at all, the Presence was the cost, so it always names its own:
+// its cooldown in beats, which makes a slow card dearer to hasten than a fast one.
+//
+// Read off abilityRecord, not the raw catalogue entry, so a *tier* may name its own anchor and
+// be answered for - which is the whole of what "a ladder per tier" asks of this page.
+function abilityFocusBaseCost(state, abilityId) {
+  const record = abilityRecord(state, abilityId);
+  const named = record && Number(record.focusBaseCost);
+  if (Number.isFinite(named) && named > 0) return named;
+  const unlock = isPowerCard(abilityId) ? 0 : abilityUnlockCost(state, abilityId);
+  return unlock || FOCUS_BASE_COST_FALLBACK;
+}
+
+// And how fast it climbs. Per ability - and per tier, by the same route as the anchor above -
+// because ladder lengths are: 1.5 a rung is right for the Boon's eight, and would put the
+// Floods' sixteenth rung at 2189 Energy and the Wash's twentieth past 9000 - a tail no round
+// ever reaches, which is the failure the whole subtractive rework was meant to end.
+function abilityFocusCostGrowth(state, abilityId) {
+  const record = abilityRecord(state, abilityId);
+  const growth = record && Number(record.focusCostGrowth);
+  return Number.isFinite(growth) && growth > 1 ? growth : FOCUS_COST_GROWTH_DEFAULT;
+}
+
+// What standing at `rungs` rungs of the current ladder costs, all told. The sum of the rounded
+// rung prices rather than a closed form over the unrounded ones, because these are the prices
+// the bar actually quoted: pay each in turn and the running total lands here exactly, which is
+// what keeps "Energy invested" and "rungs bought" two readings of one number rather than two
+// numbers that can drift apart.
+function abilityFocusLadderTotal(state, abilityId, rungs) {
+  const base = abilityFocusBaseCost(state, abilityId);
+  const growth = abilityFocusCostGrowth(state, abilityId);
+  let total = 0;
+  for (let n = 0; n < rungs; n += 1) total += Math.round(base * Math.pow(growth, n));
+  return total;
+}
+
+// The rung the round's investment has climbed to on the ladder standing in front of it now.
+// Capped at that ladder's length, so Energy carried in from a cheaper tier - or an absurd
+// figure in a doctored save - rests on the floor instead of driving the cooldown under it.
+function abilityFocusPurchases(state, abilityId) {
+  const invested = abilityFocusEnergy(state, abilityId);
+  const max = abilityFocusMaxPurchases(state, abilityId);
+  let bought = 0;
+  while (bought < max && abilityFocusLadderTotal(state, abilityId, bought + 1) <= invested) {
+    bought += 1;
+  }
+  return bought;
+}
+
+// Replayed from the invested Energy rather than stored as its own field, so the cooldown and
+// the spend that produced it can never disagree - the same reason difficultyLadder reads
 // wavesResolved live instead of caching a rung. Seconds, and before `abilityCooldownMult`:
 // this is the ability's own clock, not the round's.
 function abilityFocusedCooldownSeconds(state, abilityId) {
   const record = abilityRecord(state, abilityId);
   if (!record) return 0;
   const floor = abilityFocusFloorBeats(state, abilityId);
-  const spent = Math.min(abilityFocusPurchases(state, abilityId), abilityFocusMaxPurchases(state, abilityId));
-  const beats = abilityCooldownBeats(record) - spent * abilityFocusStepBeats(state, abilityId);
+  const beats = abilityCooldownBeats(record)
+    - abilityFocusPurchases(state, abilityId) * abilityFocusStepBeats(state, abilityId);
   return Math.max(floor, beats) * TIME_SCALE;
 }
 
@@ -323,37 +387,18 @@ function abilityFocusMultiplier(state, abilityId) {
   return abilityFocusedCooldownSeconds(state, abilityId) / record.cooldownSeconds;
 }
 
-// Where a ladder starts. The unlock price is the default anchor - what an ability costs to
-// have is a fair reading of what it is worth hastening - but it is only a default, and an
-// ability whose own balance pass wanted a different opening rung says so with `focusBaseCost`.
-// A card carries no unlockCost at all, the Presence was the cost, so it always names its own:
-// its cooldown in beats, which makes a slow card dearer to hasten than a fast one.
-function abilityFocusBaseCost(state, abilityId) {
-  const record = abilityBaseRecord(abilityId);
-  const named = record && Number(record.focusBaseCost);
-  if (Number.isFinite(named) && named > 0) return named;
-  const unlock = isPowerCard(abilityId) ? 0 : abilityUnlockCost(state, abilityId);
-  return unlock || FOCUS_BASE_COST_FALLBACK;
-}
-
-// And how fast it climbs. Per ability because ladder lengths are: 1.5 a rung is right for the
-// Boon's eight, and would put the Floods' sixteenth rung at 2189 Energy and the Wash's
-// twentieth past 9000 - a tail no round ever reaches, which is the failure the whole
-// subtractive rework was meant to end.
-function abilityFocusCostGrowth(state, abilityId) {
-  const record = abilityBaseRecord(abilityId);
-  const growth = record && Number(record.focusCostGrowth);
-  return Number.isFinite(growth) && growth > 1 ? growth : FOCUS_COST_GROWTH_DEFAULT;
-}
-
+// What the next rung costs *from here*: the rest of the way up to it, not its sticker price. On
+// a ladder climbed rung by rung the two are the same figure, because the running total lands
+// exactly on every rung. They part company only where the investment was made against a
+// different ladder - which is precisely where it should be credited rather than charged twice.
+//
 // Infinity once the floor is reached, the same refusal shape as abilityUpgradeCost at the top
 // of a tier ladder.
 function abilityFocusCost(state, abilityId) {
   if (!abilityRecord(state, abilityId)) return Infinity;
-  if (abilityFocusPurchases(state, abilityId) >= abilityFocusMaxPurchases(state, abilityId)) return Infinity;
-  const base = abilityFocusBaseCost(state, abilityId);
-  const growth = abilityFocusCostGrowth(state, abilityId);
-  return Math.round(base * Math.pow(growth, abilityFocusPurchases(state, abilityId)));
+  const bought = abilityFocusPurchases(state, abilityId);
+  if (bought >= abilityFocusMaxPurchases(state, abilityId)) return Infinity;
+  return abilityFocusLadderTotal(state, abilityId, bought + 1) - abilityFocusEnergy(state, abilityId);
 }
 
 function purchaseAbilityFocus(state, abilityId) {
@@ -374,10 +419,10 @@ function purchaseAbilityFocus(state, abilityId) {
   }
 
   state.resources.energy -= cost;
-  if (!state.round.abilityFocus || typeof state.round.abilityFocus !== "object") {
-    state.round.abilityFocus = {};
+  if (!state.round.abilityFocusEnergy || typeof state.round.abilityFocusEnergy !== "object") {
+    state.round.abilityFocusEnergy = {};
   }
-  state.round.abilityFocus[abilityId] = abilityFocusPurchases(state, abilityId) + 1;
+  state.round.abilityFocusEnergy[abilityId] = abilityFocusEnergy(state, abilityId) + cost;
 
   // Clamped down, not left to overshoot: an ability already mid-cooldown when this is bought
   // would otherwise sit above the new, shorter maximum until the next cast, which is a
