@@ -486,6 +486,11 @@ h3 {
   gap: 0.35rem;
 }
 
+/* An inline-flex button beats the browser's own rule for [hidden], so the one toggle that
+   hides itself - the round toggle, present only once the automation is bought - was sitting on
+   the rail from the first round as a switch that bought nothing. */
+.hud-btn.auto-toggle[hidden] { display: none; }
+
 /* ------------------------------------------------------------------ *
  * The auto switch                                                      *
  *                                                                      *

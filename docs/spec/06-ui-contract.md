@@ -256,6 +256,13 @@ island board, and the between-round shop.
 - The two controls that answer *when does the next round begin*: **a clear "Start Next Round"
   control, always available regardless of remaining Fear**, and the **auto-round toggle**
   beside it
+- **The toggle is drawn on ownership and is absent before it** (`autoStartRoundOwned`), unlike
+  the auto-wave toggle beside the wave countdown, which is free and always on the strip. Hidden
+  rather than disabled: an unowned upgrade is not a control the player is failing to use, and a
+  dead button beside a live one reads as one. Hiding it means `display: none` and not only the
+  `hidden` attribute — the button's own `display` rule outranks the browser's, so a toggle left
+  to the attribute alone stays on the rail from the first round, switching an automation nobody
+  has bought.
 - **Above the shop panel, and a sibling of it rather than its first child.** The upgrade
   catalogue is the tallest thing in the rail — repeatable ladders, one-offs, a sold-out block
   and a pool row with its strip of denominations — and it only ever grows. The control that
