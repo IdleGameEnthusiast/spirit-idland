@@ -111,6 +111,17 @@
         <svg id="islandSvg" viewBox="0 0 760 500" role="group" aria-label="Inselkarte"></svg>
         <div id="landChips" class="board-overlay"></div>
 
+        <!-- The card reveal. Laid over the island rather than shown in the rail, because the
+             island is where the player is looking and the ability bar is not - a card that
+             only ever slid into a panel off to the side was arriving unnoticed.
+
+             It waits for nothing: no button, no timer to beat, no pointer events at all. The
+             round runs on underneath it and the lands stay clickable through it, so
+             02-core-loop's rule that nothing inside a round waits for input is untouched.
+             It expires on its own fx clock (CARD_FX_MS) and the card it announced is still
+             sitting lit in the bar afterwards. -->
+        <div id="cardReveal" class="card-reveal" aria-hidden="true"></div>
+
         <!-- The round's vitals, laid over the map's top edge instead of in a panel above it.
              Every number here moves continuously and is read against the board itself - how
              fast a land is losing only means something next to how close Blight is to ending
@@ -127,6 +138,12 @@
             <h3 id="waveLabel">Naechste Welle</h3>
             <p id="waveValue" class="value">20s</p>
             <div class="meter"><span id="waveFill" class="meter-fill"></span></div>
+            <!-- The drip's countdown, on the tile that already counts the waves it is
+                 measured in. The card arrives on a wave number, not on a clock, so it
+                 belongs beside the wave and not beside the Energy it will never cost.
+                 Hidden whenever there is nothing to count toward - no cards owned, none
+                 left to draw, or no round running. -->
+            <small id="cardCountdown" class="card-countdown" hidden></small>
           </div>
           <!-- The only part of the strip that takes a click, so it is also the only part
                that switches pointer events back on - everything around it stays inert and

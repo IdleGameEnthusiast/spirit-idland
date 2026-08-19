@@ -261,6 +261,30 @@ h3 {
 
 .board-hud .meter { height: 4px; }
 
+/* The drip's countdown, under the wave meter it is measured against. Presence-hued, because
+   that is the currency that bought the thing being counted toward - the same rule the card in
+   the ability bar follows, so the two read as one thread from purchase to arrival.
+
+   Quiet by default: it sits under a countdown the player is already watching and must not
+   compete with it for most of its life. The last reading before the card lands is the one that
+   brightens, and that is the only moment this line asks for attention. */
+.card-countdown {
+  color: var(--accent-presence);
+  opacity: 0.72;
+  letter-spacing: 0.02em;
+}
+
+.card-countdown.is-due {
+  opacity: 1;
+  font-weight: 700;
+  animation: card-countdown-due 1.6s ease-in-out infinite;
+}
+
+@keyframes card-countdown-due {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 .board-hud .hud-dahan .value { color: var(--dahan-ink); }
 
 .value {
@@ -1090,6 +1114,55 @@ button.reset {
   border-left-color: rgba(166, 143, 216, 0.75);
 }
 
+/* The card landing in the bar, once, as the reveal over the board is fading. The two are one
+   movement: the island says what arrived, and this is where it came to rest.
+
+   Deliberately a shorter animation than the reveal - by the time the player's eye leaves the
+   board this is over, and what greets them there is .is-fresh below, which waits. */
+.ability.is-card.is-arriving {
+  animation: card-arrive 0.9s ease-out;
+}
+
+@keyframes card-arrive {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.5rem) scale(0.96);
+    box-shadow: 0 0 0 0 rgba(166, 143, 216, 0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 22px 2px rgba(166, 143, 216, 0.55);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    box-shadow: 0 0 0 0 rgba(166, 143, 216, 0);
+  }
+}
+
+/* Handed over and not yet used.
+ *
+ * The one mark here that is not on a clock. The reveal expires and the entrance finishes, and
+ * a player who was reading a land through both of them has still been given a card - so this
+ * one holds until the card is actually cast, which is the only event that proves it was seen.
+ * It is also, not by accident, exactly the window in which the re-draw is still on offer: the
+ * mark and the choice end together, on the first cast.
+ *
+ * A steady glow rather than motion. It can sit there for thirty waves if the player never
+ * casts, and anything that moved would become the loudest thing on the screen by wave 50. */
+.ability.is-card.is-fresh {
+  border-color: rgba(166, 143, 216, 0.85);
+  box-shadow: 0 0 16px rgba(166, 143, 216, 0.32), inset 0 0 22px rgba(166, 143, 216, 0.1);
+}
+
+/* Affordability still wins on the border, as it does on every other card in the bar - a warm
+   edge means "you can pay for this" everywhere else and must not stop meaning it here. The
+   Presence glow stays underneath it, so a fresh card with an affordable re-draw shows both. */
+.ability.is-card.is-fresh.is-affordable {
+  border-color: rgba(242, 196, 90, 0.55);
+}
+
 /* Where a tiered card says "Tier 2", a power card says what it is. Same slot, same weight,
    same footnote size - only the hue differs, and it is the hue of the purse that bought it. */
 .card-tag {
@@ -1594,6 +1667,26 @@ button.reset {
   color: var(--ink-0);
 }
 
+/* A line of its own between the name and the effect text, rather than a mark on the right of
+   the name line the way an ability card's head carries its state. Right-aligned beside the name
+   it landed in a different place on every offer - card names here run to four German words, so
+   the mark wrapped under the long ones and sat inline on the short ones, and a number that moves
+   between rows cannot be compared down the column at a glance. On its own line it is always in
+   the same place, and it labels itself rather than relying on position to say what it is.
+
+   Quieter than the name and quieter than the price: it is what decides between the three, but
+   only once the player is already reading one of them. Tabular so the digits line up. */
+.card-offer-cooldown {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink-1);
+  opacity: 0.85;
+  cursor: help;
+}
+
 .card-offer-text {
   font-size: 0.68rem;
   line-height: 1.35;
@@ -1741,6 +1834,103 @@ button.reset {
   0%, 100% { stroke-opacity: 1; }
   50% { stroke-opacity: 0.35; }
 }
+
+/* ---------- The card reveal ----------
+ *
+ * A card arriving, said out loud, over the island the player is already watching. It is the
+ * one thing in a round that is given rather than spent, and before this it slid into a panel
+ * off to the side with nothing but a log line to mark it.
+ *
+ * It takes no pointer events at any depth, so the lands underneath stay clickable through it
+ * and an armed ability can be aimed while it is still on screen. That is what keeps it inside
+ * 02-core-loop's rule: the round does not pause, nothing waits for a click, and there is no
+ * button to find. It simply expires.
+ *
+ * Presence-hued like the card it announces and like the countdown that led up to it. */
+.card-reveal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.card-reveal.is-live {
+  visibility: visible;
+  /* One pass, and the fade-out is the last third of it: the layer is emptied by the patch when
+     the fx expires, so the animation has to have taken itself back to invisible by then or the
+     card would vanish mid-brightness. Tuned against CARD_FX_MS. */
+  animation: card-reveal-in 2.6s ease-out forwards;
+}
+
+@keyframes card-reveal-in {
+  0% { opacity: 0; transform: scale(0.88); }
+  10% { opacity: 1; transform: scale(1.02); }
+  16% { transform: scale(1); }
+  72% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+
+/* Sized in relative units against the frame rather than in pixels: the board keeps a fixed
+   aspect ratio at every width, so a face that is 60% of it is the same read on a phone as on
+   a desktop, and no breakpoint has to restate it. */
+.card-reveal-face {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+  text-align: center;
+  width: min(60%, 28rem);
+  padding: 1.1rem 1.4rem;
+  border: 1px solid rgba(166, 143, 216, 0.55);
+  border-radius: 14px;
+  background:
+    linear-gradient(150deg, rgba(166, 143, 216, 0.22), rgba(166, 143, 216, 0.06) 60%),
+    rgba(9, 26, 34, 0.93);
+  box-shadow: 0 0 0 1px rgba(9, 26, 34, 0.6), 0 18px 44px rgba(4, 14, 20, 0.6),
+    0 0 34px rgba(166, 143, 216, 0.28);
+}
+
+/* The wave that paid for it, above the name. Small and dim - it is the sentence's subject, not
+   its point - but it is there because the wave is the whole reason the card arrived at all. */
+.card-reveal-kicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-presence);
+  opacity: 0.85;
+}
+
+.card-reveal-name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.card-reveal-text {
+  font-size: 0.85rem;
+  color: var(--ink-1);
+  max-width: 24rem;
+}
+
+/* The same two marks the shop's offer rows carry, in the same order, so a player deciding
+   whether to keep this card is reading the layout they bought it in. */
+.card-reveal-marks {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+}
+
+.card-reveal-tag {
+  color: var(--accent-presence);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.card-reveal-cooldown { color: var(--accent-energy); }
 
 /* Chips never swallow a click: the land path underneath owns hit-testing. */
 .board-overlay {
@@ -2322,6 +2512,19 @@ button.reset {
      freezing them mid-brightness. */
   .round-end-flash .hud-blight,
   .round-ended .round-controls .primary-btn { animation: none; }
+
+  /* The countdown's last reading and the card's entrance are pure motion with a state
+     underneath them - the brightened text and the card itself - so both simply stop moving
+     and keep what they were saying. */
+  .card-countdown.is-due { animation: none; }
+  .ability.is-card.is-arriving { animation: none; }
+
+  /* The reveal is the one thing here that cannot just drop its animation: the animation is
+     what makes it visible at all, and without it the card would never be announced. So it is
+     held at full opacity for as long as the fx is fresh instead, and the patch that empties
+     the layer is what takes it away - a state that appears and disappears, with no scale and
+     no fade in between. */
+  .card-reveal.is-live { animation: none; opacity: 1; }
 }
 
 #eventLog {

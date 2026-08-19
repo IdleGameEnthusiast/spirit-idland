@@ -27,6 +27,7 @@ DAHAN_ATTACK_DAMAGE = 1                (placeholder)
 DAHAN_PER_ROUND_START_BASE = 6
 DAHAN_MAX_SPREAD = 2
 DEFEAT_FX_MS = 1200
+CARD_FX_MS = 2600                      (the card reveal, on its own longer clock)
 MAX_TICK_SECONDS = 5 * TIME_SCALE  = 10
 ASCENSION_UNLOCK_PRESENCE = 5          (what a Reclaim must pay before it is offered)
 PRESENCE_FEAR_DIVISOR = 100            (placeholder, and the least measured number here)
@@ -93,6 +94,12 @@ Two consequences worth stating, because both are easy to break:
 
 `DEFEAT_FX_MS` is deliberately outside the dial. It is measured against how fast an eye
 catches a highlight, which no change of game pace moves.
+
+`CARD_FX_MS` is outside it for the same reason and is more than twice as long, because it is
+measured against something else: the defeat and Blight marks flag a number that moved, while the
+card reveal carries a name, an effect and a cooldown the player is meant to *read* before
+deciding whether to keep the card. It is a separate constant rather than a stretched
+`DEFEAT_FX_MS` — sharing one would have lengthened every defeat chip to suit a card.
 
 `DAHAN_ATTACK_INTERVAL_SECONDS` equals `WAVE_INTERVAL_SECONDS` today by choice, not by
 derivation, so that round one reads as a single rhythm. They are separate constants and the
@@ -935,25 +942,45 @@ sits against "Presence never touches the board."
 ### The automation discount ladders
 
 ```txt
-AUTOMATION_PRICE_LADDER    500  400  300  200  100  50  25  10     (Fear)
-PRESENCE_DISCOUNT_COSTS      5   10   25   50  100  250  500       (Presence, by rung taken)
+AUTOMATION_PRICE_LADDERS   500       300  200  100  50  25  10     (Fear)
+                                400       200  100  50  25  10     (Fear)
+PRESENCE_DISCOUNT_COSTS      5   10   25   50  100  250            (Presence, by rung taken)
 ```
 
-Every automation's Fear price is a rung of the first line, and each Presence rung bought walks
-it one step to the right. How many rungs a row has is read off where its automation already
-sits, never written twice:
+Every automation's Fear price is a rung of one of the two ladders, and each Presence rung bought
+walks it one step to the right along that same ladder. From 200 down the two are the same list,
+so the split only ever touches the top two rows: **500 steps straight to 300 and 400 straight to
+200**, each skipping a rung and so finishing one rung sooner. How many rungs a row has is read
+off where its automation already sits, never written twice:
 
 ```txt
-auto_start_round     500 Fear   7 rungs    940 Presence for all of them
-auto_wash_away       400 Fear   6 rungs    440
+auto_start_round     500 Fear   6 rungs    440 Presence for all of them
+auto_wash_away       400 Fear   5 rungs    190
 auto_flash_floods    300 Fear   5 rungs    190
 auto_bounty          200 Fear   4 rungs     90
 auto_buy_abilities   200 Fear   4 rungs     90
 auto_innate          100 Fear   3 rungs     40
 auto_boon             25 Fear   1 rung       5
                                           ----
-                                          1,795 Presence for the whole set
+                                          1,045 Presence for the whole set
 ```
+
+`PRESENCE_DISCOUNT_COSTS` was cut **at the end** to match, dropping the 500 entry. That is what
+makes the set so much cheaper to finish than the 1,795 the single 500…10 ladder charged: a row
+that loses a rung loses its *most expensive* one, so `auto_start_round` falls 940 → 440 and
+`auto_wash_away` 440 → 190. Nothing anywhere costs 500 Presence a rung any more, and only
+`auto_start_round` ever reaches 250.
+
+Two notes on what this trades away, both accepted:
+
+- **Equal totals across unequal rows.** `auto_wash_away` and `auto_flash_floods` both finish at
+  190 Presence while saving 390 and 290 Fear a cycle, so the 300 row is the worse deal at an
+  identical price. Rung counts are integers and the cost list is positional, so rows of similar
+  length will always tie somewhere; the rows are not alternatives — a run buys all seven — so
+  the tie only sets purchase order, and buying the bigger saving first is already the right call.
+- **The endgame sink is much smaller.** The whole set now costs less than three times the seven
+  power cards (432 — see [10-power-cards.md](./10-power-cards.md)), and completes inside a cycle
+  a player is still paying attention to rather than long after the Fear stopped mattering.
 
 It bottoms out at 10 rather than 0 so the automations stay purchases a cycle makes rather than
 switches a save carries — see [05-progression.md](./05-progression.md#the-discount-ladders).
@@ -961,19 +988,20 @@ switches a save carries — see [05-progression.md](./05-progression.md#the-disc
 **The value per Presence spent falls off a cliff, and that is the design.** Take the 500 Fear
 row rung by rung:
 
-| rung | Presence | Fear saved a cycle | Fear per Presence |
-| --- | --- | --- | --- |
-| 1 | 5 | 100 | 20 |
-| 2 | 10 | 100 | 10 |
-| 3 | 25 | 100 | 4 |
-| 4 | 50 | 100 | 2 |
-| 5 | 100 | 50 | 0.5 |
-| 6 | 250 | 25 | 0.1 |
-| 7 | 500 | 15 | 0.03 |
+| rung | step | Presence | Fear saved a cycle | Fear per Presence |
+| --- | --- | --- | --- | --- |
+| 1 | 500 → 300 | 5 | 200 | 40 |
+| 2 | 300 → 200 | 10 | 100 | 10 |
+| 3 | 200 → 100 | 25 | 100 | 4 |
+| 4 | 100 → 50 | 50 | 50 | 1 |
+| 5 | 50 → 25 | 100 | 25 | 0.25 |
+| 6 | 25 → 10 | 250 | 15 | 0.06 |
 
-The cost climbs 100× while what a rung saves falls from 100 Fear to 15, so the last rung is
-some 700× worse than the first. **The early rungs are the investment and the late ones are a
-sink**, and they are meant to be read that way rather than as a ladder a player climbs evenly.
+The cost climbs 50× while what a rung saves falls from 200 Fear to 15, so the last rung is some
+650× worse than the first. **The early rungs are the investment and the late ones are a sink**,
+and they are meant to be read that way rather than as a ladder a player climbs evenly. The split
+sharpens the first rung in particular — 5 Presence for 200 Fear a cycle is the best single buy
+in either shop, and it lands on the two rows a player already feels most.
 
 ### These rows do not out-earn holding Presence, and are not meant to
 
@@ -985,19 +1013,21 @@ uncapped, so spending `P` Presence to save `S` Fear a cycle wins only while
 cycleFearGenerated  <  100 * S / P
 ```
 
-which for the seven rungs above is 2,000 / 1,000 / 400 / 200 / 50 / 10 / 3 Fear a cycle. And a
-purse holding 500 Presence implies cycles generating millions (the payout is a root — see [The
-ascension payout](#the-ascension-payout)). So a fixed Fear discount is a losing trade against
+which for the six rungs above is 4,000 / 1,000 / 400 / 100 / 25 / 6 Fear a cycle. And a purse
+holding 250 Presence implies cycles generating hundreds of thousands (the payout is a root — see
+[The ascension payout](#the-ascension-payout)). So a fixed Fear discount is a losing trade against
 the hold bonus at almost any income, and the deep rungs lose by orders of magnitude.
 
 That is known and accepted rather than an oversight. What these rows are for:
 
 - **Early, they are a genuinely good buy.** A cycle generating a couple of thousand Fear is one
-  where 100 Fear off a 500 Fear row is real money, and 5 Presence is a rung the second or third
-  Reclaim can reach.
+  where 200 Fear off a 500 Fear row is real money, and 5 Presence is a rung the second or third
+  Reclaim can reach. The split made this end of the curve better, not worse.
 - **Late, they are somewhere to put Presence.** Before them the catalogue held 10 Presence
-  total and every point past that had no in-system use at all. 1,795 is a floor under that
-  problem without capping the hold bonus, which stays uncapped on purpose.
+  total and every point past that had no in-system use at all. 1,045 is a floor under that
+  problem without capping the hold bonus, which stays uncapped on purpose — a lower floor than
+  the 1,795 the single ladder set, and the reason the power card draws
+  ([10-power-cards.md](./10-power-cards.md)) now carry more of the late sink than these do.
 
 The thing to get right if a *differently shaped* repeatable Presence row is added: **Presence
 income is root-shaped and therefore grows slowly.** The Fear catalogue's 1.6 growth would

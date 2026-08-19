@@ -57,7 +57,9 @@ Define the canonical save shape for the round-based redesign.
     "playtest": false,
     "defeatFx": null,
     "blightFx": null,
+    "fearFx": null,
     "roundEndFx": null,
+    "cardFx": null,
     "selectedLand": null
   },
   "round": {
@@ -261,6 +263,14 @@ Fields the first draft of this contract did not have. Each earns its place:
   rule as the two above, but it carries no payload beyond `at`: what it announces is the
   boundary itself, not a land or a number. The lasting "round is over" reading is
   `round.status`, which the view wears as `.round-ended`; this is only the beat at the crossing.
+- **`ui.cardFx`** — the fourth transient mark, set by both power-card draw paths (the drip and
+  the re-draw) so the board can announce a card arriving and the bar can light the one that
+  came. It carries `{ cardId, wave, at }`: both readers have to name the card, and the wave is
+  the sentence the reveal makes — this is what wave 45 was worth. Same normalize-to-null rule as
+  the three above, but **its own lifetime, `CARD_FX_MS`**, roughly twice theirs: they flag a
+  number that moved, this one carries text to read. An unknown `cardId` normalizes to null
+  rather than to a reveal with an empty face. See
+  [06](./06-ui-contract.md#the-card-arrival).
 - **`ui.gameSpeed`** — the speed dial: how many game seconds one real second buys, one of
   `GAME_SPEEDS` (`0`, `1`, `2`), plus `PLAYTEST_GAME_SPEEDS` (`8`) while `ui.playtest` is set.
   It lives in `ui` rather than `round` because it is a preference like the language toggle,

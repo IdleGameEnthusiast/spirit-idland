@@ -275,6 +275,103 @@
     assert(engine.ownedPowerCardIds(state).includes("accelerated_rot"), "but the card is still owned");
   });
 
+  /* ---------- The arrival, and how the player is told ---------- *
+   *
+   * A card reaching the hand is the one thing in a round that is given rather than spent, and
+   * the engine's whole part in announcing it is the fx below. What the board and the bar make
+   * of it is the view layer's business - see 06-ui-contract.md#the-card-arrival - but the fx
+   * being written, carrying the right card and the right wave, and dying with the round, is
+   * a rule and belongs here.
+   */
+
+  test("cards: a draw leaves an fx naming the card and the wave that earned it", () => {
+    const { state } = newGame();
+    ownCards(state, ["accelerated_rot"]);
+
+    assertEqual(engine.activeCardFx(state), null, "nothing to announce before the first draw");
+
+    state.round.wavesResolved = 25;
+    engine.resolveCardDraw(state);
+
+    const fx = engine.activeCardFx(state);
+    assert(fx, "the draw should leave an fx behind");
+    assertEqual(fx.cardId, "accelerated_rot", "naming the card that arrived");
+    assertEqual(fx.wave, 25, "and the wave that paid for it");
+  });
+
+  test("cards: a draw that hands over nothing announces nothing", () => {
+    const { state } = newGame();
+
+    state.round.wavesResolved = 25;
+    engine.resolveCardDraw(state);
+    assertEqual(engine.activeCardFx(state), null, "nothing owned, so nothing to show");
+
+    // Everything owned is already in hand: the wave is spent silently, and a reveal here would
+    // be announcing a card the player has been holding for twenty waves.
+    handCards(state, ["accelerated_rot"]);
+    state.powerCards.owned = ["accelerated_rot"];
+    state.round.wavesResolved = 45;
+    engine.resolveCardDraw(state);
+    assertEqual(engine.activeCardFx(state), null, "and nothing drawable is just as silent");
+  });
+
+  test("cards: a re-draw announces the card it swapped to, not the one thrown back", () => {
+    const { state } = newGame();
+    ownCards(state, ALL_CARDS.slice());
+    state.resources.energy = 100;
+
+    state.round.wavesResolved = 25;
+    const first = engine.resolveCardDraw(state);
+    assert(engine.redrawPowerCard(state, first), "thrown back");
+
+    const fx = engine.activeCardFx(state);
+    assert(fx, "the swap is an arrival too - it is what the Energy was spent to see");
+    assertEqual(fx.cardId, engine.cardsInHand(state)[0], "and it names what is in hand now");
+    assert(fx.cardId !== first, "not the card that was returned");
+  });
+
+  test("cards: the arrival fx expires on its own clock, longer than the others", () => {
+    const ctx = newGame();
+    const { state, clock } = ctx;
+    ownCards(state, ["accelerated_rot"]);
+
+    state.round.wavesResolved = 25;
+    engine.resolveCardDraw(state);
+
+    // Past the flash the defeat and Blight chips run on, and the reveal is still up: it carries
+    // text to read, not a number that moved.
+    clock.advance(engine.DEFEAT_FX_MS / 1000 + 0.1);
+    assert(engine.activeCardFx(state), "still fresh where a defeat chip would already be gone");
+
+    clock.advance(engine.CARD_FX_MS / 1000);
+    assertEqual(engine.activeCardFx(state), null, "and gone once its own window closes");
+  });
+
+  test("cards: the arrival fx does not survive the round that drew it", () => {
+    const { state } = newGame();
+    ownCards(state, ["accelerated_rot"]);
+
+    state.round.wavesResolved = 25;
+    engine.resolveCardDraw(state);
+    assert(engine.activeCardFx(state), "up during the round");
+
+    engine.endRound(state);
+    engine.startNextRound(state);
+    assertEqual(state.ui.cardFx, null, "and cleared with the hand it announced");
+  });
+
+  test("cards: a junk fx is dropped rather than drawn as an empty face", () => {
+    assertEqual(engine.normalizeCardFx(null), null, "nothing at all");
+    assertEqual(engine.normalizeCardFx({ cardId: "not_a_card", at: 1 }), null, "an id no card answers to");
+    assertEqual(engine.normalizeCardFx({ cardId: "accelerated_rot" }), null, "no timestamp, no freshness");
+
+    assertDeepEqual(
+      engine.normalizeCardFx({ cardId: "accelerated_rot", wave: 25.7, at: 5, junk: 1 }),
+      { cardId: "accelerated_rot", wave: 25, at: 5 },
+      "and a good one is floored and stripped to the three fields the view reads"
+    );
+  });
+
   /* ---------- The re-draw ---------- */
 
   test("cards: the re-draw fee is 10 per draw taken, and swaps the card", () => {
@@ -378,6 +475,40 @@
         want * engine.TIME_SCALE,
         `${id} runs ${want} beats`
       );
+    }
+  });
+
+  /* The number the Presence shop prints beside each offer - docs/spec/06-ui-contract.md#power-cards.
+   * The row draws it off the record rather than off abilityCooldownSeconds, so what is pinned
+   * here is that the record is the *stable* figure: a round's frozen multiplier and a Focus
+   * purchase both move the effective cooldown and neither may move what the offer quotes. */
+  test("cards: the figure the offer quotes is the authored one, which nothing in a round moves", () => {
+    const { state } = newGame();
+    handCards(state, ["tsunami"]);
+    state.presenceUpgrades.purchased.presence_current_quickens = 1;
+    state.resources.energy = 500;
+
+    const authored = engine.abilityRecord(state, "tsunami").cooldownSeconds;
+    assertEqual(authored, 50 * engine.TIME_SCALE, "50 beats, straight off the card");
+
+    state.round.abilityCooldownMult = 0.5;
+    assert(engine.purchaseAbilityFocus(state, "tsunami"), "and Focus is bought on top");
+    assert(
+      engine.abilityCooldownSeconds(state, "tsunami") < authored,
+      "both shorten what a cast really costs"
+    );
+    assertEqual(
+      engine.abilityRecord(state, "tsunami").cooldownSeconds,
+      authored,
+      "and neither touches the number the offer prints"
+    );
+  });
+
+  test("cards: both locales print a cooldown on the offer and explain it", () => {
+    for (const lang of ["de", "en"]) {
+      const t = engine.I18N[lang];
+      assert(/\{seconds\}/.test(t.cardOfferCooldownLabel || ""), `${lang} has no cooldown label`);
+      assert(t.cardOfferCooldownHint, `${lang} does not explain what the number is`);
     }
   });
 

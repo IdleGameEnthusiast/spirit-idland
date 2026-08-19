@@ -355,9 +355,10 @@ win. Focus is priced past that first payout on purpose, as the catalogue's first
 ### The rows that lower a price
 
 Seven repeatable ladders, one per automation, each carrying `discounts` instead of `unlocks`.
-A rung walks its automation one step down the shared **500 · 400 · 300 · 200 · 100 · 50 · 25 ·
-10** Fear ladder; rungs cost **5 · 10 · 25 · 50 · 100 · 250 · 500** Presence by how many have
-already been taken.
+A rung walks its automation one step down whichever of the two Fear ladders its price sits on —
+**500 · 300 · 200 · 100 · 50 · 25 · 10** or **400 · 200 · 100 · 50 · 25 · 10** — which share a
+tail from 200 down and differ only in that each top row skips a rung on its first step. Rungs
+cost **5 · 10 · 25 · 50 · 100 · 250** Presence by how many have already been taken.
 
 | id | discounts | Fear price | rungs | Presence for all |
 | --- | --- | --- | --- | --- |
@@ -365,18 +366,18 @@ already been taken.
 | `presence_instinct_remembered` — *Der Instinkt bleibt in Erinnerung* / The Instinct Remembered | `auto_innate` | 100 | 3 | 40 |
 | `presence_bounty_remembered` — *Die Gabe bleibt in Erinnerung* / The Bounty Remembered | `auto_bounty` | 200 | 4 | 90 |
 | `presence_flood_remembered` — *Die Sturzflut bleibt in Erinnerung* / The Flood Remembered | `auto_flash_floods` | 300 | 5 | 190 |
-| `presence_current_remembered` — *Die Strömung bleibt in Erinnerung* / The Current Remembered | `auto_wash_away` | 400 | 6 | 440 |
+| `presence_current_remembered` — *Die Strömung bleibt in Erinnerung* / The Current Remembered | `auto_wash_away` | 400 | 5 | 190 |
 | `presence_need_remembered` — *Der Bedarf bleibt in Erinnerung* / The Need Remembered | `auto_buy_abilities` | 200 | 4 | 90 |
-| `presence_tide_remembered` — *Die Flut bleibt in Erinnerung* / The Tide Remembered | `auto_start_round` | 500 | 7 | 940 |
+| `presence_tide_remembered` — *Die Flut bleibt in Erinnerung* / The Tide Remembered | `auto_start_round` | 500 | 6 | 440 |
 
 One naming family, because it is one mechanism: the island remembers what was already paid for
 and asks less the next time. Each names the Fear row it walks down, so the pairing is readable
 off the two shops without a mapping to learn.
 
 **A rung count is never written here or in the catalogue** — `presenceUpgradeMaxTier` reads it
-off where the automation's own `baseCost` sits on `AUTOMATION_PRICE_LADDER`, so repricing an
-automation resizes its ladder. An automation priced off the ladder entirely gets no rungs and
-keeps its full price, which a structural test in `tests/ascension.test.js` catches.
+off where the automation's own `baseCost` sits on its ladder, so repricing an automation resizes
+its descent. An automation priced off both ladders gets no rungs and keeps its full price, which
+a structural test in `tests/ascension.test.js` catches.
 
 Two further properties worth keeping straight:
 

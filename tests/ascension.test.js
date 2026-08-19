@@ -290,8 +290,55 @@
     }
 
     assert(engine.presenceUpgradeMaxed(state, "presence_flood_remembered"), "and the ladder is finished");
-    assert(!engine.purchasePresenceUpgrade(state, "presence_flood_remembered"), "an eighth rung is refused");
+    assert(!engine.purchasePresenceUpgrade(state, "presence_flood_remembered"), "a sixth rung is refused");
     assertEqual(engine.upgradeCost(state, "auto_flash_floods"), 10, "the floor is 10, not 0");
+  });
+
+  // The split itself, which is the only thing the two ladders do that one did not: the top two
+  // rows skip a rung on their first step - 500 to 300 rather than 400, 400 to 200 rather than
+  // 300 - and so finish one rung shallower. Because PRESENCE_DISCOUNT_COSTS was cut at the end,
+  // the rung each loses is its most expensive, which is where the 940 -> 440 and 440 -> 190
+  // totals come from.
+  test("ascension: the top two rows skip a rung on their first step and finish a rung sooner", () => {
+    const walks = {
+      presence_tide_remembered: {
+        automation: "auto_start_round",
+        prices: [300, 200, 100, 50, 25, 10],
+        costs: [5, 10, 25, 50, 100, 250]
+      },
+      presence_current_remembered: {
+        automation: "auto_wash_away",
+        prices: [200, 100, 50, 25, 10],
+        costs: [5, 10, 25, 50, 100]
+      }
+    };
+
+    for (const [presenceId, walk] of Object.entries(walks)) {
+      const { state } = newGame();
+      state.meta.presence = 1000;
+      let spent = 0;
+      for (let i = 0; i < walk.prices.length; i += 1) {
+        assertEqual(engine.presenceUpgradeCost(state, presenceId), walk.costs[i], `${presenceId} rung ${i + 1} is priced`);
+        assert(engine.purchasePresenceUpgrade(state, presenceId), `${presenceId} rung ${i + 1} is bought`);
+        spent += walk.costs[i];
+        assertEqual(engine.upgradeCost(state, walk.automation), walk.prices[i], `${walk.automation} lands on ${walk.prices[i]}`);
+      }
+      assert(engine.presenceUpgradeMaxed(state, presenceId), `${presenceId} is finished`);
+      assertEqual(state.meta.presence, 1000 - spent, `${presenceId} cost ${spent} Presence in all`);
+    }
+  });
+
+  // The number the softening is actually about: the whole set of seven, which the single ladder
+  // priced at 1,795 Presence. Pinned here because it is the figure 04-economy-formulas.md quotes
+  // and the one a re-balance is most likely to move without meaning to.
+  test("ascension: the whole discount set costs 1,045 Presence", () => {
+    let total = 0;
+    for (const id of engine.PRESENCE_UPGRADE_IDS) {
+      if (!engine.PRESENCE_UPGRADES[id].discounts) continue;
+      const rungs = engine.presenceUpgradeMaxTier(id);
+      for (let i = 0; i < rungs; i += 1) total += engine.PRESENCE_DISCOUNT_COSTS[i];
+    }
+    assertEqual(total, 1045, "all seven discount rows cost 1,045 Presence together");
   });
 
   // Where each ladder starts is read off the automation's own price, so the row count is the
@@ -302,9 +349,9 @@
       presence_instinct_remembered: 3,
       presence_bounty_remembered: 4,
       presence_flood_remembered: 5,
-      presence_current_remembered: 6,
+      presence_current_remembered: 5,
       presence_need_remembered: 4,
-      presence_tide_remembered: 7
+      presence_tide_remembered: 6
     };
     for (const [id, rungs] of Object.entries(expected)) {
       assertEqual(engine.presenceUpgradeMaxTier(id), rungs, `${id} has ${rungs} rungs`);
@@ -313,15 +360,15 @@
   });
 
   // Structural, and the thing that breaks first if an automation is ever repriced: a discount row
-  // whose target sits off AUTOMATION_PRICE_LADDER would silently have no rungs at all.
-  test("ascension: every discounted automation is priced on the shared ladder", () => {
+  // whose target sits off both ladders would silently have no rungs at all.
+  test("ascension: every discounted automation is priced on one of the two ladders", () => {
     for (const id of engine.PRESENCE_UPGRADE_IDS) {
       const target = engine.PRESENCE_UPGRADES[id].discounts;
       if (!target) continue;
       assert(engine.UPGRADES[target], `${id} discounts ${target}, which is not in the catalogue`);
       assert(
-        engine.AUTOMATION_PRICE_LADDER.includes(engine.UPGRADES[target].baseCost),
-        `${target} costs ${engine.UPGRADES[target].baseCost}, which is not a rung of the ladder`
+        engine.automationLadder(engine.UPGRADES[target].baseCost),
+        `${target} costs ${engine.UPGRADES[target].baseCost}, which is a rung of neither ladder`
       );
       assertEqual(engine.PRESENCE_DISCOUNT_BY_UPGRADE[target], id, `${target} must map back to ${id}`);
     }
@@ -333,8 +380,8 @@
   test("ascension: a discount survives the reclaim that wipes the automation it discounts", () => {
     const state = readyToAscend(2500);
     grantPresence(state, "presence_tide_returns");
-    grantPresence(state, "presence_tide_remembered", 4);
-    assertEqual(engine.upgradeCost(state, "auto_start_round"), 100, "four rungs off 500");
+    grantPresence(state, "presence_tide_remembered", 3);
+    assertEqual(engine.upgradeCost(state, "auto_start_round"), 100, "three rungs off 500");
 
     state.meta.fear = 100;
     assert(engine.purchaseUpgrade(state, "auto_start_round"), "and 100 Fear buys it this cycle");
@@ -342,7 +389,7 @@
 
     engine.ascend(state);
     assertEqual(engine.upgradeTier(state, "auto_start_round"), 0, "the automation is given back");
-    assertEqual(engine.presenceUpgradeTier(state, "presence_tide_remembered"), 4, "the discount is not");
+    assertEqual(engine.presenceUpgradeTier(state, "presence_tide_remembered"), 3, "the discount is not");
     assertEqual(engine.upgradeCost(state, "auto_start_round"), 100, "so next cycle re-buys it at 100");
   });
 
@@ -350,7 +397,7 @@
   // two-key rule holding across a row that now has two Presence rows pointed at it.
   test("ascension: a discounted row is still locked until its unlock is bought", () => {
     const { state } = newGame();
-    grantPresence(state, "presence_tide_remembered", 7);
+    grantPresence(state, "presence_tide_remembered", 6);
     state.meta.fear = 1e6;
 
     assertEqual(engine.upgradeCost(state, "auto_start_round"), 10, "cheap as it goes");

@@ -46,6 +46,8 @@ const dom = {
   waveLabel: document.getElementById("waveLabel"),
   waveValue: document.getElementById("waveValue"),
   waveFill: document.getElementById("waveFill"),
+  cardCountdown: document.getElementById("cardCountdown"),
+  cardReveal: document.getElementById("cardReveal"),
   dahanAttackLabel: document.getElementById("dahanAttackLabel"),
   dahanAttackValue: document.getElementById("dahanAttackValue"),
   fearLabel: document.getElementById("fearLabel"),
@@ -121,7 +123,14 @@ const renderCache = {
   abilityBar: null,
   shop: null,
   presenceShop: null,
-  log: null
+  log: null,
+  // The reveal's own two pieces of memory. `cardRevealAt` is the fx timestamp whose face is
+  // currently in the layer - rebuilding that markup every frame would restart the entrance
+  // animation sixty times a second, so it is written once per draw and then left alone.
+  // `cardScrollId` is the card the bar should bring into view once the reveal has finished
+  // saying its piece; see patchCardReveal for why it waits.
+  cardRevealAt: null,
+  cardScrollId: null
 };
 
 /* ------------------------------------------------------------------ *
@@ -1042,8 +1051,14 @@ function renderAbilityBar(state) {
   // Then what the round earned, in the order it was handed over. After the kit rather than
   // mixed into it: the five abilities sit where the player has learned to aim at them, and a
   // card arriving at wave 45 must not shove them sideways mid-round.
+  // The card the fx is announcing right now gets the entrance. Read off the fx rather than off
+  // "is this new to the bar", so a rebuild for some unrelated reason - a Focus purchase, a
+  // language switch - does not replay an arrival that already happened.
+  const arriving = activeCardFx(state);
   for (const cardId of cardsInHand(state)) {
-    dom.abilityBar.appendChild(renderPowerCard(state, cardId));
+    const card = renderPowerCard(state, cardId);
+    if (arriving && arriving.cardId === cardId) card.classList.add("is-arriving");
+    dom.abilityBar.appendChild(card);
   }
 }
 
@@ -1091,6 +1106,23 @@ function patchAbilityBar(state) {
   // Ticked-ness is patched here rather than rebuilt, like every other per-frame value.
   for (const box of dom.abilityBar.querySelectorAll("[data-auto-cast]")) {
     box.checked = state.ui.autoCast[box.getAttribute("data-auto-cast")] !== false;
+  }
+
+  /* A card stays lit from the moment it lands until the moment it is first cast.
+   *
+   * The entrance animation is over in a second and the reveal in under three, and a player
+   * who was reading a land through both has still been given something. This is the mark that
+   * waits: it is keyed off pendingRedrawId, which is set by the draw and cleared by
+   * acceptPowerCard on the first cast - so "lit" means exactly "handed to you and not yet
+   * used", which is the state worth marking. It outlasts the re-draw button, which also needs
+   * a non-empty swap pool, so the last card of a round is still lit with no button on it.
+   *
+   * Patched rather than set at render time so it goes out on the cast itself, without waiting
+   * for anything to rebuild the bar.
+   */
+  const pendingCard = roundCards(state).pendingRedrawId;
+  for (const card of dom.abilityBar.querySelectorAll("[data-power-card]")) {
+    card.classList.toggle("is-fresh", card.getAttribute("data-power-card") === pendingCard);
   }
 
   // Same exception and the same reason: a card's option switch spends nothing, so it stays
@@ -1183,7 +1215,9 @@ function presenceShopSignature(state) {
     state.round.status,
     roundCards(state).nextDrawWave
   ].join("~");
-  return [currentLang(state), state.meta.presence, owned, cards].join("|");
+  // The offers quote their cooldowns in real seconds, which the speed dial divides - the same
+  // reason gameSpeed is in shopSignature, and the row is stale without it.
+  return [currentLang(state), gameSpeed(state), state.meta.presence, owned, cards].join("|");
 }
 
 /* Whether the bought half of the shop is unfolded.
@@ -1381,6 +1415,22 @@ function disarmAscend() {
 // waits on a round to start. What it does share is the tier chip on the rows that have a ladder
 // and the sold-out treatment, which is keyed to *maxed* rather than owned - a discount row is
 // still worth looking at with rungs left on it.
+/* The cooldown an offered card would run, printed the way every other countdown in the HUD is:
+ * in real seconds, which the speed dial divides. Effect text alone cannot answer the question
+ * this row is actually asking - the three on offer differ far more in how often they may be
+ * cast than in what one cast does, and Tsunami against Pull Beneath is 50 beats against 10.
+ *
+ * Deliberately the authored figure rather than abilityCooldownSeconds: that one reads Focus,
+ * which nobody has bought on a card they do not own yet, and multiplies by
+ * `round.abilityCooldownMult` - 1 in every round today, but the moment a row moves it, it is
+ * frozen per round, so between rounds an offer would be quoting a fight that is already over.
+ * The tooltip is what says Focus comes on top.
+ */
+function cardOfferCooldownSeconds(state, cardId) {
+  const record = abilityRecord(state, cardId);
+  return displaySeconds(state, record ? record.cooldownSeconds : 0);
+}
+
 /* The draw row, which is not an upgrade row at all: three cards on show and one kept, rather
  * than a price and a tier. It sits at the top of the Presence panel because it is the only
  * thing in there that buys a new kind of thing rather than discounting an old one.
@@ -1415,6 +1465,7 @@ function renderCardShop(state) {
     <div class="card-offer${affordable ? " is-affordable" : ""}">
       <div class="card-offer-info">
         <span class="card-offer-name">${abilityName(state, cardId)}</span>
+        <span class="card-offer-cooldown" title="${t.cardOfferCooldownHint}">${template(t.cardOfferCooldownLabel, { seconds: cardOfferCooldownSeconds(state, cardId) })}</span>
         <span class="card-offer-text">${abilityText(state, cardId)}</span>
       </div>
       <button type="button" class="upgrade-buy" data-draw-card="${cardId}" ${affordable ? "" : "disabled"}>
@@ -1653,6 +1704,8 @@ function patchHud(state) {
     ? `${Math.max(0, Math.min(100, (state.round.waveTimerRemaining / WAVE_INTERVAL_SECONDS) * 100))}%`
     : "0%";
 
+  patchCardCountdown(state);
+
   // The Dahan swing on their own clock, so it gets its own countdown rather than being read
   // off the wave timer - the two will drift apart the moment the shop can shorten one. It
   // keeps showing its number while the clock is stopped rather than repeating the word beside
@@ -1673,6 +1726,129 @@ function patchHud(state) {
   // the shop simply finds the board already grey, with nothing having said when.
   document.body.classList.toggle("round-ended", !running);
   document.body.classList.toggle("round-end-flash", Boolean(activeRoundEndFx(state)));
+}
+
+/* How many waves until the next card, on the tile that counts waves.
+ *
+ * The drip is the one reward in the game whose arrival is known in advance to the wave, and
+ * until now that number was printed only as a hint at the foot of the Presence panel - closed
+ * during a round, and scrolled off the screen when it is not. A reward nobody saw coming reads
+ * as noise; the same reward with three waves of countdown in front of it reads as an arrival,
+ * which is what the drip is for.
+ *
+ * Three reasons there is nothing to count, and all of them hide the line rather than print a
+ * dash: no round running, no card owned, or every owned card already standing in the hand. The
+ * last is the one worth naming - a player holding all seven has nothing left to be handed, and
+ * a countdown to a draw that will pass silently would be a lie with a number on it.
+ */
+function patchCardCountdown(state) {
+  const t = locale(state);
+  const waves = roundCards(state).nextDrawWave - state.round.wavesResolved;
+  const show = state.round.status === "running"
+    && drawablePowerCardIds(state).length > 0
+    && waves > 0;
+
+  dom.cardCountdown.hidden = !show;
+  if (!show) {
+    dom.cardCountdown.classList.remove("is-due");
+    return;
+  }
+
+  // One wave out gets its own sentence rather than "in 1 waves", and lights up: that is the
+  // last countdown reading the player will see before the card is simply there.
+  dom.cardCountdown.textContent = waves === 1
+    ? t.cardCountdownNext
+    : template(t.cardCountdownWaves, { waves });
+  dom.cardCountdown.classList.toggle("is-due", waves === 1);
+}
+
+/* The card reveal, laid over the island for as long as its fx is fresh.
+ *
+ * Built once per draw and then left alone. Everything else in this file that changes per frame
+ * is a text write, but this one carries a CSS entrance animation, and rewriting the markup on
+ * every frame would restart that animation on every frame - the card would sit there pulsing
+ * instead of arriving once.
+ *
+ * It prints the three things the player needs before deciding whether to keep it: the name, the
+ * effect, and the cooldown - the same three the shop's offer rows carry, and for the same
+ * reason (see cardOfferCooldownSeconds). The wave it arrived on is the kicker above them,
+ * because that is what paid for it.
+ */
+function renderCardReveal(state, fx) {
+  const t = locale(state);
+  dom.cardReveal.innerHTML = `
+    <div class="card-reveal-face">
+      <span class="card-reveal-kicker">${template(t.cardRevealTitle, { wave: fx.wave })}</span>
+      <span class="card-reveal-name">${abilityName(state, fx.cardId)}</span>
+      <span class="card-reveal-text">${abilityText(state, fx.cardId)}</span>
+      <span class="card-reveal-marks">
+        <span class="card-reveal-tag">${t.cardTag}</span>
+        <span class="card-reveal-cooldown">${template(t.cardOfferCooldownLabel, {
+          seconds: cardOfferCooldownSeconds(state, fx.cardId)
+        })}</span>
+      </span>
+    </div>
+  `;
+}
+
+/* Per frame: put a fresh reveal up, take a stale one down, and hand the bar its scroll.
+ *
+ * The scroll waits for the reveal to expire rather than firing with it. The two would
+ * otherwise fight - the reveal is drawn over the board and the bar is somewhere else on the
+ * page, so scrolling to the card at the moment of the draw would carry the player away from
+ * the very thing announcing it. Once the reveal has said its piece the card in the bar is the
+ * only thing left to look at, and that is when the view goes to it.
+ */
+function patchCardReveal(state) {
+  const fx = activeCardFx(state);
+
+  if (fx) {
+    if (renderCache.cardRevealAt !== fx.at) {
+      // Dropped and re-added around a forced reflow, rather than simply added. A re-draw
+      // pressed while the previous reveal is still up replaces the face under a class that is
+      // already set, and an animation does not restart for new content underneath it - the
+      // swapped-in card would inherit whatever was left of the old card's second, or nothing
+      // at all. Reading offsetWidth between the two is what makes the browser commit the
+      // removal, so the new face gets a full pass of its own.
+      dom.cardReveal.classList.remove("is-live");
+      renderCardReveal(state, fx);
+      void dom.cardReveal.offsetWidth;
+      dom.cardReveal.classList.add("is-live");
+      renderCache.cardRevealAt = fx.at;
+      renderCache.cardScrollId = fx.cardId;
+    }
+    return;
+  }
+
+  if (renderCache.cardRevealAt === null) return;
+
+  dom.cardReveal.classList.remove("is-live");
+  dom.cardReveal.innerHTML = "";
+  renderCache.cardRevealAt = null;
+
+  const cardId = renderCache.cardScrollId;
+  renderCache.cardScrollId = null;
+  if (cardId) scrollCardIntoView(cardId);
+}
+
+/* Bring the arrived card into view, and only if it is not already there.
+ *
+ * `block: "nearest"` on purpose: it is the one option that scrolls by the smallest amount that
+ * works, so a bar already on screen is left exactly where it is and a bar just below the fold
+ * rises far enough to be read and no further. Nothing here yanks a player who can already see
+ * the card - the in-viewport check is what makes the desktop layout, where the bar sits beside
+ * the board the whole time, a no-op.
+ */
+function scrollCardIntoView(cardId) {
+  const card = dom.abilityBar.querySelector(`[data-power-card="${cardId}"]`);
+  if (!card || typeof card.scrollIntoView !== "function") return;
+
+  const box = card.getBoundingClientRect();
+  const visible = box.top >= 0 && box.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+  if (visible) return;
+
+  const still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  card.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "nearest" });
 }
 
 // The escalation ladder under the track. Rebuilt rather than patched, and only when the wave
@@ -1954,6 +2130,9 @@ function updateUI(state) {
     renderCache.abilityBar = nextAbilitySig;
   }
   patchAbilityBar(state);
+  // After the bar, never before: the reveal hands the bar a card to scroll to when it expires,
+  // and on the frame a draw lands that node has only just been built.
+  patchCardReveal(state);
 
   const nextMapSig = mapSignature(state);
   if (renderCache.map !== nextMapSig) {

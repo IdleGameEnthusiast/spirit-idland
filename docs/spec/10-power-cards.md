@@ -76,7 +76,8 @@ POWER_CARD_REROLL_DIVISOR = 4
 | re-roll | 3 | 4 | 7 | 11 | 17 | 27 | 42 |
 
 432 Presence for all seven, against a first Reclaim paying about 5 and the full discount
-ladders costing 1,795. It sits as a mid-cycle sink.
+ladders costing 1,045. It sits as a mid-cycle sink, and since the ladders were shortened it is
+the larger half of what a late purse has to spend on.
 
 **This is the first Presence row that out-earns holding, and that is the point.** Unspent
 Presence multiplies Fear generation by 1% a point, uncapped
@@ -102,6 +103,11 @@ that does not make holding foolish.
   that is not there yet.
 - A re-roll costs `powerCardRerollCost` and replaces the offer under one guarantee: **at least
   two cards the current offer does not contain, when that many exist.**
+- **Each card on offer shows its cooldown**, under the name, in the real seconds the rest of the
+  HUD counts in. The offer is a choice between three throughputs more than between three
+  effects — 10 beats against 50 is the difference between a card leaned on and a card aimed —
+  and the effect text says nothing about that. It is the authored cooldown, before Focus; see
+  [06](./06-ui-contract.md#power-cards) for why not the effective one.
 
 ```txt
 unowned    U            fresh = U \ currentOffer
@@ -143,6 +149,29 @@ The schedule also gives the late round something it does not have today. The dif
 start at wave 100 and repeat every 20
 ([04](./04-economy-formulas.md#unit-stats)); the drip is the player's counter-rung, and the two
 ladders climbing against each other is what a deep round is *for*.
+
+### The arrival, and why it is staged
+
+A card is the one thing a round gives rather than sells, and it used to arrive in silence — an
+entry appearing in a panel off to the side, with a log line for anyone who thought to look. The
+drip's whole argument is that **the round earned this**, and an event nobody notices cannot make
+that argument.
+
+So the draw is staged rather than merely applied: a countdown on the wave tile for the waves
+before it, a reveal over the island at the moment itself, an entrance as the card lands in the
+bar, and a glow on the card that holds until it is first cast. The engine's part is one fx —
+`ui.cardFx`, carrying the card and the wave that earned it, written by both draw paths — and the
+rest is the view layer's; the surfaces are specified in
+[06](./06-ui-contract.md#the-card-arrival).
+
+The countdown is the half that matters most and is the least obvious. The draw wave is known in
+advance to the exact number, and until it was shown, the deepest part of a round had nothing to
+look forward to. **A reward with no anticipation in front of it reads as noise.** With four waves
+of countdown it reads as what the design says it is: the counter-rung to the difficulty ladder,
+arriving because the round survived long enough to deserve it.
+
+None of it stops the round. The reveal takes no pointer events, has no button and no timer, and
+expires on its own — the same rule the re-draw below follows, and for the same reason.
 
 ### The re-draw, and why it does not stop the round
 

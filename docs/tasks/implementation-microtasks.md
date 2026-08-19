@@ -473,7 +473,8 @@ idle-game exponential Energy income, not a wave gate.
 Seven repeatable Presence rows, one per automation, walking its Fear price down a shared ladder
 **500 · 400 · 300 · 200 · 100 · 50 · 25 · 10**. Rungs cost **5 · 10 · 25 · 50 · 100 · 250 ·
 500** Presence by how many have been taken; a row's rung count is read off where its automation
-already sits, so the whole set is 1,795 Presence. Full design in
+already sits, so the whole set is 1,795 Presence. **Reworked 2026-08-19** — see the amendment
+at the end of this item. Full design in
 [05-progression.md](../spec/05-progression.md#the-discount-ladders) and
 [04-economy-formulas.md](../spec/04-economy-formulas.md#the-automation-discount-ladders); the
 registry table is in
@@ -500,6 +501,26 @@ cycle, so the automations stay purchases a cycle makes rather than switches a sa
 keeps the "play this cycle actively, or pay to idle it" trade intact at the bottom of every
 ladder — what a fully-discounted run buys is that the toll stops being a *decision*, not that it
 disappears.
+
+**Amendment, 2026-08-19 — one ladder became two, and the set got much cheaper to finish.** The
+single 500…10 descent made the top two rows far too long: `auto_start_round` owed seven rungs
+and `auto_wash_away` six, and their last rungs were priced past the point where the Fear they
+save is legible. There are now two ladders sharing a tail from 200 Fear down —
+**500 · 300 · 200 · 100 · 50 · 25 · 10** and **400 · 200 · 100 · 50 · 25 · 10** — so each top
+row skips a rung on its first step and finishes one rung sooner. `PRESENCE_DISCOUNT_COSTS` was
+cut **at the end** to match (**5 · 10 · 25 · 50 · 100 · 250**), which means a shortened row
+loses its *most expensive* rung: 940 → 440 and 440 → 190, and the whole set 1,795 → **1,045**.
+Everything at 300 Fear and below is untouched, because below 300 the two ladders are the same
+list.
+
+Two things knowingly traded away, both recorded in
+[04-economy-formulas.md](../spec/04-economy-formulas.md#the-automation-discount-ladders): rows of
+similar length now tie on total (`auto_wash_away` and `auto_flash_floods` both finish at 190
+while saving 390 and 290 Fear a cycle), which is unavoidable while rung counts are integers and
+the cost list is positional and harmless while a run buys all seven anyway; and the late sink is
+much smaller, with the power card draws of item 14 now carrying more of it than these do. The
+option of also trimming the 300 row to 90 was considered and dropped — it would have made that
+row the *best* value in the set, moving the same tie one step down rather than removing it.
 
 ### 14. Power cards — *designed and built 2026-08-18*
 

@@ -72,6 +72,11 @@ const DAHAN_MAX_SPREAD = 2;
 // outside TIME_SCALE - it is measured against how fast an eye catches a highlight, which no
 // change of game pace moves.
 const DEFEAT_FX_MS = 1200;
+// The card reveal runs on its own clock, and a longer one. The three fx above mark a number
+// that moved - a highlight the eye catches or misses in a moment - while this one carries a
+// name, an effect and a cooldown the player is meant to actually read before deciding whether
+// to keep the card. Stretching DEFEAT_FX_MS to fit would lengthen every defeat chip with it.
+const CARD_FX_MS = 2600;
 const MAX_TICK_SECONDS = 5 * TIME_SCALE;
 
 // The whole fight runs on one currency: a damage-second. One point of damage sustained for
@@ -1031,54 +1036,89 @@ const UPGRADES = {
  * shortens no clock" above is no longer true of the whole catalogue, only of the two older rows.
  * ------------------------------------------------------------------ */
 
-/* ---------- The discount ladder the seven automations come down ----------
+/* ---------- The two discount ladders the seven automations come down ----------
  *
- * Every automation's Fear price is one rung of this one shared ladder, and a `discounts` row
- * below moves its automation down a rung. Prices are a shared ladder rather than seven private
- * curves so that the shop has one descent to learn instead of seven, and so a row's remaining
- * rungs are readable off where its price already sits.
+ * Every automation's Fear price is one rung of one of these, and a `discounts` row below moves
+ * its automation down a rung. Prices are a shared descent rather than seven private curves so
+ * that the shop has a shape to learn instead of seven, and so a row's remaining rungs are
+ * readable off where its price already sits.
  *
- * It bottoms out at 10 rather than at 0. A row still owed something is still re-bought every
+ * There are two of them rather than one because a single 500..10 ladder made the top rows far
+ * too long: the 500 automation owed seven rungs and the 400 owed six, and their last rungs were
+ * priced past the point where the Fear they save means anything (see PRESENCE_DISCOUNT_COSTS).
+ * Splitting the descent in two drops the first step of each top row onto a bigger saving - 500
+ * goes straight to 300, 400 straight to 200 - and takes a rung off both. Below 300 the two
+ * ladders share the same tail, so every other automation is untouched by the split and it costs
+ * the player no extra shape to learn: the rows they already know still descend the way they did.
+ *
+ * Both bottom out at 10 rather than at 0. A row still owed something is still re-bought every
  * cycle, which keeps the shape of the Fear catalogue intact - the automations stay purchases a
  * cycle makes rather than switches a save carries. 10 is small enough not to be a decision and
  * large enough not to be free.
  */
-const AUTOMATION_PRICE_LADDER = [500, 400, 300, 200, 100, 50, 25, 10];
+const AUTOMATION_PRICE_LADDERS = [
+  [500, 300, 200, 100, 50, 25, 10],
+  [400, 200, 100, 50, 25, 10]
+];
 
-/* What each rung of that descent costs in Presence, by how many rungs have already been taken.
+/* The ladder an automation descends, which is simply the one its own price sits on. The shared
+ * tail means 200 and below appear on both; either answers the same, because from 200 down the
+ * two ladders are the same list.
  *
- * It climbs 100x across seven steps while what a step saves falls from 100 Fear to 15, so the
- * value per Presence spent drops by something like 700x from the first rung to the last. That is
+ * A price on neither gets no ladder rather than a nearby rung - see automationPriceAtTier for
+ * why that is the safe direction, and the structural test in tests/ascension.test.js for what
+ * keeps it from happening quietly.
+ */
+function automationLadder(baseCost) {
+  for (const ladder of AUTOMATION_PRICE_LADDERS) {
+    if (ladder.indexOf(baseCost) >= 0) return ladder;
+  }
+  return null;
+}
+
+/* What each rung of a descent costs in Presence, by how many rungs have already been taken. One
+ * list for both ladders: a row pays by how deep it is, not by which ladder it is on.
+ *
+ * It climbs 50x across six steps while what a step saves falls from 200 Fear to 15, so the value
+ * per Presence spent drops by something like 650x from the first rung to the last. That is
  * deliberate and it is the whole shape of these rows: **the early rungs are the investment and
- * the late ones are an endgame sink.** 5 Presence for 100 Fear a cycle is a good buy the first
- * Reclaim after Focus can nearly make; 500 Presence for the last 15 Fear is something a run
+ * the late ones are an endgame sink.** 5 Presence for 200 Fear a cycle is a good buy the first
+ * Reclaim after Focus can nearly make; 250 Presence for the last 15 Fear is something a run
  * arrives at long after the Fear it saves has stopped mattering.
+ *
+ * The list ends at 250 rather than 500 because the ladders above are a rung shorter than they
+ * were, and it was cut from the *end* - the rungs a row loses are its most expensive ones, so
+ * the top two rows drop from 940 and 440 Presence to 440 and 190. Finishing the whole set costs
+ * 1,045 rather than 1,795. That is a deliberate softening: the deep rungs were a sink long past
+ * the point where the Fear they saved was legible, and the set now completes inside a cycle a
+ * player is still paying attention to.
  *
  * They are also priced against the thing Presence does when it is *not* spent - 1% more Fear
  * generated per point held, uncapped (PRESENCE_FEAR_BONUS_PER_POINT). Against that, a fixed Fear
  * discount is a losing trade at any income above a few thousand a cycle, and the deep rungs lose
  * by orders of magnitude. That is known and intended: these rows are not meant to out-earn
  * holding. They are meant to be worth taking early, when a cycle's income is small enough that
- * 100 Fear off a 500 Fear row is real money, and to still have somewhere to put Presence much
+ * 200 Fear off a 500 Fear row is real money, and to still have somewhere to put Presence much
  * later when nothing else does.
  */
-const PRESENCE_DISCOUNT_COSTS = [5, 10, 25, 50, 100, 250, 500];
+const PRESENCE_DISCOUNT_COSTS = [5, 10, 25, 50, 100, 250];
 
 /* Where an automation's price sits after `tier` rungs of discount, and the one piece of ladder
  * arithmetic in the file - both the live price and the "next rung" the shop row advertises come
  * through here, so they cannot drift apart.
  *
- * An automation whose `baseCost` is not on the ladder keeps its price untouched rather than being
+ * An automation whose `baseCost` is on neither ladder keeps its price untouched rather than being
  * snapped to a nearby rung. That is the safe direction: a mispriced row costs full price instead
  * of silently becoming cheap.
  */
 function automationPriceAtTier(upgradeId, tier) {
   const record = UPGRADES[upgradeId];
   if (!record) return Infinity;
-  const rung = AUTOMATION_PRICE_LADDER.indexOf(record.baseCost);
-  if (rung < 0) return record.baseCost;
+  const ladder = automationLadder(record.baseCost);
+  if (!ladder) return record.baseCost;
+  const rung = ladder.indexOf(record.baseCost);
   const steps = Math.max(0, Math.floor(Number(tier) || 0));
-  return AUTOMATION_PRICE_LADDER[Math.min(rung + steps, AUTOMATION_PRICE_LADDER.length - 1)];
+  return ladder[Math.min(rung + steps, ladder.length - 1)];
 }
 
 const PRESENCE_UPGRADES = {
@@ -1110,9 +1150,9 @@ const PRESENCE_UPGRADES = {
    * clock, adds no damage - while making them the first repeatable rows the layer has.
    *
    * `discounts` names the automation, and its rung count is read off where that automation's
-   * price already sits on AUTOMATION_PRICE_LADDER rather than written here: a row priced at 300
-   * has five rungs down to 10 whether or not anybody counted. Move an automation's `baseCost`
-   * to another rung and its ladder resizes itself.
+   * price already sits on its ladder rather than written here: a row priced at 300 has five
+   * rungs down to 10 whether or not anybody counted. Move an automation's `baseCost` to another
+   * rung - or onto the other ladder - and its descent resizes itself.
    *
    * Listed in the same order as the automations in UPGRADES, so the two shops read down in the
    * same sequence and a player can find a row's discount where they expect it.
@@ -1513,7 +1553,15 @@ const I18N = {
     cardShopLabel: "Machtkarten",
     cardShopHint: "Drei liegen aus, eine gehört dir - für immer, auch über die Aszension hinweg. Auf der Hand liegt sie erst, wenn eine Runde tief genug kommt.",
     cardDrawCostLabel: "{cost} Präsenz",
-    cardRerollBtn: "Neu mischen ({cost})",
+    // Die Abklingzeit steht auf einer eigenen Zeile unter dem Namen, weil sie beim Kauf die
+    // Frage ist: die drei Auslagen unterscheiden sich weniger darin, was sie tun, als darin,
+    // wie oft sie es dürfen. Der Hinweistext trägt sie, weil eine Zahl allein nicht sagt,
+    // wovon sie die Wartezeit ist.
+    cardOfferCooldownLabel: "{seconds}s Abklingzeit",
+    cardOfferCooldownHint: "Die Wartezeit zwischen zwei Einsätzen, bevor Fokus sie verkürzt. Keine Karte wirkt sich selbst - so oft kannst du sie also von Hand spielen.",
+    // Der Preis nennt seine Währung, wie der Kaufknopf darüber: eine nackte Zahl in Klammern
+    // liest sich wie "noch 3 Mal", nicht wie ein Preis.
+    cardRerollBtn: "Neu mischen: {cost} Präsenz",
     cardRerollHint: "Mindestens zwei Karten, die gerade nicht ausliegen.",
     cardRerollDeadHint: "Nur noch drei Karten - es liegt bereits alles aus.",
     cardShopSoldOut: "Alle sieben Karten gehören dir.",
@@ -1525,6 +1573,12 @@ const I18N = {
     cardOptionLabel: "Küsten",
     cardOptionHint: "Trifft auch jede andere Küste - mit weniger Furcht und Schaden, und es kostet dort ebenfalls Dahan. Aus: nur das gewählte Gebiet.",
     cardNextDrawHint: "Nächste Karte: Welle {wave}.",
+    // Der Countdown auf der Wellenkachel und die Enthüllung über der Insel. Beide nennen die
+    // Welle, weil die Welle der Preis ist: Präsenz kauft die Karte, überlebte Wellen kaufen
+    // den Augenblick, in dem sie kommt.
+    cardCountdownWaves: "Karte in {waves} Wellen",
+    cardCountdownNext: "Karte: nächste Welle",
+    cardRevealTitle: "Welle {wave} bringt",
     // Protokollzeilen.
     cardBought: "{card} für {cost} Präsenz. Die Insel erinnert sich.",
     cardTooExpensive: "{card} kostet {cost} Präsenz, du hast {presence}.",
@@ -1937,7 +1991,15 @@ const I18N = {
     cardShopLabel: "Power cards",
     cardShopHint: "Three are offered, one is yours - kept forever, ascension included. It only reaches your hand once a round runs deep enough.",
     cardDrawCostLabel: "{cost} Presence",
-    cardRerollBtn: "Re-roll ({cost})",
+    // The cooldown gets a line of its own under the name because at the point of purchase it is
+    // the question: the three on offer differ less in what they do than in how often they may
+    // do it. The label carries the word, not just the number - a bare "24s" beside a price does
+    // not say which of the round's several clocks it is.
+    cardOfferCooldownLabel: "{seconds}s cooldown",
+    cardOfferCooldownHint: "The wait between casts, before Focus shortens it. No card casts itself, so this is how often you can play it by hand.",
+    // The price names its currency, like the buy button above it: a bare number in brackets
+    // reads as "3 re-rolls left" rather than as what it costs.
+    cardRerollBtn: "Re-roll: {cost} Presence",
     cardRerollHint: "At least two cards this offer does not hold.",
     cardRerollDeadHint: "Three cards left - every one of them is already on show.",
     cardShopSoldOut: "All seven cards are yours.",
@@ -1949,6 +2011,12 @@ const I18N = {
     cardOptionLabel: "Coasts",
     cardOptionHint: "Hits every other coastal land too - less Fear and damage, and it costs Dahan there as well. Off: the chosen land only.",
     cardNextDrawHint: "Next card: wave {wave}.",
+    // The countdown on the wave tile and the reveal over the island. Both name the wave,
+    // because the wave is the price: Presence buys the card, waves survived buy the moment it
+    // arrives.
+    cardCountdownWaves: "Card in {waves} waves",
+    cardCountdownNext: "Card: next wave",
+    cardRevealTitle: "Wave {wave} brings",
     // Log lines.
     cardBought: "{card} for {cost} Presence. The island remembers.",
     cardTooExpensive: "{card} costs {cost} Presence, you have {presence}.",
@@ -2798,8 +2866,29 @@ function normalizeRoundEndFx(roundEndFx) {
   return { at };
 }
 
-function fxIsFresh(fx) {
-  return Boolean(fx) && (nowMs() - fx.at) <= DEFEAT_FX_MS;
+/* A card reaching the hand, for the board to say so and for the bar to light the card that
+ * arrived. It carries the id because both readers need to name it - the reveal prints the
+ * card's own text, and the bar has to find the one entry out of several to mark - and the
+ * wave because that is the sentence the reveal is making: this is what wave 45 was worth.
+ *
+ * Written by both draw paths, the drip and the re-draw. A swap is a card arriving in hand by
+ * every measure that matters here, and the re-draw is precisely the moment the player is
+ * asking to be shown something.
+ */
+function normalizeCardFx(cardFx) {
+  if (!cardFx || typeof cardFx !== "object") return null;
+  const cardId = POWER_CARDS[cardFx.cardId] ? cardFx.cardId : null;
+  const wave = Math.max(0, Math.floor(cardFx.wave || 0));
+  const at = Number(cardFx.at);
+  if (!cardId || !Number.isFinite(at)) return null;
+  return { cardId, wave, at };
+}
+
+// The window is a parameter rather than the constant, because the card reveal outlives the
+// other three by design - see CARD_FX_MS.
+function fxIsFresh(fx, windowMs) {
+  const span = Number.isFinite(windowMs) ? windowMs : DEFEAT_FX_MS;
+  return Boolean(fx) && (nowMs() - fx.at) <= span;
 }
 
 function activeDefeatFx(state) {
@@ -2822,11 +2911,17 @@ function activeRoundEndFx(state) {
   return fxIsFresh(fx) ? fx : null;
 }
 
+function activeCardFx(state) {
+  const fx = normalizeCardFx(state.ui && state.ui.cardFx);
+  return fxIsFresh(fx, CARD_FX_MS) ? fx : null;
+}
+
 function pruneFx(state) {
   if (!fxIsFresh(normalizeDefeatFx(state.ui.defeatFx))) state.ui.defeatFx = null;
   if (!fxIsFresh(normalizeBlightFx(state.ui.blightFx))) state.ui.blightFx = null;
   if (!fxIsFresh(normalizeFearFx(state.ui.fearFx))) state.ui.fearFx = null;
   if (!fxIsFresh(normalizeRoundEndFx(state.ui.roundEndFx))) state.ui.roundEndFx = null;
+  if (!fxIsFresh(normalizeCardFx(state.ui.cardFx), CARD_FX_MS)) state.ui.cardFx = null;
 }
 
 function markDefeatFx(state, land, unitType, count) {
@@ -2852,6 +2947,13 @@ function markFearFx(state, wave, amount) {
 
 function markRoundEndFx(state) {
   state.ui.roundEndFx = { at: nowMs() };
+}
+
+// Both draw paths call this, so both get the same announcement. An unknown id writes nothing
+// rather than a reveal with an empty face.
+function markCardFx(state, cardId, wave) {
+  if (!POWER_CARDS[cardId]) return;
+  state.ui.cardFx = { cardId, wave: Math.max(0, Math.floor(wave || 0)), at: nowMs() };
 }
 
 /* ------------------------------------------------------------------ *
@@ -2891,20 +2993,21 @@ function presenceUpgradeOwned(state, presenceId) {
 }
 
 /* How many rungs a row has, which for a discount row is a question about the Fear catalogue
- * rather than about this one: the automation's own price is a rung of AUTOMATION_PRICE_LADDER,
- * and what is left is everything under it.
+ * rather than about this one: the automation's own price is a rung of one of the two ladders,
+ * and what is left is everything under it on that same ladder.
  *
- * An automation priced off the ladder entirely has no rungs at all rather than a guessed
- * position - see the structural test in tests/ascension.test.js, which is what actually keeps
- * the two tables agreeing.
+ * An automation priced off both ladders has no rungs at all rather than a guessed position - see
+ * the structural test in tests/ascension.test.js, which is what actually keeps the two tables
+ * agreeing.
  */
 function presenceUpgradeMaxTier(presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return 0;
   if (!record.discounts) return 1;
   const target = UPGRADES[record.discounts];
-  const rung = target ? AUTOMATION_PRICE_LADDER.indexOf(target.baseCost) : -1;
-  return rung < 0 ? 0 : AUTOMATION_PRICE_LADDER.length - 1 - rung;
+  const ladder = target ? automationLadder(target.baseCost) : null;
+  if (!ladder) return 0;
+  return ladder.length - 1 - ladder.indexOf(target.baseCost);
 }
 
 function presenceUpgradeMaxed(state, presenceId) {
@@ -3167,7 +3270,7 @@ function upgradeCostGrowth(upgradeId) {
 }
 
 /* What a row's first rung costs *this cycle*, which is its catalogue price unless a Presence
- * discount row has walked it down AUTOMATION_PRICE_LADDER.
+ * discount row has walked it down its ladder.
  *
  * Every Fear price in the game goes through here rather than reading `baseCost` directly, so
  * there is one place a discount can apply and no path - shop label, purchase, affordability -
@@ -5132,6 +5235,10 @@ function resolveCardDraw(state) {
   cards.pendingRedrawId = cardId;
   cards.rejectedIds = [];
 
+  // The log records it; the fx announces it. The bar alone cannot - a card sliding into a
+  // panel the player is not looking at is not an event, and the drip is the one moment in a
+  // round where something arrives rather than being spent.
+  markCardFx(state, cardId, state.round.wavesResolved);
   addLog(state, template(locale(state).cardDrawn, {
     card: abilityName(state, cardId),
     wave: state.round.wavesResolved
@@ -5188,6 +5295,9 @@ function redrawPowerCard(state, cardId) {
   const next = drawFromPool(pool, 1)[0];
   grantPowerCard(state, next);
   cards.pendingRedrawId = next;
+  // Announced like the drip's own draw. This is the moment the Energy was spent to see, so
+  // showing it is the whole point of the button rather than an embellishment on it.
+  markCardFx(state, next, state.round.wavesResolved);
 
   addLog(state, template(t.cardRedrawn, {
     card: abilityName(state, cardId),
@@ -6532,6 +6642,7 @@ function startRound(state) {
   state.ui.blightFx = null;
   state.ui.fearFx = null;
   state.ui.roundEndFx = null;
+  state.ui.cardFx = null;
 
   addLog(state, template(locale(state).roundStarted, {
     round: state.round.number,
@@ -6919,6 +7030,7 @@ function createInitialState() {
       blightFx: null,
       fearFx: null,
       roundEndFx: null,
+      cardFx: null,
       selectedLand: null
     },
     round: {
@@ -7060,6 +7172,7 @@ function normalizeState(raw) {
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);
   merged.ui.fearFx = normalizeFearFx(merged.ui.fearFx);
   merged.ui.roundEndFx = normalizeRoundEndFx(merged.ui.roundEndFx);
+  merged.ui.cardFx = normalizeCardFx(merged.ui.cardFx);
 
   // Floored, not just clamped: a save written while Fear was fractional loads as the whole
   // number the shop can actually spend, and never as 6.3.
@@ -7663,7 +7776,8 @@ const ENGINE_EXPORTS = {
   PRESENCE_UPGRADE_IDS,
   PRESENCE_DISCOUNT_BY_UPGRADE,
   PRESENCE_DISCOUNT_COSTS,
-  AUTOMATION_PRICE_LADDER,
+  AUTOMATION_PRICE_LADDERS,
+  automationLadder,
   automationPriceAtTier,
   ASCENSION_UNLOCK_PRESENCE,
   PRESENCE_FEAR_DIVISOR,
@@ -7825,6 +7939,10 @@ const ENGINE_EXPORTS = {
   activeBlightFx,
   activeFearFx,
   activeRoundEndFx,
+  CARD_FX_MS,
+  normalizeCardFx,
+  activeCardFx,
+  markCardFx,
   pruneFx
 };
 

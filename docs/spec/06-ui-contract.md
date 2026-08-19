@@ -460,9 +460,91 @@ page already had rather than inventing one:
   another catalogue row — three cards side by side is a different shape from a price and a tier.
   The three are stacked, not columned: the panel is a narrow sidebar and three cards across
   would be four words wide each. A re-roll button sits under them, dead rather than dear once
-  three or fewer cards are unowned. The offer is state, not a render — it survives a reload
-  unchanged, and the boot path rolls and **saves** the first one, since an offer that existed
-  only in the DOM would make the re-roll price decoration.
+  three or fewer cards are unowned. Its price **names the currency** — `Re-roll: 3 Presence`, the
+  buy button's own phrasing — because a bare number in brackets next to the word re-roll reads
+  as a tally of re-rolls remaining rather than as what one of them costs. The offer is state,
+  not a render — it survives a reload unchanged, and the boot path rolls and **saves** the first
+  one, since an offer that existed only in the DOM would make the re-roll price decoration.
+- **Each offer prints its cooldown**, in real seconds like every other countdown on the page —
+  so the speed dial divides it, and the Presence panel's signature reads `gameSpeed` for the same
+  reason the Fear panel's does. It is the number the purchase turns on: the three on offer differ
+  far more in how often they may be cast than in what one cast does, and effect text alone cannot
+  say that Tsunami waits five times as long as Pull Beneath. A tooltip carries the rest — that
+  Focus comes off it, and that no card casts itself, which is what makes the number matter.
+- The figure is the **authored** cooldown, not `abilityCooldownSeconds`: that one reads Focus,
+  which nobody has bought on a card they do not own yet, and `round.abilityCooldownMult`, which
+  is 1 in every round today but is frozen per round — so an offer read between rounds would be
+  quoting a fight that is already over.
+- It sits on **a line of its own** between the name and the effect text, rather than as a mark on
+  the right of the name line where an ability card carries its state. Card names here run to four
+  words, so a right-aligned mark wrapped under the long ones and sat inline on the short ones, and
+  a number that lands somewhere different on every row cannot be compared down the column. The
+  label carries the word as well as the number: a bare `24s` beside a price does not say which of
+  the round's several clocks it is.
+
+### The card arrival
+
+A card reaching the hand is the one thing a round *gives* rather than sells, and for a while it
+was the quietest event in the game: the entry appeared in the ability bar, a log line was
+written, and nothing else happened. The bar lives in the rail and the player is watching the
+island, so a card could arrive at wave 45 and simply be found there twenty waves later.
+
+Four surfaces now carry it, and they are deliberately staged as one movement — a countdown, a
+moment, a landing, and a mark that waits:
+
+- **The countdown**, on the wave HUD tile. The drip is the only reward in the game whose arrival
+  is known in advance to the exact wave, and the wave tile is where waves are counted, so it goes
+  there rather than beside an Energy it will never cost. It reads `Card in 4 waves`, then
+  `Card: next wave` on the last reading, which is the only one that brightens and pulses. **A
+  reward nobody saw coming reads as noise**; the same reward with four waves of anticipation in
+  front of it reads as an arrival, which is what the drip is for. Three states hide the line
+  outright rather than printing a dash: no round running, no card owned, and — the one worth
+  naming — every owned card already in hand, because a countdown toward a draw that will pass
+  silently is a lie with a number on it.
+- **The reveal**, laid over the island for `CARD_FX_MS`. It prints the wave that earned it as a
+  kicker, then the name, the effect, and the cooldown — the same three the shop's offer rows
+  carry, in the same order, so a player deciding whether to keep the card is reading the layout
+  they bought it in. It goes over the **board**, not in the rail, because the board is where the
+  player is looking. **It takes no pointer events at any depth**: the lands underneath stay
+  clickable through it and an armed ability can still be aimed. There is no button on it and no
+  timer to beat — it expires. That is what keeps it inside
+  [02-core-loop](./02-core-loop.md)'s rule that nothing in a round waits for input.
+- **The entrance**, on the card as it lands in the bar — a drop, a Presence-coloured flare, and
+  done inside a second, so it is over by the time the eye leaves the fading reveal. It is keyed
+  off the fx rather than off "is this new to the bar", so a rebuild for an unrelated reason (a
+  Focus purchase, a language switch) never replays an arrival that already happened.
+- **The mark that waits**, and the only one of the four not on a clock. A card is lit — a steady
+  Presence glow, no motion — from the moment it lands until the moment it is **first cast**. The
+  reveal expires and the entrance finishes, and a player who was reading a land through both has
+  still been given a card; this is what greets them when they finally look. It is keyed off
+  `pendingRedrawId`, so "lit" means exactly "handed to you and not yet used" — and not by
+  accident, that is the same window in which the re-draw is still on offer. It outlasts the
+  re-draw *button*, which also needs a non-empty swap pool, so a round's last card is still lit
+  with no button on it. Affordability still wins on the border, as it does on every other card in
+  the bar: a warm edge means "you can pay for this" everywhere else and must not stop meaning it
+  here.
+
+Two mechanics hold the four together:
+
+- **One fx, `ui.cardFx`**, the fourth sibling of the defeat, Blight and round-end marks, carrying
+  `{ cardId, wave, at }`. It runs on **`CARD_FX_MS`, not `DEFEAT_FX_MS`**: the other three mark a
+  number that moved, which an eye catches or misses in a moment, while this one carries text the
+  player is meant to actually read before deciding whether to keep the card. Stretching the
+  shared constant would have lengthened every defeat chip with it. Both draw paths write it —
+  the drip and the re-draw — because a swap is a card arriving by every measure that matters, and
+  it is precisely what the Energy was spent to see.
+- **The scroll waits for the reveal to finish.** The card is brought into view only once the
+  reveal has expired, and only if it is not already on screen. The two would otherwise fight: the
+  reveal is drawn over the board and the bar is elsewhere on the page, so scrolling at the moment
+  of the draw would carry the player away from the very thing announcing it. `block: "nearest"`
+  keeps the movement to the minimum that works, which makes the desktop layout — where the bar
+  sits beside the board the whole time — a no-op.
+
+Under `prefers-reduced-motion` the countdown's pulse and the card's entrance drop to the state
+underneath them (brightened text, the card itself). The reveal is the exception that cannot
+simply drop its animation, since the animation is what makes it visible at all: it holds at full
+opacity for as long as the fx is fresh, and the patch that empties the layer is what takes it
+away — appearing and disappearing with no scale and no fade between.
 
 On the board a land carrying **Defense** reads it two ways. The pressure chip and the detail
 line say which of three stories is true — no ward, a partial one (spelled out as a reduction),

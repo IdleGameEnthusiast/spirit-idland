@@ -367,7 +367,7 @@ seven after that change what a Fear row *costs* without touching what it buys.
 | `presence_tide_returns` | `auto_start_round` in the Fear shop (500 Fear) | 2 |
 | `presence_river_knows` | `auto_buy_abilities` in the Fear shop (200 Fear) | 3 |
 | `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | 5 |
-| the seven `*_remembered` rows | one rung off an automation's Fear price — see [The discount ladders](#the-discount-ladders) | 5 → 500 by rung |
+| the seven `*_remembered` rows | one rung off an automation's Fear price — see [The discount ladders](#the-discount-ladders) | 5 → 250 by rung |
 
 A first Reclaim pays about 5, so it buys exactly the first two — that is deliberate, and it is
 the reason `presence_current_quickens` is priced *past* that first payout rather than inside
@@ -385,12 +385,12 @@ for what it actually costs to use once bought.
 
 ### The discount ladders
 
-Seven repeatable rows, one per automation, each walking its automation down a shared price
-ladder: **500 · 400 · 300 · 200 · 100 · 50 · 25 · 10 Fear**. A row's rung count is whatever is
-left under its automation's current price, so *The Flood Unbidden* at 300 Fear has five rungs
-and *Boon Unbidden* at 25 has one. Rungs cost **5 · 10 · 25 · 50 · 100 · 250 · 500 Presence**
-by how many have already been taken, which makes the full set 1,795 Presence. The per-row
-arithmetic is in
+Seven repeatable rows, one per automation, each walking its automation down a price ladder.
+There are two, sharing a tail from 200 Fear down: **500 · 300 · 200 · 100 · 50 · 25 · 10** and
+**400 · 200 · 100 · 50 · 25 · 10**. A row's rung count is whatever is left under its automation's
+current price, so *The Flood Unbidden* at 300 Fear has five rungs and *Boon Unbidden* at 25 has
+one. Rungs cost **5 · 10 · 25 · 50 · 100 · 250 Presence** by how many have already been taken,
+which makes the full set 1,045 Presence. The per-row arithmetic is in
 [04-economy-formulas.md](./04-economy-formulas.md#the-automation-discount-ladders).
 
 Four decisions inside that, each load-bearing:
@@ -400,10 +400,14 @@ Four decisions inside that, each load-bearing:
   the shape of the trade above — *play this cycle actively, or pay to idle it* — intact even at
   the bottom of every ladder. What a fully-discounted run buys is that the toll stops being a
   decision, not that it disappears.
-- **The price ladder is shared, not per-row.** One descent to learn instead of seven, and a
-  row's remaining rungs are readable off where its price already sits.
+- **The price ladders are shared, not per-row.** Two descents to learn instead of seven, and a
+  row's remaining rungs are readable off where its price already sits. The second exists only to
+  shorten the top two rows: below 300 the two ladders are the same list, so every row a player
+  meets early descends exactly as it always did.
 - **The cost curve is steep and the payoff shrinks.** Deliberately: the first rungs are a good
-  early investment and the last are an endgame sink. See
+  early investment and the last are an endgame sink — though a smaller one than it was, since
+  cutting the Presence costs at the end took each shortened row's *most expensive* rung and
+  brought the set down from 1,795. See
   [04-economy-formulas.md](./04-economy-formulas.md#these-rows-do-not-out-earn-holding-presence-and-are-not-meant-to)
   for the arithmetic, and for the honest admission that no rung beats simply holding the
   Presence once a cycle's income gets large.
