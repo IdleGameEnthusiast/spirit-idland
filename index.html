@@ -73,6 +73,37 @@
           <path d="M10 4.2C11.7 4.4 12.6 5 12.6 5.85C12.6 6.7 11.7 7.3 10 7.5Z"/>
         </g>
       </symbol>
+      <!--
+        Blight, as the printed game draws it: a splotch, not a letter and not a bar. The board
+        already carries a Blight *bar* per land - a rate climbing toward the next token - and a
+        number in a pill said nothing about which of the two it was. The splat is the token
+        itself, so the count beside it reads as "two of these are lying here".
+
+        Twelve lobes at uneven angles and uneven radii, lightly rounded at the joins. Both kinds
+        of jitter are load-bearing: on even spacing and matched arms the same shape reads as a
+        sparkle at 11px, which is the one thing Blight must not look like.
+
+        The notches are shallow - inner arms at about three quarters of the outer ones - and the
+        joins are rounded. Both are what keep it a mass rather than a star: on deep notches and
+        thin arms the same twelve points read as a snowflake, which at a glance is a sparkle with
+        extra steps. A stain is mostly body with a ragged edge, and this is drawn to that.
+      -->
+      <symbol id="si-blight" viewBox="0 0 16 16">
+        <path
+          d="M7.36 0.73L4.61 3.67L1.46 5.23L2.83 8.54L1.95 12.08L5.72 13.12L8.24 15L10.89 12.45L14.38 11.54L13.4 7.81L13.95 4.13L10.46 2.97Z"
+          fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+      </symbol>
+      <!--
+        The ward. A heater shield, because that is the shape every Defend icon in the printed
+        game uses and the one silhouette that survives being 11px tall - no boss, no charge, no
+        bevel, all of which are smudges at this size. Slight waist and a rounded point, so it
+        cannot be mistaken for the plain triangle a "down" arrow would draw.
+      -->
+      <symbol id="si-shield" viewBox="0 0 16 16">
+        <path
+          d="M8 1.1L14.1 3.3V7.8C14.1 11.3 11.6 13.9 8 15.1C4.4 13.9 1.9 11.3 1.9 7.8V3.3Z"
+          fill="currentColor" stroke="currentColor" stroke-width="0.9" stroke-linejoin="round"/>
+      </symbol>
     </defs>
   </svg>
 
@@ -207,7 +238,7 @@
           <span class="track-slot-discover"><strong id="discoverLabel">Entdecken:</strong> <span id="discoverTerrain">-</span></span>
         </div>
 
-        <!-- The difficulty ladder, which until now was written down only in engine.js: what
+        <!-- The difficulty ladder, which until now was written down only in the engine: what
              the island starts doing at which wave, and how far this round has climbed it. The
              rows are painted from difficultyLadder, so nothing here knows a wave number. -->
         <div class="ladder">
@@ -228,7 +259,15 @@
       <!-- Energy lives here rather than in the HUD: it is only ever read next to what it
            buys, and every one of those things is in this panel. -->
       <section class="panel abilities">
-        <h2 id="abilitiesTitle">Faehigkeiten</h2>
+        <!-- The headline shares its line with the drip's destination. "Next card: wave 25"
+             used to hang off the bottom of the card shop, which is a place the player is only
+             ever in between rounds - by the time the wave it names arrives, the shop has been
+             closed for a minute. Here it sits over the bar the card will actually appear in,
+             which is the one thing on screen the player is watching while the waves run. -->
+        <div class="panel-head">
+          <h2 id="abilitiesTitle">Faehigkeiten</h2>
+          <small id="abilitiesNextCard" class="next-card-hint" hidden></small>
+        </div>
         <small id="abilitiesHint" class="action-info"></small>
         <div class="ability-purse">
           <span id="energyLabel">Energie</span>
@@ -362,7 +401,23 @@
     </form>
   </footer>
 
-  <script src="engine.js"></script>
+  <!-- engine:start - load order matters; see engine/constants.js.
+       This list and the one in tests.html must stay identical:
+       tests/modules.test.js fails if they drift apart. -->
+  <script src="engine/constants.js"></script>
+  <script src="engine/content.js"></script>
+  <script src="engine/board.js"></script>
+  <script src="i18n.js"></script>
+  <script src="engine/text.js"></script>
+  <script src="engine/state.js"></script>
+  <script src="engine/upgrades.js"></script>
+  <script src="engine/abilities.js"></script>
+  <script src="engine/cards.js"></script>
+  <script src="engine/combat.js"></script>
+  <script src="engine/round.js"></script>
+  <script src="engine/save.js"></script>
+  <script src="engine/exports.js"></script>
+  <!-- engine:end -->
   <script src="ui.js"></script>
   <script>
     // Dev fixture, fetched only when it is asked for: `index.html?vis` paints a mid-round

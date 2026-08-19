@@ -2,7 +2,7 @@
 
 This pack pivoted from a turn-based, presence-driven prototype to a round-based, real-time
 survival loop (see [docs/spec/index.md](../spec/index.md)). **That pivot is done.** The
-turn-based `app.js` is deleted; the build is `engine.js` (rules, no DOM) plus `ui.js` (DOM,
+turn-based `app.js` is deleted; the build is `engine/` (rules, no DOM) plus `ui.js` (DOM,
 no rules), with a regression suite in `tests/`.
 
 What remains is balance and content, not structure — see
@@ -57,8 +57,8 @@ What remains is balance and content, not structure — see
 
 - Four cooldown-gated abilities, single-click targeting, cancel-by-reclick, and the
   no-legal-target rule that leaves the cooldown unspent.
-- Three tie-breaks the one-click model forced are documented in
-  [04-economy-formulas.md](../spec/04-economy-formulas.md#tie-breaks-the-one-click-model-forced).
+- The targeting rules and tie-breaks the one-click model forced are documented in
+  [04-economy-formulas.md](../spec/04-economy-formulas.md#ability-formulas).
 - Covered by `tests/ability.test.js`. **The numbers are still placeholder.**
 
 ### Task R7: Upgrade Shop — *done*
@@ -70,7 +70,7 @@ What remains is balance and content, not structure — see
 
 ### Task R8: UI Retrofit — *done*
 
-- Presence tracks, growth options, card hand and the essence rail are gone from the markup,
+- Presence tracks, growth options, card hand and the Essence rail are gone from the markup,
   the stylesheet and the state.
 - Added: the round HUD with a live Blight meter and wave timer, the ability bar with
   per-ability cooldown sweep, the between-round shop, per-land Blight on the board, and
@@ -143,7 +143,7 @@ active play. The round gate had already answered this one level up — buying th
 wanting it on right now are two different things — and this is that sentence applied to the
 cast instead of the round.
 
-- **`AUTO_CAST_UPGRADES`** (`engine.js`) is the only place the two id spaces are tied together:
+- **`AUTO_CAST_UPGRADES`** (`engine/abilities.js`) is the only place the two id spaces are tied together:
   the resolvers are keyed by upgrade, the ability bar by ability. `autoCastOwned` reads
   `upgradeTier` and decides whether the card draws a checkbox at all; `autoCastOn` reads
   `activeUpgradeTier` **and** the toggle and decides whether it casts this tick. Keeping them
@@ -423,17 +423,18 @@ first pass, not a measurement.
 **What it is:** a per-ability, per-round purchase — "Focus" — that shortens one ability's
 cooldown for the rest of the round, paid for out of the same Energy that buys unlocks and tier
 upgrades. This is deliberately not the same mechanism as `cooldownReductionPct` /
-`abilityCooldownMult` (`upgradeTotals` in engine.js) — that stub is for a *permanent*,
+`abilityCooldownMult` (`upgradeTotals` in `engine/upgrades.js`) — that stub is for a *permanent*,
 Fear/Presence-bought, round-wide multiplier, frozen at round start (see the comment at
-engine.js:2619-2624). Focus is a *live*, mid-round, per-ability spend, closer in shape to
-`upgradeAbility` (tier purchases, engine.js:2802) than to the shop. Both can coexist later;
+the round snapshot in `engine/round.js`). Focus is a *live*, mid-round, per-ability spend,
+closer in shape to `upgradeAbility` (tier purchases, `engine/abilities.js`) than to the shop. Both can coexist later;
 only Focus is designed here.
 
 **Gate:** a new Presence-shop row, cost 5 Presence, flat, one-off. Unlike the two existing rows
 (`presence_tide_returns`, `presence_river_knows`), it does not unlock a Fear-shop entry — it
 flips `state.presenceUpgrades.purchased[id]` directly, and Focus purchases check that flag.
 This is the first Presence row to touch the board rather than gate a Fear row, so the "Presence
-never touches the board" framing at engine.js:817-820 needs a one-line update when this lands.
+never touches the board" framing above `PRESENCE_UPGRADES` in `engine/content.js` needs a
+one-line update when this lands.
 
 **Effect, per purchase, per ability:**
 
@@ -443,7 +444,8 @@ never touches the board" framing at engine.js:817-820 needs a one-line update wh
   - 70% down to 50% remaining: ×0.97
   - 50% down to the 30% floor: ×0.98
 - Hard floor at 30% of the original cooldown (70% max reduction) — stronger than
-  `dahan_remember`'s own 50% cap (engine.js:2592-2596), confirmed intentional. Purchases past
+  `dahan_remember`'s own 50% cap (`dahanHasteFraction` in `engine/upgrades.js`), confirmed
+  intentional. Purchases past
   the floor are refused, same as `abilityUpgradeCost` at max tier.
 - Reads the zone off the *current* multiplier before each purchase (same "read live" idiom as
   `DIFFICULTY_RUNGS`), so a purchase can overshoot slightly into the next zone rather than
@@ -564,7 +566,7 @@ nothing about round depth or cycle income has been measured yet either.
 
 #### Where it lands
 
-- `engine.js` — a `POWER_CARDS` registry beside `ABILITIES`; an effect-step resolver; Defense in
+- `engine/` — a `POWER_CARDS` registry beside `ABILITIES`; an effect-step resolver; Defense in
   `landPressure` / `resolveLandCombat`; Blight removal; the draw and the drip; one Fear row in
   `UPGRADES`; one Presence row shape that is a draw rather than an upgrade; normalization.
 - `ui.js` — cards in the ability bar, the re-draw button, Tsunami's switch, the draw shop panel,
@@ -667,6 +669,132 @@ into it.
 
 ---
 
+### 15. The Innate's auto-cast: rung lists reworked — *built 2026-08-19*
+
+The complaint that started it: the auto-cast often did nothing when there were obviously good
+options. The diagnosis was narrower than the symptom. Tier 3 has never idled — its
+toughest-thing-standing floor fires whenever any invader is anywhere — and tier 2 falls through
+to a Blight rung that is almost always satisfied. **Only tier 1 idles**, and it does so on a full
+island, because two of its three rungs demanded open ground and the third demanded a coastal
+neighbour that lands 7 and 8 do not have.
+
+Six changes, and the cooldowns move with them to **8 / 15 / 22** beats (was 8/16/24).
+
+- **Two shared top rungs.** *Deny a Discover* and *break a Build* are the only things in the kit
+  that stop invaders arriving rather than rearranging ones already ashore, so every tier opens
+  with both. Both are asked by simulating that tier's own cast, so one question serves three
+  answers. The deny rung is new and reads `landAcceptsExplorer`: below wave 10 an inland land
+  takes Explorers only while a neighbour holds a Town or City, so removing that Town cancels a
+  whole seeding. It insists the set of gated lands *shrink*, because shoving the Town sideways
+  can close one Discover land and open another.
+- **Break-a-Build now checks the clock.** The strike and the wave run on independent timers, so
+  "the Dahan would clear this land" was excusing casts on lands the Build reached first.
+- **Route-to-cover means lethal cover.** It simulates the arrival *and* the destination's strike
+  instead of asking whether any Dahan stands there, which had it sending Towns to lands holding
+  one Dahan that could not kill them.
+- **Consolidate onto more Dahan** replaces the retired protect-the-thin-stack rung at tier 1. It
+  needs *strictly* more Dahan at the destination, which is monotone and so cannot ping-pong —
+  the objection that killed the old version.
+- **Stacking is allowed onto Explorers.** The open-ground gate was what silenced tier 1 exactly
+  when the island was fullest. Another Explorer on a pile of Explorers does not change what Build
+  raises there; a Town landing beside one turns that Build into a City, which is what
+  `pushWorsensBuild` refuses. `pushDestinations` ranks cover, then Dahan count, then avoiding the
+  Build track, then open ground, then the coast.
+- **Blight replaces the lowest-id tie-break** inside every rung. Three lands can satisfy a rung;
+  the smallest id says nothing about which is costing the round.
+
+Tier 2 additionally gains *clear the land outright* above routing — certain where routing is a
+bet — and gates its Blight fallback on the cast changing the land, so it stops scratching a land
+holding only Cities. Tier 3 alone puts break-a-Build *above* the deny: with no push it pays for a
+deny with its whole area hit, to stop a seeding of the weakest unit on the board. Its two middle
+rungs, which counted bodies present and ranked Blight without checking that anything died, are
+replaced by one measure — the Blight the kills actually remove.
+
+#### What the build changed about the design
+
+- **Build-avoidance cannot outrank cover.** Ranking it first made where the water runs depend on
+  the invader track, which broke the promise that a push is plannable off the board alone, and
+  made several push tests depend on a random draw they never meant to test. It sits below the
+  cover terms, where it still closes the trap it exists for: the undefended-open-ground case,
+  where every candidate ties and the old rule cheerfully picked the empty Build-terrain land.
+- **A rung that kills its target need not avoid the Build.** Route-to-cover asks only the
+  stacking half of the rule (`pushStacksSafely`), because what Build would raise on top of a unit
+  that will not be standing there is not a cost the push pays.
+- **Wash Away had to move with it.** Its rungs asked `pushHasOpenGround` — "is there open ground
+  next to this land" — as a proxy for "will this push land on open ground". That was the same
+  question only while open ground beat every other destination outright, so they now ask
+  `pushLandsOnOpenGround` of the destination itself. Wash Away keeps the stricter rule
+  deliberately: it moves a whole land at once, so a stack it concentrates is a much bigger one.
+
+### 16. A Presence row that makes early Presence cheaper — *designed 2026-08-19, not built*
+
+A hundred-tier repeatable Presence row, 1 Presence a tier, meant to be **strong while the
+player is poor and to fade on its own as they get rich**. The design question was which shape
+delivers that, and the answer is not the obvious one.
+
+**The shape: a flat Fear credit, inside the root.**
+
+```txt
+credit = tier * 200                                    (20,000 at tier 100)
+payout = floor( sqrt( (cycleFearGenerated + credit) / PRESENCE_FEAR_DIVISOR ) )
+```
+
+Read to the player as *every cycle begins as though you had already generated 20,000 Fear* —
+which is also why it fades: 20,000 is a fortune against a 2,500-Fear cycle and a rounding
+error against a million.
+
+**Why not the two shapes that were tried first.** Both were discarded on arithmetic, and the
+arithmetic is the whole content of this item:
+
+| cycle pays | divisor x0.5 | **credit 20,000** | -2 Fear per Presence |
+|---|---|---|---|
+| 5 | 7 (+2) | **15 (+10)** | 6 (+1) |
+| 10 | 14 (+4) | **17 (+7)** | 11 (+1) |
+| 25 | 35 (+10) | **28 (+3)** | 26 (+1) |
+| 50 | 70 (+20) | **51 (+1)** | 51 (+1) |
+| 100 | 141 (+41) | **100 (+0)** | 101 (+1) |
+
+- **Cutting `PRESENCE_FEAR_DIVISOR` cannot fade.** The payout is a square root, so scaling the
+  divisor by `f` scales the payout by `1/sqrt(f)` at *every* cycle size - a flat x1.41 at half
+  the divisor, which in absolute Presence means +2 early and +41 late. Exactly backwards, and
+  no reshaping of the tier curve fixes it: the tier curve only controls the walk to an endpoint
+  that is a flat multiplier by construction. It is also barely worth buying early - against
+  `PRESENCE_FEAR_BONUS_PER_POINT`, converting a held point into a tier is a *loss* until the
+  player holds about 100 Presence.
+- **A discount priced per Presence earned cannot fade either.** "x Fear less per Presence" pays
+  a constant `x/200` Presence at every scale. At the 2-Fear-a-tier figure it first suggested,
+  that is +1 Presence forever for 100 Presence spent - a hundred cycles to repay.
+- **A flat credit fades because the root crushes it:** gain is about `credit / (200 * payout)`,
+  inversely proportional to how strong the player already is.
+
+**The constant falls out of the target.** `credit = 200 * target_payout * gain_still_wanted`.
+"Still worth +2 Presence at a payout of 50" gives 20,000, hence 200 Fear a tier over 100 tiers.
+
+**Flat 1 Presence a tier is right here, and needs no cost ramp.** One more tier is worth
+`1/payout` Presence a cycle - 0.2 at payout 5, so five cycles to repay; 0.02 at payout 50, so
+never. The row prices *itself* out of relevance, which is the behaviour the rising
+`PRESENCE_DISCOUNT_COSTS` ladder has to buy with money.
+
+**The one guard, and it is not optional.** At a full credit the payout reads 14 at *zero* Fear,
+and `ascensionUnlocked` reads the payout - so a fresh cycle already clears the 5-Presence gate
+and Reclaim can be spammed for 14 Presence apiece, forever. **The gate must read the uncredited
+payout while the payout reads the credited one.** Two functions, two numbers, deliberately: it
+will look like a bug to whoever reads it next, so it has to be documented where it lands.
+
+**Known risk, to watch rather than pre-solve.** The credit is a flat +10 on any cycle that
+clears the gate, and the root already favours short cycles by design (see the note above
+`PRESENCE_FEAR_DIVISOR` in `engine/constants.js`). If 2,500 Fear turns out to be a two-round errand, the
+optimal play becomes gate-and-dump. Two answers if a playtest shows it: raise
+`ASCENSION_UNLOCK_PRESENCE`, or clamp `credit = min(tier * 200, cycleFearGenerated)` so it can
+at most double a cycle - which caps the row at +41% and costs it much of the early strength it
+exists for. Ship without the clamp and watch.
+
+Also moves with it: `fearToNextPresence` becomes `(payout + 1)^2 * PRESENCE_FEAR_DIVISOR -
+credit - generated`, or the HUD overstates every gap by the credit. Nothing here has been
+played - the numbers are a first pass like the rest of the layer.
+
+---
+
 ## Idea Inbox
 
 Unsorted and unargued. One line each, written down before it is thought about — the point is
@@ -680,7 +808,6 @@ is not a line down here.
 ### Mechanics
 
 - check if Wash Away works correctly when a land holds more than 3 invaders
-- check if the Innate tier 1 push-rules automation should be reworked
 - give tokens for casting abilities, spendable to upgrade them (or route that through the
   Presence shop instead)
 
@@ -699,80 +826,14 @@ is not a line down here.
 
 ## Retired Foundation
 
-These describe the turn-based prototype's build history, kept for provenance. Board geometry,
-unit stats, and damage math (marked *reused*) carried forward into the round-based build;
-presence, growth, and card-specific work (marked *retired*) did not. The code they describe
-was deleted with `app.js`; it remains in git history.
+Tasks 01–15 built the turn-based prototype. The code they describe was deleted with
+`app.js` and lives in git history; the task log itself has been retired along with it.
 
-### Task 01: Canonical State Model — *retired, superseded by Task R1*
+What carried forward into the round-based build: the eight-land board with its adjacency and
+rendering, the unit HP and damage model, fear-from-defeat, the per-land Dahan layer, the
+Build/Discover rules, and the no-offline-catchup save pattern. What did not: presence
+placement and the two presence tracks, growth options, the card draw/discard/hand, targeting
+locks, the Ravage phase, and per-land Essence generation.
 
-- Was complete for the turn-based `2.0.0` shape: schema versioning, normalization,
-  migration-safe defaults, local save structure.
-
-### Task 02: Save and Load — *reused*
-
-- localStorage save/load with no time-based or offline progress. The no-offline-catchup
-  pattern carried forward to round time; see
-  [04-economy-formulas.md](../spec/04-economy-formulas.md#offline-handling).
-
-### Task 03: UI Shell and Four-Terrain Map — *reused (superseded layout, same board)*
-
-- The eight-land board itself (Task 15) is what carried forward.
-
-### Task 04: Starter River Cards — *retired, superseded by Task R6*
-
-- Boon of Vigor, Flash Floods, River's Bounty and Wash Away carried forward by name only, as
-  abilities with redesigned effects. The Innate Power, added later, has no card ancestor —
-  it is the one entry in the kit that grows through tiers rather than being bought once.
-
-### Task 05: Invader Phase Track — *partly reused; Ravage retired in Task C1*
-
-- The Build/Discover rules and the terrain track reused directly; their trigger changed from
-  a click to a timer in Task R2. The Ravage phase was removed entirely in Task C1.
-
-### Task 06: Dahan Layer — *reused*
-
-- Per-land Dahan counts carried forward. The setup distribution is now the spirit's fixed
-  `roundStartDahan` map rather than a random spread, so a round setup can be asserted.
-
-### Task 07: Targeting Locks — *retired*
-
-- The turn-based growth-first / pending-effect lock model has no equivalent: nothing in a
-  round blocks on player input.
-
-### Task 08: Damage and Defeat Feedback — *reused*
-
-- Unit HP model, partial damage carry, and fear-from-defeat all carried forward. The Fear
-  *rate* changed; see Task R5.
-
-### Task 09 / 09b / 09c: Presence, Power Gain, Essence — *retired*
-
-- Presence placement and per-land Essence generation are gone. Essence's four terrain pools
-  stay in the schema as inert placeholders; `essenceProgress` was dropped entirely.
-
-### Task 10: Fear Threshold Effects — *superseded by Task R5*
-
-- Superseded by Fear becoming the shop's currency outright, which is a stronger payoff than a
-  threshold effect would have been.
-
-### Task 11: Ravage Resolution — *retired by Task C1*
-
-- The per-Ravage combat math survived Task R3 (only who assigned the counterattack changed)
-  but not Task C1. Whole-point damage on a schedule has no successor: damage is a rate now,
-  and the only thing carried over is how a damage pool is spent on invader types.
-
-### Task 12: Automated Regression Harness — *superseded by Task R9*
-
-### Task 13: Blight — *superseded by Task R4*
-
-- The turn-based framing ("Blight slows Essence generation") is superseded: Blight is now the
-  round's sole loss condition.
-
-### Task 14: Presence Tracks — *retired*
-
-- No equivalent in the round-based design; Task R7's permanent upgrade shop replaced it.
-
-### Task 15: The Island Board — *reused*
-
-- The eight-land board, adjacency, SVG rendering, and terrain colour rules all carried
-  forward unchanged; see [09-island-board.md](../spec/09-island-board.md).
+Where a retired system has a successor, the spec names it — see
+[../spec/index.md](../spec/index.md#retired-from-the-turn-based-slice).

@@ -6,7 +6,7 @@ Define the canonical save shape for the round-based redesign.
 
 ## Rules
 
-- Field names in this document are the live shape, implemented in `engine.js`.
+- Field names in this document are the live shape, implemented in `engine/state.js` and `engine/save.js`.
 - Save files must carry `schemaVersion`.
 - New fields must normalize safely when older saves are loaded. This is a hard requirement with
   a suite behind it, not an aspiration — see
@@ -103,12 +103,6 @@ Define the canonical save shape for the round-based redesign.
   },
   "pendingAbilityTarget": null,
   "resources": { "energy": 0 },
-  "essence": {
-    "mountains": 0,
-    "desert": 0,
-    "jungle": 0,
-    "wetlands": 0
-  },
   "_log": []
 }
 ```
@@ -152,8 +146,8 @@ Discover, which is a state no save ever observes.
 `ui.selectedLand`. They are always strings: JSON object keys are strings, so a numeric id
 would stop matching itself after a save/load round-trip.
 
-**Terrain keys** are `mountains`, `desert`, `jungle`, `wetlands`. They key `essence` and the
-two `invader` track slots. The board registry mapping one to the other lives in
+**Terrain keys** are `mountains`, `desert`, `jungle`, `wetlands`. They key the two `invader`
+track slots. The board registry mapping one to the other lives in
 [09-island-board.md](./09-island-board.md).
 
 ## Fields power cards add
@@ -171,23 +165,14 @@ with Presence and therefore survives ascension; everything under `round` is clea
 
 ## Retired Fields
 
-Carried over from `2.0.0` but dropped here, since nothing in the round-based design reads
-them:
+The turn-based `2.0.0` shape carried fields this design has no reader for — presence
+placement and its tracks, `turn.*`, a card draw/discard/hand, per-effect `effects.*` state,
+`progression`/`milestones`, and the terrain-keyed `essence` pools. The Ravage phase's
+`invader.ravage` slot went the same way at `4.0.0`, when a continuous fight replaced it.
 
-- `presence`, `essenceProgress` — presence placement and its per-land Essence driver are
-  gone. `essence` itself (the four terrain pools) stays as an inert placeholder; only its
-  per-land generator is removed.
-- `tracks` (the two presence tracks) — replaced by the permanent `upgrades` shop.
-- `turn.*` — replaced by `round.*`.
-- `cards` (draw/discard/hand) — replaced by `abilities`.
-- `effects.*` (washAway, flashFloods, riversBounty, presencePlacement, ravageCounter) —
-  replaced by the single `pendingAbilityTarget`, since abilities take at most one click.
-- `progression` and `milestones` — folded into `meta`.
-
-Dropped at `4.0.0`, when the Ravage phase was replaced by a continuous fight:
-
-- `invader.ravage` — the track is two slots now. Invaders damage the land they stand in,
-  everywhere, all the time, so no terrain is ever "the one being ravaged".
+None of them survive, and none are read on load: a save older than the current
+`schemaVersion` hard-resets rather than being translated, so there is nothing to migrate.
+The field-by-field list is in git history.
 
 ## `round` Fields
 
@@ -278,7 +263,7 @@ Fields the first draft of this contract did not have. Each earns its place:
 - **`ui.autoProceed`** — whether a wave is allowed to arrive without being asked for. Also a
   preference, also outside `round`: it outlives every round it is read in.
 - **`ui.autoCast`** — one switch per ability automation, keyed by the **ability** each one
-  casts (`AUTO_CAST_UPGRADES` in `engine.js` is the only place that pairing is written down).
+  casts (`AUTO_CAST_UPGRADES` in `engine/abilities.js` is the only place that pairing is written down).
   It is in `ui` for exactly the reason `ui.autoProceed` and `ui.autoStartRound` are: it
   outlives every round it is read in. It is a *preference*, not a purchase — whether the
   switch is drawn at all follows `upgradeTier` (`autoCastOwned`), whether the automation
@@ -421,8 +406,7 @@ to resume mid-effect beyond "which ability is waiting for a click."
   normalization writes a Presence row rather than reading one, and it is deliberately
   idempotent: the grant is a set to `1`, so loading the same save twice cannot pay twice.
   Asserted in `tests/compat.test.js`.
-- `essence` and `invaders`/`invaderDamage`/`dahan` must be filled for every terrain key or
-  land ID respectively.
+- `invaders`, `invaderDamage`, and `dahan` must be filled for every land ID.
 - `round.status` must be `running` or `ended`, and normalizes to `running` otherwise.
 - `round.blight` is clamped to `[0, round.blightThreshold]`.
 - `round.blightProgress` and `round.dahanProgress` are clamped to `[0, 1]` per land, and are
@@ -536,7 +520,6 @@ bar. There is no honest mapping for either, and a reset costs the player one rou
 - Loading a save does not simulate elapsed wall-clock time against a running round; a round
   resumes exactly as saved. See the open question on offline behavior in
   [index.md](./index.md).
-- `essence` remains present but has no writer in this design; it neither accrues nor resets.
 - `ascend()` is the only thing that clears `meta.fear`, `upgrades.purchased`, and the four
   `cycle*` fields; it pays `meta.presence`, increments `meta.ascensionCount`, resets
   `round.number` to 1, and calls `startRound`. It touches `presenceUpgrades.purchased`,

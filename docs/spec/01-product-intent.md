@@ -54,7 +54,7 @@ structural one — see [index.md](./index.md#known-balance-problems).
 
 - No presence placement, presence tracks, or spatial reach growth.
 - No manually-resolved invader phases or hand-assigned Dahan strikes.
-- No per-land Essence generation; Essence is parked, not deleted.
+- No per-land Essence generation, and no terrain resource pools in the schema.
 - No multi-spirit support yet.
 - No AI opponent behavior beyond the automatic wave cycle.
 

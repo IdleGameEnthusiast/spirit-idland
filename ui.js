@@ -2,8 +2,8 @@
  * Spirit Idland - view layer                                            *
  *                                                                       *
  * Everything that touches the DOM. It reads state and calls the engine;  *
- * it never decides a rule. Loaded after engine.js, which puts its        *
- * functions in the same classic-script scope.                           *
+ * it never decides a rule. Loaded after the engine/ modules, which put   *
+ * their functions in the same classic-script scope.                      *
  *                                                                       *
  * Spec: docs/spec/06-ui-contract.md and 09-island-board.md.              *
  * ==================================================================== */
@@ -71,6 +71,7 @@ const dom = {
   spiritTraits: document.getElementById("spiritTraits"),
 
   abilitiesTitle: document.getElementById("abilitiesTitle"),
+  abilitiesNextCard: document.getElementById("abilitiesNextCard"),
   abilitiesHint: document.getElementById("abilitiesHint"),
   energyLabel: document.getElementById("energyLabel"),
   energyValue: document.getElementById("energyValue"),
@@ -516,6 +517,40 @@ function chipStrikeMarkup(state, landId) {
   `;
 }
 
+// The two things a land can be carrying that are neither units nor rates: a ward, and the
+// Blight already lying there. Both ride in the chip's head row rather than in a row of their
+// own, because both answer "what is the state of this land" and neither is a count of pieces
+// standing on it.
+//
+// Each is a glyph with its number, not a number alone. A bare integer beside the terrain name
+// is the one thing on a chip with no way to say what it counts, and these two are the chip's
+// only good news and its only permanent bad news - the pair most expensive to confuse.
+function chipDefenseMarkup(state, landId) {
+  const defense = defenseInLand(state, landId);
+  if (defense <= 0) return "";
+
+  // Teal, on the same rule that keeps the strike bar out of pressure red: red on a chip means
+  // Blight and wounds, and a ward is the one thing on the board that stops both.
+  return `
+    <span class="chip-badge chip-defense" title="${locale(state).landDefenseLabel}">
+      <svg class="tok" aria-hidden="true" focusable="false"><use href="#si-shield"/></svg>
+      ${defense}
+    </span>
+  `;
+}
+
+function chipBlightMarkup(state, landId) {
+  const blight = state.round.blightByLand[landId] || 0;
+  if (blight <= 0) return "";
+
+  return `
+    <span class="chip-badge chip-blight-count" title="${locale(state).landBlightLabel}">
+      <svg class="tok" aria-hidden="true" focusable="false"><use href="#si-blight"/></svg>
+      ${blight}
+    </span>
+  `;
+}
+
 function renderBoard(state) {
   const t = locale(state);
   const states = landRenderStates(state);
@@ -588,7 +623,6 @@ function renderBoard(state) {
     // Size the chip to its land, or a narrow land like 4 wears a label wider than itself.
     chip.style.width = `${landChipWidthPercent(landId)}%`;
 
-    const blightHere = state.round.blightByLand[landId] || 0;
     const defeatMarkup = defeatFx && defeatFx.land === landId
       ? `<div class="chip-defeat">${template(t.defeatHint, {
           count: defeatFx.count,
@@ -603,7 +637,8 @@ function renderBoard(state) {
       <div class="chip-head">
         <span class="chip-num">${landId}</span>
         <span class="chip-terrain">${terrainName(state, landTerrain(landId))}</span>
-        ${blightHere > 0 ? `<span class="chip-blight-count" title="${t.landBlightLabel}">${blightHere}</span>` : ""}
+        ${chipDefenseMarkup(state, landId)}
+        ${chipBlightMarkup(state, landId)}
       </div>
       ${invaderBits.length ? `<div class="chip-row invaders">${invaderBits.join("")}</div>` : ""}
       ${allyBits.length ? `<div class="chip-row allies">${allyBits.join("")}${chipStrikeMarkup(state, landId)}</div>` : ""}
@@ -1488,18 +1523,14 @@ function renderCardShop(state) {
     </div>
   `;
 
-  // Where the next card is due, but only while a round is actually running toward it: between
-  // rounds the wave number is a countdown to nothing.
-  const nextDraw = owned > 0 && state.round.status === "running"
-    ? `<small class="card-shop-hint">${template(t.cardNextDrawHint, { wave: roundCards(state).nextDrawWave })}</small>`
-    : "";
-
+  // Where the next card is due used to be printed here. It has moved to the Abilities headline
+  // - see patchNextCardHint. This panel is only ever open between rounds, and a wave number is
+  // a countdown to nothing at the one moment nobody can be looking at it.
   box.innerHTML = `
     ${head}
     <p class="card-shop-hint">${t.cardShopHint}</p>
     <div class="card-offers">${offers}</div>
     ${reroll}
-    ${nextDraw}
   `;
   return box;
 }
@@ -1760,6 +1791,34 @@ function patchCardCountdown(state) {
     ? t.cardCountdownNext
     : template(t.cardCountdownWaves, { waves });
   dom.cardCountdown.classList.toggle("is-due", waves === 1);
+}
+
+/* The same drip, said the other way round, beside the Abilities headline.
+ *
+ * Two readings of one fact, and they are not redundant. The HUD tile counts *how many waves are
+ * left* against the wave clock it sits on; this one names *which wave* the card arrives on, over
+ * the bar it will arrive in. The first is the countdown, the second is the appointment.
+ *
+ * It sits here rather than at the foot of the card shop, where it used to be. That panel is
+ * reachable only between rounds, so the line was on screen exactly when its number could not be
+ * acted on and gone for the whole of the round it described.
+ *
+ * Same three reasons to hide it as the tile above: no round running, nothing left to draw, or
+ * the wave already passed. Hidden rather than dashed - a headline is not a place for an empty
+ * value to sit taking up room.
+ */
+function patchNextCardHint(state) {
+  const cards = roundCards(state);
+  const show = state.round.status === "running"
+    && drawablePowerCardIds(state).length > 0
+    && cards.nextDrawWave > state.round.wavesResolved;
+
+  dom.abilitiesNextCard.hidden = !show;
+  if (!show) return;
+
+  dom.abilitiesNextCard.textContent = template(locale(state).cardNextDrawHint, {
+    wave: cards.nextDrawWave
+  });
 }
 
 /* The card reveal, laid over the island for as long as its fx is fresh.
@@ -2094,7 +2153,10 @@ function mapSignature(state) {
       // lists now, and two of them must not collapse into one indistinguishable string.
       damage.explorers.join("/"), damage.towns.join("/"), damage.cities.join("/"),
       state.dahan[landId],
-      state.round.blightByLand[landId]
+      state.round.blightByLand[landId],
+      // The ward is chip markup now, not only patched text, so a cast that lays Defense on a
+      // quiet land has to rebuild the board - nothing else in this list would have moved.
+      defenseInLand(state, landId)
     ].join("."));
   }
 
@@ -2123,6 +2185,7 @@ function updateUI(state) {
 
   patchPlaytestTools(state);
   patchSaveStatus(state);
+  patchNextCardHint(state);
 
   const nextAbilitySig = abilityBarSignature(state);
   if (renderCache.abilityBar !== nextAbilitySig) {

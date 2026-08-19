@@ -323,7 +323,7 @@ stands.
 ## The seven cards
 
 Cooldowns in **beats** (`beats * TIME_SCALE`, so double for real seconds at the shipped
-`TIME_SCALE = 2`). The kit for comparison: Innate 8/16/24, Boon 12, Bounty 15, Floods 25,
+`TIME_SCALE = 2`). The kit for comparison: Innate 8/15/22, Boon 12, Bounty 15, Floods 25,
 Wash 30.
 
 | id | name | beats | needs target | brings |

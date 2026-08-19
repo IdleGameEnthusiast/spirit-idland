@@ -6,7 +6,7 @@ Document the numeric rules and constants for the round-based redesign.
 
 ## Rules
 
-- Every number in this file maps to a named constant or formula in `engine.js`.
+- Every number in this file maps to a named constant or formula in `engine/`, most of them in `engine/constants.js`.
 - Numbers marked placeholder are a first pass for internal consistency, not a balancing
   decision. The loop is now playable, so they are due — see
   [index.md](./index.md#known-balance-problems).
@@ -105,8 +105,8 @@ deciding whether to keep the card. It is a separate constant rather than a stret
 derivation, so that round one reads as a single rhythm. They are separate constants and the
 shop is expected to move one of them; nothing may re-couple them.
 
-`MAX_TICK_SECONDS` still caps how much elapsed time a single tick may credit toward wave and
-ability cooldown timers, for the same reason it capped Essence in the turn-based build: it
+`MAX_TICK_SECONDS` caps how much elapsed time a single tick may credit toward wave and
+ability cooldown timers: it
 has to stay above the roughly one-second throttle browsers apply to background tabs, while
 preventing a large jump after the machine sleeps.
 
@@ -133,7 +133,7 @@ invader health from wave 110, each +1 again every 20 waves after. The rungs are 
 `round.wavesResolved`, so they are per round like the rest of the ladder, and Dahan never ride
 them. Because power is read off `damage`, a damage rung raises what an invader is worth in the
 same stroke as what it threatens; a health rung does not, which is why removal outprices damage
-in the shop. The full rung table lives above `EXPLORE_UNRESTRICTED_FROM_WAVE` in `engine.js`,
+in the shop. The full rung table lives above `EXPLORE_UNRESTRICTED_FROM_WAVE` in `engine/constants.js`,
 and the track panel prints it — see [06-ui-contract.md](./06-ui-contract.md).
 
 ## The Damage-Second
@@ -521,13 +521,15 @@ the same slot rather than the previous one with a modifier:
 
 ```txt
 tier 1   free       cooldown  8 beats   push 1 explorer/town
-tier 2    40 Energy cooldown 16 beats   2 damage, then push up to 3 explorers/towns
-tier 3   150 Energy cooldown 24 beats   2 damage to each invader in the land
+tier 2    40 Energy cooldown 15 beats   2 damage, then push up to 3 explorers/towns
+tier 3   150 Energy cooldown 22 beats   2 damage to each invader in the land
 ```
 
 Cooldowns rise with the tier deliberately. Throughput still improves at every step — tier 2 is
-three pushes and 2 damage per 16 beats against tier 1's one push per 8 — so the longer wait buys a
-bigger swing rather than taxing the upgrade. The tier is held in `round.abilityTiers` and, like
+three pushes and 2 damage per 15 beats against tier 1's one push per 8 — so the longer wait buys a
+bigger swing rather than taxing the upgrade. The gaps are even, 7 beats a rung: tier 3 pays for
+the strongest effect in the kit with the longest wait, but not so long that owning it feels like
+casting less often than the tier below. The tier is held in `round.abilityTiers` and, like
 every other purchase, resets when the round does.
 
 150 sits above a single round's baseline income (roughly 20-40 Energy), so it still leans on
@@ -591,13 +593,16 @@ which land?         the player's click
 which units?        towns before explorers, up to the ability's push count. A town is worth
                     two of an explorer everywhere else in the engine, so a push with a budget
                     smaller than the land spends it on the heavier thing
-pushed where?       open ground first: one adjacent land holding no invaders at all. A land
-                    already holding Dahan wins outright when there is one - the push throws the
-                    unit at a defender instead of leaving it free to seep Blight; failing that,
-                    a coastal one wins; among equals the lowest land id
-no open ground?     an adjacent land that already holds invaders, ranked the same way. Every
-                    land on this board has at least two neighbours, so a push never fails for
-                    want of a destination
+pushed where?       every neighbour is a candidate, narrowed by one term at a time:
+                      1. cover - a land holding Dahan wins outright, so the push throws the
+                         unit at a defender instead of leaving it free to seep Blight
+                      2. how much cover - more Dahan wins. The Dahan loss rate is flat
+                         regardless of stack size, so the big stack both kills what arrives
+                         and can afford the losses it causes
+                      3. the Build track - among landings the cover terms could not separate,
+                         do not feed the next Build
+                      4. open ground - a land holding no invaders, before one that does
+                      5. the coast, and among equals the lowest land id
 ```
 
 Power cards extend that ranking without changing its shape: a land holding
@@ -614,19 +619,34 @@ out to be worth more than that. The Dahan preference is why "lowest land id" is 
 whole story: the three coastal lands are `1`, `2` and `3`, the lowest ids on the board, but a
 Dahan-held land with a higher id now outranks them - defence matters more than geography.
 
+The Build term ranks **below** cover for the same reason. Above it, where the water runs would
+depend on the invader track rather than on the board, and the promise in the paragraph above
+would be a half-truth. Below it, it only ever separates landings that were already equally good
+- which is enough to close the case it exists for. Build skips a land holding no invaders, so a
+push into an empty Build-terrain land *creates* a target that did not exist, and open ground is
+exactly what an undefended push used to reach for first.
+
 The occupied fallback is what the board game has always allowed and what an earlier draft of
 this engine refused. Refusing it made the push the one effect that stopped working as the round
 went on: a full island is exactly when the pressure most needs moving and exactly when every
-neighbour was disqualified. It is not free — shoving a Town onto a land that already holds one
-is what turns the next Build there into a City — which is why it is the last resort, and why
-the auto-casts that push for *position* (`innate_power` tier 1's routing and seaward rungs and
-tier 2's routing, `wash_away` routing and protect-thin) require open ground instead. Emptying a
-land is different: anywhere off it will do, so the break-build rungs take the fallback happily.
+neighbour was disqualified.
 
-The Dahan-before-coastal order in that table is also why the Innate's tier-1 list ranks routing
-*above* the seaward rung rather than below it. A land with both an open defended neighbour and
-an open coastal one pushes into the defended one whatever the priority list says, so a seaward
-rung placed above routing would be a claim the destination rule immediately overrides. The list
+It is not free, but the cost is narrower than "occupied". Build reads a land's own counts, so
+another Explorer on a pile of Explorers still raises a Town there — while a **Town** landing
+beside one makes towns outnumber cities and raises a **City**. So the Innate's positional rungs
+now stack onto a land holding Explorers alone, and refuse a land holding a Town or City, or any
+landing that would upgrade what the next Build raises. Requiring genuinely open ground was what
+left tier 1 silent on a full island, which is the exact moment the pressure most needs moving.
+
+`wash_away` keeps the stricter rule and still requires open ground: it moves a whole land at
+once, so a stack it concentrates is a much bigger one than the Innate's single unit. Emptying a
+land is different again — anywhere off it will do, so the break-build rungs take the occupied
+fallback happily.
+
+The cover-before-coastal order in that table is also why the Innate's tier-1 list ranks routing
+*above* the seaward rung rather than below it. A land with both a defended neighbour and a
+coastal one pushes into the defended one whatever the priority list says, so a seaward rung
+placed above routing would be a claim the destination rule immediately overrides. The list
 follows this table instead of arguing with it — one rule for where the water runs, and the
 rungs describe what that rule would achieve.
 
@@ -1039,9 +1059,8 @@ amount provably cannot.
 
 ## Offline Handling
 
-- No offline catch-up exists for round time, wave resolution, or ability cooldowns, matching
-  the turn-based build's Essence behavior: a save resumes exactly as it was written, crediting
-  no elapsed wall-clock time for the gap.
+- No offline catch-up exists for round time, wave resolution, or ability cooldowns: a save
+  resumes exactly as it was written, crediting no elapsed wall-clock time for the gap.
 - Fear and purchased upgrades are unaffected by this, since they only change on explicit
   in-round or in-shop actions, never from elapsed time.
 - Whether this should change later (a round ticking down while the tab is closed) is an open
@@ -1049,8 +1068,6 @@ amount provably cannot.
 
 ## Placeholder Fields
 
-- `essence` accumulates nothing and has no reader; it is inert scaffolding for a possible
-  future system, not active economy.
 - The unlock ladder (5 / 10 / 20) and the Innate's tier prices (40 / 150) were shaped against a
   rough, unplayed guess at a round's income — one that played runs have since shown undershoots
   actual income by a wide margin. `ENERGY_PER_POWER` is a placeholder on the same footing.

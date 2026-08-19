@@ -4,7 +4,7 @@ This folder specifies the round-based redesign of the prototype: a real-time sur
 with a permanent meta-progression shop, replacing the earlier turn-based slice.
 
 **Status: implemented.** The round-based design described here is live. The turn-based
-prototype it replaced (`app.js`) is deleted; the build is now `engine.js` (all rules, no
+prototype it replaced (`app.js`) is deleted; the build is now `engine/` (all rules, no
 DOM) plus `ui.js` (all DOM, no rules), loaded as two classic scripts by `index.html`.
 
 The loop is playable end to end — a round resolves itself, loses to Blight, hands off to
@@ -49,8 +49,8 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 - A new round resets the island (invaders, Dahan, Blight) but keeps every permanent upgrade,
   so a stronger spirit should reach further next time.
 - Presence-on-the-board, the two presence tracks, and per-land Essence generation are
-  retired from the live loop. Essence's state fields stay in the schema as an inert
-  placeholder for later; presence is dropped entirely since nothing reads it anymore.
+  retired from the live loop and dropped from the schema entirely, since nothing reads
+  them anymore.
 
 ## Retired From The Turn-Based Slice
 
@@ -124,7 +124,7 @@ What is left:
   whole ascension layer rides on it. 100 is a guess anchored to "a first Reclaim should pay
   about 5"; no cycle has been played to read the real figure. The measurement is one line in
   the playtest tally — see
-  [04-economy-formulas.md](./04-economy-formulas.md#both-constants-are-placeholders-and-one-of-them-badly-so).
+  [04-economy-formulas.md](./04-economy-formulas.md#one-constant-is-a-placeholder-and-the-other-is-derived-from-it).
 - **Whether shallow rounds out-earn deep ones per real minute.** The payout has no depth term,
   on the argument that Fear income already grows steeply with depth. If a player with
   `auto_start_round` earns faster farming wave 1–10 loops than by pushing, the fix is a wave

@@ -1,6 +1,6 @@
 /* Dev fixture: paints a mid-round board so the layout can be judged without playing to it.
  *
- * Loaded only by `index.html?vis`, after engine.js and ui.js, by the loader at the foot of
+ * Loaded only by `index.html?vis`, after the engine modules and ui.js, by the loader at the
  * that page. It writes straight into the live state and re-renders once; nothing here is
  * part of the game, and nothing here runs unless the query string asks for it.
  *
@@ -72,6 +72,12 @@
   state.dahan = createDahanCounts();
   state.dahan["1"] = 1; state.dahan["3"] = 2; state.dahan["4"] = 1; state.dahan["5"] = 1; state.dahan["7"] = 2;
 
+  // Two wards, because the shield badge has two readings and only one of them was ever drawn
+  // before: land 3 is partly covered and land 8 is covered outright, which is the pair the
+  // pressure line and the badge have to stay consistent about. Land 6, the worst chip on the
+  // board, is left bare so the head row can be judged with and without the badge.
+  state.round.defense = { "1": 0, "2": 0, "3": 2, "4": 0, "5": 0, "6": 0, "7": 0, "8": 5 };
+
   state.invader.build = "desert";
   state.invader.explore = "mountains";
 
@@ -84,6 +90,14 @@
   state.resources.energy = 12;
   state.abilities = createAbilityState(state);
   state.abilities.rivers_bounty.cooldownRemaining = 7;
+
+  // One card owned and none of it drawn yet, so the drip has somewhere to arrive and the
+  // Abilities headline has a wave number to name. Without this the next-card line never paints
+  // in fixture mode, which is the one place its size against the headline can be judged.
+  state.powerCards = createPowerCardsState();
+  state.powerCards.owned = [POWER_CARD_IDS[0]];
+  state.round.cards = createRoundCardsState();
+  state.round.cards.nextDrawWave = state.round.wavesResolved + 3;
 
   state.ui.selectedLand = "6";
 

@@ -617,6 +617,9 @@
   test("wash away: the push destination is adjacent and was empty", () => {
     const { state } = fullKit();
     clearBoard(state);
+    // Nothing on the Build track, so this measures the coastal preference alone - a push now
+    // steps around a land the next Build would thicken, which has its own test below.
+    state.invader = { build: [], explore: [] };
     setLand(state, "6", { explorers: 2 }, 0);   // borders 2, 3, 5 and 8
 
     engine.triggerAbility(state, "wash_away");
@@ -750,13 +753,13 @@
     assertEqual(state.invaders["3"].explorers, 2, "and nothing else moved");
   });
 
-  test("innate tier 2: 2 damage and up to 3 pushed, on a 16-beat clock", () => {
+  test("innate tier 2: 2 damage and up to 3 pushed, on a 15-beat clock", () => {
     const { state } = fullKit();
     setAbilityTier(state, "innate_power", 1);
     clearBoard(state);
     setLand(state, "3", { explorers: 2, towns: 2, cities: 1 }, 0);
 
-    assertEqual(engine.abilityCooldownSeconds(state, "innate_power"), 16 * engine.TIME_SCALE, "16 beats at tier 2");
+    assertEqual(engine.abilityCooldownSeconds(state, "innate_power"), 15 * engine.TIME_SCALE, "15 beats at tier 2");
 
     engine.triggerAbility(state, "innate_power");
     const ok = engine.resolveAbilityTarget(state, "3");
@@ -787,6 +790,7 @@
     const { state } = fullKit();
     setAbilityTier(state, "innate_power", 1);
     clearBoard(state);
+    state.invader = { build: [], explore: [] };
     setLand(state, "3", { towns: 2 }, 0);
     setLand(state, "2", { explorers: 1 }, 0);
     setLand(state, "6", { explorers: 1 }, 0);   // land 3 has no open ground left
@@ -804,7 +808,7 @@
     clearBoard(state);
     setLand(state, "3", { explorers: 4, towns: 2, cities: 2 }, 0);
 
-    assertEqual(engine.abilityCooldownSeconds(state, "innate_power"), 24 * engine.TIME_SCALE, "24 beats at tier 3");
+    assertEqual(engine.abilityCooldownSeconds(state, "innate_power"), 22 * engine.TIME_SCALE, "22 beats at tier 3");
 
     engine.triggerAbility(state, "innate_power");
     engine.resolveAbilityTarget(state, "3");
@@ -951,7 +955,7 @@
     setLand(state, "4", null, 1);
 
     assertEqual(engine.pushDestination(state, "5"), "4", "the defended neighbour wins the push");
-    assert(engine.innateT1RouteToCoverLands(state).includes("5"), "so the routing rung claims it");
+    assert(engine.innateRouteToCoverLands(state, engine.abilityRecord(state, "innate_power")).includes("5"), "so the routing rung claims it");
     assertEqual(engine.innateT1FeedTheSeaLands(state).length, 0, "and the sea rung never sees it");
   });
 
@@ -1031,6 +1035,203 @@
     assertEqual(state.invaders["7"].explorers, 1, "nothing automated without the upgrade");
   });
 
+  /* ---------------------------------------------------------------- *
+   * The Innate's auto-cast: the rungs shared by every tier              *
+   * ---------------------------------------------------------------- */
+
+  test("auto-innate tier 1: denying a Discover its last foothold outranks everything else", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.round.wavesResolved = 1;
+    state.invader = { build: [], explore: ["mountains"] };
+    // Mountains is the one terrain with no coast, so lands 4 and 6 take Explorers only while a
+    // neighbour holds a Town. Land 7's Town is land 4's only foothold, and land 6 has none.
+    setLand(state, "7", { towns: 1 }, 0);
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assertDeepEqual(engine.exploreFootholdLands(state), ["4"], "land 4 is reachable only through land 7");
+    assert(engine.innateDenyExploreLands(state, record).includes("7"), "so the Town is what the cast moves");
+    assertEqual(engine.pickInnateAutoTarget(state), "7", "and it outranks every other rung");
+  });
+
+  test("auto-innate tier 1: a deny that only moves the foothold is declined", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.round.wavesResolved = 1;
+    state.invader = { build: [], explore: ["mountains"] };
+    // The Dahan on land 8 win the push, and land 8 borders land 6 - so the Town would stop
+    // land 4 accepting Explorers and start land 6 accepting them instead. A cast for nothing.
+    setLand(state, "7", { towns: 1 }, 0);
+    state.dahan["8"] = 1;
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assertEqual(engine.pushDestination(state, "7"), "8", "the defended neighbour wins the push");
+    assertDeepEqual(engine.exploreFootholdLands(state), ["4"], "land 4 is the only one gated open");
+    assertEqual(engine.innateDenyExploreLands(state, record).length, 0, "so the rung declines it");
+  });
+
+  test("auto-innate: the deny rung goes quiet from wave 10", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.round.wavesResolved = engine.EXPLORE_UNRESTRICTED_FROM_WAVE;
+    state.invader = { build: [], explore: ["mountains"] };
+    setLand(state, "7", { towns: 1 }, 0);
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assertEqual(engine.exploreFootholdLands(state).length, 0, "Discover stops asking for a foothold");
+    assertEqual(engine.innateDenyExploreLands(state, record).length, 0, "so there is nothing to deny");
+  });
+
+  test("auto-innate: the tie-break inside a rung is the land bleeding most, not the lowest id", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: ["desert"], explore: [] };
+    // Both desert lands hold exactly one pushable unit, so both break their Build. The id order
+    // would take land 2; what the round is actually paying for is the Town on land 8.
+    setLand(state, "2", { explorers: 1 }, 0);
+    setLand(state, "8", { towns: 1 }, 0);
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assertDeepEqual(engine.innateBreakBuildLands(state, record), ["2", "8"], "both break a Build");
+    assertEqual(engine.pickInnateAutoTarget(state), "8", "the Town bleeds faster than the Explorer");
+  });
+
+  test("auto-innate tier 1: routing to cover needs the destination to actually kill what arrives", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    setLand(state, "5", { towns: 1 }, 0);
+    state.dahan["8"] = 1;   // one Dahan deals 1, and a Town has 2 health
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assertEqual(engine.pushDestination(state, "5"), "8", "the push would land there either way");
+    assertEqual(engine.innateRouteToCoverLands(state, record).length, 0, "but one Dahan cannot finish a Town");
+
+    state.dahan["8"] = 2;
+    assert(engine.innateRouteToCoverLands(state, record).includes("5"), "two can, so now the rung claims it");
+  });
+
+  test("auto-innate tier 1: consolidates onto a strictly better defended stack", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    // Land 8 holds more Dahan than land 5, but its strike is already spoken for by the two
+    // Explorers standing there - so the arriving Town survives and the routing rung passes.
+    setLand(state, "5", { towns: 1 }, 1);
+    setLand(state, "8", { explorers: 2 }, 2);
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assertEqual(engine.innateRouteToCoverLands(state, record).length, 0, "nothing dies on arrival");
+    assert(engine.innateDefendWithMoreDahanLands(state, record).includes("5"), "so it consolidates instead");
+    assertEqual(engine.pickInnateAutoTarget(state), "5", "and that is the cast");
+  });
+
+  test("auto-innate tier 1: on a full island it stacks onto Explorers but never onto a Town", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    // Land 8 has no open ground at all - the case that used to silence every positional rung.
+    setLand(state, "8", { explorers: 1 }, 0);
+    setLand(state, "5", { explorers: 1 }, 3);
+    setLand(state, "6", { towns: 1 }, 0);
+    setLand(state, "7", { explorers: 1 }, 0);
+
+    assert(!engine.pushHasOpenGround(state, "8"), "nowhere open to go");
+    assertEqual(engine.pushDestination(state, "8"), "5", "the defended stack still wins the push");
+    assert(engine.pushStacksSafely(state, "8"), "Explorers can be stacked onto");
+
+    state.dahan["5"] = 0;
+    state.dahan["6"] = 5;
+    assertEqual(engine.pushDestination(state, "8"), "6", "now the Town land wins the push");
+    assert(!engine.pushStacksSafely(state, "8"), "and a Town is never stacked onto");
+  });
+
+  test("push: a Town is not stacked onto Explorers the next Build would raise into a City", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: ["desert"], explore: [] };
+    // Land 8 is desert and on the Build track. Holding Explorers alone it builds a Town; with a
+    // Town standing on it, towns outnumber cities and it builds a City instead.
+    setLand(state, "7", { towns: 1 }, 0);
+    setLand(state, "8", { explorers: 1 }, 0);
+
+    assertEqual(engine.landBuildsNext(state, "8"), "towns", "Explorers alone build a Town");
+    assert(engine.pushWorsensBuild(state, "7", "8"), "a Town arriving upgrades that to a City");
+    assertEqual(engine.pushDestination(state, "7"), "4", "so the water goes the other way");
+  });
+
+  test("push: among otherwise equal destinations the water steps around the Build track", () => {
+    const { state } = newGame();
+    clearBoard(state);
+    state.invader = { build: ["mountains"], explore: [] };
+    // Land 7 borders 4 (mountains, on the track), 5 and 8. All three are empty and undefended,
+    // so the only thing separating them is that Build skips an empty land until something
+    // stands in it - a push into land 4 creates a target that did not exist.
+    setLand(state, "7", { explorers: 1 }, 0);
+
+    assertEqual(engine.pushDestination(state, "7"), "5", "not land 4, though its id is lower");
+  });
+
+  test("auto-innate tier 2: clearing a land outright outranks routing it into cover", () => {
+    const { state } = newGame();
+    setAbilityTier(state, "innate_power", 1);
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    // Land 3 holds one Town: the damage half empties it. Land 5 keeps its City whatever the
+    // cast does, so the best it can offer is a Town routed onto the Dahan on land 8.
+    setLand(state, "3", { towns: 1 }, 0);
+    setLand(state, "5", { cities: 1, towns: 2 }, 0);
+    state.dahan["8"] = 2;
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assert(engine.innateT2ClearOutrightLands(state, record).includes("3"), "land 3 empties outright");
+    assert(engine.innateRouteToCoverLands(state, record).includes("5"), "land 5 can only route");
+    assertEqual(engine.pickInnateAutoTarget(state), "3", "and the certain clear wins");
+  });
+
+  test("auto-innate tier 2: a land holding only Cities is not worth the cast", () => {
+    const { state } = newGame();
+    setAbilityTier(state, "innate_power", 1);
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    // The steepest Blight source on the board, and the cast cannot touch it: 2 damage does not
+    // kill a City and the water cannot carry one.
+    setLand(state, "6", { cities: 2 }, 0);
+
+    assertEqual(engine.worstBlightLand(state), "6", "it is the worst land there is");
+    assertEqual(engine.pickInnateAutoTarget(state), null, "and the cooldown is left unspent");
+  });
+
+  test("auto-innate tier 3: it ranks by the Blight its kills remove, not by bodies present", () => {
+    const { state } = newGame();
+    setAbilityTier(state, "innate_power", 2);
+    clearBoard(state);
+    state.invader = { build: [], explore: [] };
+    setLand(state, "6", { cities: 3 }, 0);      // the most bodies, and 2 damage kills none
+    setLand(state, "3", { explorers: 2 }, 0);   // fewer bodies, both of them die
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assert(engine.innateT3BlightRelieved(state, record, "6") <= 0, "chipping Cities relieves nothing");
+    assert(engine.innateT3BlightRelieved(state, record, "3") > 0, "killing the Explorers does");
+    assertEqual(engine.pickInnateAutoTarget(state), "3", "so the Explorers are the target");
+  });
+
+  test("auto-innate tier 3: breaking a Build outranks denying a Discover", () => {
+    const { state } = newGame();
+    setAbilityTier(state, "innate_power", 2);
+    clearBoard(state);
+    state.round.wavesResolved = 1;
+    state.invader = { build: ["jungle"], explore: ["mountains"] };
+    // Land 3 is jungle and the area hit empties it. Land 7's Town is land 4's only foothold and
+    // 2 damage kills it - but tier 3 pays for a deny with its whole cast, so Build comes first.
+    setLand(state, "3", { explorers: 2 }, 0);
+    setLand(state, "7", { towns: 1 }, 0);
+
+    const record = engine.abilityRecord(state, "innate_power");
+    assert(engine.innateBreakBuildLands(state, record).includes("3"), "land 3 breaks its Build");
+    assert(engine.innateDenyExploreLands(state, record).includes("7"), "land 7 denies a Discover");
+    assertEqual(engine.pickInnateAutoTarget(state), "3", "Build outranks Discover at tier 3");
+  });
   /* ---------------------------------------------------------------- *
    * Energy, the ability lock, and the round reset                      *
    * ---------------------------------------------------------------- */

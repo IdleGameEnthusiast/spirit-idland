@@ -27,16 +27,22 @@ Open `index.html`. That is the whole procedure — no server, no build step, no 
 
 | File | What it is |
 | --- | --- |
-| `index.html` | The page. Loads the two scripts and the stylesheet. |
-| `engine.js` | Every rule. No DOM access anywhere in it. |
+| `index.html` | The page. Loads the engine modules, `ui.js`, and the stylesheet. |
+| `engine/` | Every rule, across twelve modules plus an export shim. No DOM access anywhere in it. |
+| `i18n.js` | Every player-visible string, German and English. Data only. |
 | `ui.js` | Every DOM call. No rules anywhere in it. |
-| `app.css` | Styling, including the terrain hues mirrored from `engine.js`. |
+| `app.css` | Styling, including the terrain hues mirrored from the engine. |
 | `vis.js` | Dev fixture, loaded only by `index.html?vis`: paints a mid-round board for layout work. `?vis&ended` shows the shop. |
 | `tests.html` | The regression suite, in a browser. |
 
-The split between `engine.js` and `ui.js` is the load-bearing one: it is what lets the suite
+The split between `engine/` and `ui.js` is the load-bearing one: it is what lets the suite
 play hundreds of rounds without a DOM, and what keeps a rule from being accidentally
 implemented twice.
+
+The engine files are classic scripts sharing one global scope, so they call each other by
+name with no imports. Their load order is spelled out between the `engine:start` and
+`engine:end` markers in both `index.html` and `tests.html`, and adding a module means
+editing both lists. `CLAUDE.md` has the module map and the rest of the working notes.
 
 ## Running the tests
 
@@ -46,9 +52,9 @@ powershell -File tests\headless.ps1          headless Edge or Chrome; exits 1 on
 node tests/run.js [filter]                   if node is installed
 ```
 
-403 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
+553 checks covering the board, round setup, wave timing, pacing, combat, Blight, abilities,
 the shop, save/migration, backward compatibility with older save files, the land-state rules,
-and the playtest tools. The engine takes its clock and RNG by injection, so the whole suite is
+the engine's own module wiring, and the playtest tools. The engine takes its clock and RNG by injection, so the whole suite is
 deterministic and finishes instantly.
 
 ## The spec
@@ -62,10 +68,10 @@ the two known balance problems up front. What to build next is at the top of
 
 - **Land IDs are strings** `"1"` through `"8"`, never numbers. JSON object keys are strings,
   so a numeric id stops matching itself after a save/load round-trip.
-- **Source stays ASCII.** German strings transliterate umlauts (`ae`, `oe`, `ue`). A display
-  string table is the worst possible place for a silent encoding corruption, and this file
-  has been bitten once already.
-- **Rules live in `engine.js`,** including ones that look like presentation — which lands
+- **German strings use real umlauts, and the sources are UTF-8 without a BOM.** This
+  reverses an earlier ASCII-only rule; see
+  [docs/spec/07-content-registry.md](docs/spec/07-content-registry.md).
+- **Rules live in `engine/`,** including ones that look like presentation — which lands
   highlight, what the wave preview says. If it can be asserted, it belongs there.
 - **The board rebuilds only when its signature changes.** Values that move every second are
   patched in place; rebuilding on a per-second cadence would destroy hover, focus, and any

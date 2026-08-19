@@ -9,7 +9,7 @@ The board geometry, adjacency, and rendering in this document are **unchanged by
 round-based redesign** (see [index.md](./index.md)). What changed is *how* the board is
 acted on: invader phases now resolve on the automatic wave timer instead of player clicks,
 the Dahan strike is auto-assigned instead of a player-driven queue, and presence —
-placement, range, and the essence rate it drove — is retired. Those sections below are
+placement, range, and the Essence rate it drove — is retired. Those sections below are
 rewritten; the rest of this document (board table, SVG rendering, colour) still applies as
 written.
 
@@ -17,8 +17,8 @@ written.
 
 - Land identity is the primary key for board state. Terrain becomes an attribute of a land.
 - Every land-targeting rule resolves through adjacency; the presence-range model is retired.
-- Terrain keys survive unchanged as terrain: the invader track and the essence pools stay
-  terrain-keyed. Only per-land board state is rekeyed.
+- Terrain keys survive unchanged as terrain: the invader track stays terrain-keyed. Only
+  per-land board state is rekeyed.
 - The board is fixed. There is no board generation, rotation, or multi-board support.
 
 ---
@@ -178,23 +178,17 @@ wave before it thickens rather than two.
 
 ## Essence
 
-Retired as an active system for this redesign, kept as inert schema:
-
-- `essence` stays as four terrain pools in the schema (Mountain, Desert, Jungle, Wetlands),
-  but nothing generates into them. There is no presence left to drive a per-land rate.
-- `essenceProgress` is dropped entirely — it existed only to carry fractional progress
-  toward the next essence unit, and had no purpose without a live generator.
-- If Essence returns in a later redesign, it will need a new generation source; the old
-  presence-driven rate table is historical, not a target to restore as-is.
+Retired, and gone from the schema. It was driven by a per-land presence rate, and nothing
+survives to drive it. If a terrain resource returns it will need a new generation source of
+its own design — the old presence-driven rate table is history, not a target to restore.
 
 ---
 
-## Setup Changes (Turn-Based → Round-Based)
+## Round Setup
 
-- **Presence is gone.** No starting presence, no placement, no range. The turn-based
-  spirit record's `startingPresence` field has no equivalent; see
-  [07-content-registry.md](./07-content-registry.md) for the replacement
-  `roundStartDahan` field.
+Presence is gone: no starting presence, no placement, no range. What a round puts on the
+board instead:
+
 - **Dahan**: round setup seeds Dahan from `roundStartDahan` (baseline 6, same distribution
   density the turn-based build used), plus every purchased `dahan_reinforcement` upgrade
   tier, each dropped into the emptiest land so no two lands finish more than
@@ -213,16 +207,14 @@ The full canonical shape, including how board state is keyed, lives in
 [03-state-contract.md](./03-state-contract.md). Board-relevant summary:
 
 - `invaders`, `invaderDamage`, and `dahan` are keyed by land ID, `"1"` through `"8"`.
-- `invader` and `essence` stay keyed by terrain.
+- `invader` stays keyed by terrain.
 - There is no board-specific effect state left: an armed ability's pending land click is the
   single `pendingAbilityTarget` field, not a per-effect object.
 
 ### Migration
 
-The `1.5.0` (terrain-keyed) → `2.0.0` (land-keyed) migration described the turn-based
-prototype's own history and is no longer live. The current migration — anything older than
-the current `schemaVersion` hard-resets rather than translating field by field — is
-documented in [03-state-contract.md](./03-state-contract.md#migration-from-anything-older).
+Anything older than the current `schemaVersion` hard-resets rather than translating field by
+field. See [03-state-contract.md](./03-state-contract.md#migration-from-anything-older).
 
 ---
 
@@ -275,14 +267,14 @@ On the board, for every land, kept deliberately short:
 - While an ability is armed and this land is a legal target: a highlight, per
   [06-ui-contract.md](./06-ui-contract.md).
 
-Presence pips, essence rate, and the essence rail are dropped from the board along with the
-systems they represented.
+Presence pips, the Essence rate, and the Essence rail are dropped from the board along with
+the systems they represented.
 
 ### Land detail panel
 
 For the selected land: number, terrain, coastal or inland, its neighbours, invader counts
-with partial-HP hints, and Dahan. Essence rate, live countdown, and presence threshold are
-dropped along with presence and Essence generation.
+with partial-HP hints, and Dahan. The Essence rate, live countdown, and presence threshold
+are dropped along with presence and Essence generation.
 
 Selection resolves as `ui.selectedLand`, falling back to the first land the current wave is
 acting on, falling back to land `1`. The panel is never empty.
@@ -317,8 +309,6 @@ against the dark ocean. Unit type is carried by shape, not hue.
 
 Worth knowing before changing any of this.
 
-- `essence` is terrain-keyed; it now has no per-land counterpart at all, since
-  `essenceProgress` is dropped rather than merely unused.
 - Land fills sit at or above `0.42` opacity. Below roughly `0.4` slate mountains and blue
   wetlands converge into the same blue-grey against the dark ocean.
 - Unit type is carried by shape, not hue.

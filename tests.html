@@ -45,8 +45,25 @@
   <div id="summary" data-status="pass">running...</div>
   <ul id="results"></ul>
 
-  <script src="engine.js"></script>
+  <!-- engine:start - load order matters; see engine/constants.js.
+       This list and the one in tests.html must stay identical:
+       tests/modules.test.js fails if they drift apart. -->
+  <script src="engine/constants.js"></script>
+  <script src="engine/content.js"></script>
+  <script src="engine/board.js"></script>
+  <script src="i18n.js"></script>
+  <script src="engine/text.js"></script>
+  <script src="engine/state.js"></script>
+  <script src="engine/upgrades.js"></script>
+  <script src="engine/abilities.js"></script>
+  <script src="engine/cards.js"></script>
+  <script src="engine/combat.js"></script>
+  <script src="engine/round.js"></script>
+  <script src="engine/save.js"></script>
+  <script src="engine/exports.js"></script>
+  <!-- engine:end -->
   <script src="tests/harness.js"></script>
+  <script src="tests/modules.test.js"></script>
   <script src="tests/board.test.js"></script>
   <script src="tests/setup.test.js"></script>
   <script src="tests/wave.test.js"></script>

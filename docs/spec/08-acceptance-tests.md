@@ -196,11 +196,13 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 ### Pushing
 
 16. Towns are pushed before explorers; cities are never pushed.
-17. The destination is an adjacent land holding no invaders, preferring one already holding
-    Dahan, then a coastal one, and among equals the **lowest land id** — the same destination
-    every time, never random.
-18. With no open ground left, the push stacks onto an adjacent land that already holds
-    invaders, ranked the same way. A push never fails for want of a destination.
+17. The destination is ranked over every neighbour, one term at a time: cover first (a land
+    holding Dahan, then Dahan and Defense together), then **how much** cover, then avoiding the
+    Build track, then open ground, then the coast, and among equals the **lowest land id** — the
+    same destination every time, never random.
+18. Openness is a ranking term, not a gate: with no open ground left the push stacks onto an
+    adjacent land that already holds invaders, and a defended occupied land can outrank open
+    ground even when open ground exists. A push never fails for want of a destination.
 19. Each pushed unit carries its own wound with it, exactly.
 20. A land with nothing pushable is not a legal push target; nothing else disqualifies one.
 
@@ -217,9 +219,9 @@ The kill-first rule, shared by every ability and by the Dahan strike.
 ### The Innate Power
 
 27. It opens unlocked at tier 1, free, on an 8-beat cooldown.
-28. Tier 2 (16 beats) deals 2 damage and pushes up to 3; the damage still lands when there is
+28. Tier 2 (15 beats) deals 2 damage and pushes up to 3; the damage still lands when there is
     nothing to push — a land holding only cities — and the cast still counts.
-29. Tier 3 (24 beats) deals 2 to **each** invader individually: against 4 explorers, 2 towns and 2
+29. Tier 3 (22 beats) deals 2 to **each** invader individually: against 4 explorers, 2 towns and 2
     cities it clears everything but the cities and leaves both of those at 1 health.
 30. Buying a tier spends its Energy, swaps the ability wholesale, and hands it back **ready**.
 31. The ladder is 40 then 150, and refuses past the top.
@@ -228,17 +230,36 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     that tier's priority list. A tick where no priority is satisfied spends nothing and leaves
     the cooldown untouched, so automation is never worse than a player who simply waits for a
     good target. Like the Boon's auto-cast, it writes no log line.
-33. Tier 1's list is three rungs, all of them about position because one push kills nothing:
-    break a Build by pushing the lone unit that would trigger it; route an undefended unit
-    into a neighbour holding Dahan; carry an inland unit onto an **open** coast, where the sea
-    can reach it. The seaward rung fires only from an inland, **undefended** land — a
-    coast-to-coast shove buys nothing, and pulling a unit out from under Dahan trades a kill
-    already happening for one that might. Those two conditions are also what stop it undoing
-    the routing rung's own work.
-34. Tier 1 has no protect-the-thin-stack rung; tier 2 and `wash_away` still do. One unit does
-    not lift enough pressure to save a stack, and the rung was the routing rung's mirror, so
-    on an 8-beat clock against the 10-beat Dahan strike it shuttled the same unit back and
-    forth across one border all round.
+33. Every tier opens with the same two rungs, both asked by simulating that tier's own cast:
+    **deny a Discover** its last foothold, then **break a Build**. The deny reads
+    `landAcceptsExplorer` — below `EXPLORE_UNRESTRICTED_FROM_WAVE` an inland land takes
+    Explorers only while a neighbour holds a Town or City — and requires the set of gated lands
+    to *shrink*, so a push that closes one Discover land while opening another is declined. From
+    wave 10 the rung is permanently quiet for that round. Break-a-Build now also checks the
+    clock: the Dahan strike and the wave run on independent timers, so "the Dahan would clear
+    this land" excuses the cast only when `dahanAttackRemaining <= waveTimerRemaining`.
+34. Tier 1 continues with **route into cover**, **consolidate onto more Dahan**, then **feed the
+    sea**. Routing simulates the arrival *and* the destination's next Dahan strike and fires
+    only where the Dahan finish what lands; it never sources from a land its own strike is
+    about to clear, which is what stops it oscillating. Consolidating requires **strictly** more
+    Dahan at the destination than at the source — monotone, so a unit can never be pushed back
+    where it came from, which is what replaced the old protect-the-thin-stack rung. The seaward
+    rung still fires only from an inland, **undefended** land onto genuinely open coast.
+34a. Tier 2 inserts **clear the land outright** above routing, and gates its Blight fallback on
+    the cast actually changing the land — a land holding only Cities takes the 2 damage, keeps
+    every unit and cannot be pushed, so it is no longer a target. Tier 3 alone puts
+    break-a-Build **above** the deny: with no push it pays for a deny with its whole area hit on
+    a 22-beat clock, to stop a seeding of the weakest unit on the board. Tier 3 ranks its
+    remaining rungs by the Blight its kills actually remove, then by chip progress toward the
+    next kill, then by the toughest thing standing — never by bodies present.
+34b. Within every rung the tie-break is the land bleeding the most Blight, never the lowest land
+    id.
+34c. A push for position may stack onto a land holding **Explorers only**, but never onto one
+    holding a Town or City, and never where the arrival would upgrade what the next Build
+    raises — carrying a Town onto Explorers on a Build-terrain land turns that Build from a Town
+    into a City. `pushDestinations` ranks cover first, then Dahan count, then avoiding the Build
+    track, then open ground, then the coast: a push stays plannable off the board, and the Build
+    term only ever separates landings the cover terms could not.
 35. The Innate resolves **last** among the automations each tick — after the Boon, the Bounty,
     Wash Away and Flash Floods. It has the shortest cooldown and the weakest effect, so the
     casts that kill and remove choose their target on a board it has not already stirred.

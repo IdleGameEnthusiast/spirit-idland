@@ -4,10 +4,14 @@
  * be played to its end in a millisecond here and still be the same round every run.
  *
  * Runs in two places, because the game itself needs no build step and neither should its
- * tests: open tests.html in a browser, or `node tests/run.js` if node is installed. */
+ * tests: open tests.html in a browser, or `node tests/run.js` if node is installed.
+ *
+ * In the browser the engine is already in scope from tests.html's own script tags, and the
+ * shim hands it over as window.SpiritEngine. Under node there is no such scope, so
+ * load-engine.js rebuilds it - see the note at the top of that file. */
 
 const engine = typeof require === "function"
-  ? require("../engine.js")
+  ? require("./load-engine.js").engine
   : window.SpiritEngine;
 
 const registry = [];

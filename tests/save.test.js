@@ -235,13 +235,10 @@
 
   test("normalize: every land key is present even when the save names none", () => {
     newGame();
-    const state = engine.normalizeState({ schemaVersion: engine.VERSION, invaders: {}, dahan: {}, essence: {} });
+    const state = engine.normalizeState({ schemaVersion: engine.VERSION, invaders: {}, dahan: {} });
     for (const landId of engine.LAND_IDS) {
       assert(state.invaders[landId], `invaders land ${landId}`);
       assertEqual(state.dahan[landId], 0, `dahan land ${landId}`);
-    }
-    for (const terrain of engine.INVADER_TERRAINS) {
-      assertEqual(state.essence[terrain], 0, `essence ${terrain}`);
     }
   });
 
@@ -252,12 +249,10 @@
 
     const raw = JSON.parse(storage.getItem(engine.SAVE_KEY));
     delete raw.round.fearEarned;
-    delete raw.essence;
     storage.setItem(engine.SAVE_KEY, JSON.stringify(raw));
 
     const loaded = engine.loadState(storage);
     assertEqual(loaded.round.fearEarned, 0, "missing field defaults");
-    assertEqual(loaded.essence.jungle, 0, "missing pool defaults");
   });
 
   // ui.autoCast is keyed by content ids, so it is rebuilt from the registry rather than merged

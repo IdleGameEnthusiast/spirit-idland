@@ -91,7 +91,7 @@ island board, and the between-round shop.
 - The Build and Discover terrains. There is no Ravage slot
 - **The escalation ladder**, one row per rung: the wave it lands on and what it does, in
   climbing order, from `difficultyLadder`. The panel holds no wave numbers of its own — a rung
-  that moves in `engine.js` moves here in the same edit
+  that moves in `engine/` moves here in the same edit
 - The whole climb is shown at once, never scrolled or collapsed. It is a plan the player reads
   ahead on, and a rung hidden behind a toggle is a rung they meet by surprise
 - Three readings, and they are deliberately not "done / not done". A rung the round has
@@ -126,7 +126,30 @@ island board, and the between-round shop.
 - The board itself: eight lands drawn as one island, ocean along the coast edge, cliffs on
   the others
 - Per land, on the board: land number, terrain, invader glyphs with counts (nonzero only),
-  Dahan pips, and the Blight already taken there when it is nonzero
+  Dahan pips, and two **head badges** — the ward standing over the land and the Blight already
+  taken in it — each drawn only when its value is nonzero
+- The head badges share one shape, a **glyph and its number in a dark pill**, so the eye learns
+  the form once and afterwards reads only the colour. Both take a glyph rather than a bare
+  integer: they are the only two things on a chip that are not a count of pieces standing on the
+  land, and a number alone beside the terrain name has no way to say what it counts.
+  - **Defense** — a shield, in the calm teal. Until now a ward was drawn on the board only in the
+    pressure line, and only when it covered the attack outright; a *partial* ward, which is most
+    of them, was invisible on the chip the player picks their next target from. Teal by the same
+    rule that governs the strike bar: red on a chip means Blight and wounds, and this is the one
+    thing on the board that stops both
+  - **Blight** — a black splotch on a pale grey face, **not** the pressure red the rest of the
+    chip's bad news is drawn in: three different bad things in one hue on a 90px chip is one too
+    many. It is the **one badge on the board that inverts**, and deliberately. That is how the
+    component is printed, a dark blot on a light token, so the badge is the piece the player has
+    held rather than an icon of it; it is the only way grey gets to be threatening, because
+    threat is mass and mass is dark, while a pale splat on black is a hole of light that reads as
+    a snowflake however ragged its edge; and being the only element on a chip lighter than its
+    surroundings buys it the loudest voice on a board of dark pills **without taking any hue from
+    the two threats still in progress**. That is proportionate — this is the count of what has
+    already been lost for good, and at three of them the round is over. The Blight *bar* below
+    stays red: it is the rate climbing toward the next one of these, and pressure is what red
+    means here. The chip's Blight-gain flash is a pale grey — it and the tally are the same event
+    a second apart, and it has only that second to be caught in
 - On every land holding invaders: a **Blight bar** showing `round.blightProgress` for that
   land, and a line naming the rate and the seconds to the next Blight. This is the primary
   read on the board — the fight is continuous, so a land's danger is a speed, not an event
@@ -224,7 +247,10 @@ island board, and the between-round shop.
 - On the land a pending ability target applies to: highlight it as a legal click
 - A land detail panel for one selected land: the same fight readout in long form (gross
   damage, Dahan defence, net, rate, ETA), invader counts with partial-HP hints, Dahan,
-  Blight taken here, and its neighbours
+  Blight taken here, and its neighbours. Rows that hide themselves — the ward's, present only
+  while there is a ward to report — must hide in **CSS as well as in the attribute**: a
+  `display: flex` row beats the browser's own rule for `[hidden]`, which is what had the panel
+  printing "Defense here: 0" on all eight lands
 
 4. The round controls — a bare row in the rail, above the shop panel
 - The two controls that answer *when does the next round begin*: **a clear "Start Next Round"
@@ -361,7 +387,7 @@ Two rules protect the run already in progress:
   longer match its checksum. Neither touches the current run
 
 The file is base64 with a checksum rather than plain JSON, so a save is not editable by accident
-or by curiosity. It is not a security measure and is not documented as one: engine.js is served
+or by curiosity. It is not a security measure and is not documented as one: the engine sources are served
 to the browser, so anyone who reads it can recompute both. It raises the cost of nudging a Fear
 count from "open the file" to "read the engine" — the localStorage entry was always reachable
 from the dev tools, and still is.
@@ -489,8 +515,9 @@ was the quietest event in the game: the entry appeared in the ability bar, a log
 written, and nothing else happened. The bar lives in the rail and the player is watching the
 island, so a card could arrive at wave 45 and simply be found there twenty waves later.
 
-Four surfaces now carry it, and they are deliberately staged as one movement — a countdown, a
-moment, a landing, and a mark that waits:
+Five surfaces now carry it, and four of them are deliberately staged as one movement — a
+countdown, a moment, a landing, and a mark that waits. The fifth is the appointment those four
+count toward:
 
 - **The countdown**, on the wave HUD tile. The drip is the only reward in the game whose arrival
   is known in advance to the exact wave, and the wave tile is where waves are counted, so it goes
@@ -501,6 +528,13 @@ moment, a landing, and a mark that waits:
   outright rather than printing a dash: no round running, no card owned, and — the one worth
   naming — every owned card already in hand, because a countdown toward a draw that will pass
   silently is a lie with a number on it.
+- **The appointment**, beside the Abilities headline: the wave number the next card is due on,
+  in the headline's own serif and clearly under its size, in Presence violet. It is not a
+  duplicate of the countdown above — that one says *how many waves are left*, against the wave
+  clock it sits on, and this one says *which wave*, over the bar the card will appear in. It
+  hides on the same three conditions. **It does not belong at the foot of the card shop**, where
+  it used to sit: that panel is reachable only between rounds, so the line was on screen at the
+  one moment its number could not be acted on and gone for the whole of the round it described.
 - **The reveal**, laid over the island for `CARD_FX_MS`. It prints the wave that earned it as a
   kicker, then the name, the effect, and the cooldown — the same three the shop's offer rows
   carry, in the same order, so a player deciding whether to keep the card is reading the layout
@@ -546,12 +580,19 @@ simply drop its animation, since the animation is what makes it visible at all: 
 opacity for as long as the fx is fresh, and the patch that empties the layer is what takes it
 away — appearing and disappearing with no scale and no fade between.
 
-On the board a land carrying **Defense** reads it two ways. The pressure chip and the detail
-line say which of three stories is true — no ward, a partial one (spelled out as a reduction),
-or total denial, which replaces the rate line rather than decorating it. A denied land must not
-report "0% / s, next in never": there is no rate to quote, and that is the whole of what the
-ward bought. The land panel carries the ward's remaining points in its own forces block,
-present only while there is a ward to report.
+On the board a land carrying **Defense** reads it three ways. The **shield badge** in the chip's
+head carries the ward's points, on any land holding a ward at all — it is the only one of the
+three that shows a partial ward at a glance, and the only one visible while the eye is on the
+board rather than on one chip's text. The pressure chip and the detail line say which of three
+stories is true — no ward, a partial one (spelled out as a reduction), or total denial, which
+replaces the rate line rather than decorating it. A denied land must not report "0% / s, next in
+never": there is no rate to quote, and that is the whole of what the ward bought. The land panel
+carries the ward's remaining points in its own forces block, present only while there is a ward
+to report.
+
+Because the badge is chip markup rather than per-frame patched text, **the ward is part of the
+board's rebuild signature**. Nothing else in that signature moves when a cast lays Defense on a
+quiet land, so without it the shield would appear a wave late.
 
 ## Interaction Rules
 
@@ -758,8 +799,8 @@ four tiles to two, because a Blight meter narrower than its own label stops bein
 
 ## Implementation Notes
 
-- `ui.js` holds every DOM call and no rules; `engine.js` holds every rule and no DOM. The
-  land-state precedence above lives in `engine.js` precisely because it is a rule, which is
+- `ui.js` holds every DOM call and no rules; `engine/` holds every rule and no DOM. The
+  land-state precedence above lives in `engine/combat.js` precisely because it is a rule, which is
   what lets the suite assert it.
 - Three render caches gate the expensive work: the board rebuilds only when its own
   signature changes, the ability bar only when the unlocked set or language changes, the shop

@@ -148,24 +148,6 @@ h3 {
   background: rgba(242, 196, 90, 0.18);
 }
 
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.badge {
-  border: 1px solid var(--panel-border);
-  padding: 0.35rem 0.65rem;
-  border-radius: 999px;
-  background: rgba(9, 26, 34, 0.6);
-  font-size: 0.82rem;
-}
-
-.badge.calm { border-color: rgba(120, 201, 179, 0.5); }
-.badge.strain { border-color: rgba(242, 196, 90, 0.6); }
-.badge.crisis { border-color: rgba(231, 103, 85, 0.8); }
-
 .layout {
   position: relative;
   z-index: 1;
@@ -182,6 +164,30 @@ h3 {
   padding: 0.9rem;
   backdrop-filter: blur(4px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+/* A panel headline that shares its line with something. The something is right-aligned and
+   baseline-locked to the heading, so the two read as one line rather than as a heading with a
+   caption stuck to it, and it wraps under on a narrow rail instead of squeezing the title. */
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+}
+
+/* Where the drip's next card lands, beside the Abilities headline - the bar it will appear in.
+   Cinzel and letterspaced so it belongs to the heading, and clearly under its size so it can
+   never be mistaken for a second title. Presence-violet, because Presence is what buys cards
+   and the shop that spends it says the same number in the same colour. */
+.next-card-hint {
+  font-family: "Cinzel", "Times New Roman", serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--accent-presence);
+  white-space: nowrap;
 }
 
 /* The board leads the layout. The vitals used to span the full width above it, which is
@@ -714,15 +720,6 @@ button.reset {
   color: var(--ink-1);
   font-size: 0.8rem;
   line-height: 1.3;
-}
-
-.deck-row {
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-  font-size: 0.88rem;
-  color: var(--ink-1);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1954,7 +1951,8 @@ button.reset {
 .chip-head {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  flex-wrap: wrap;
+  gap: 0.14rem 0.25rem;
 }
 
 .chip-num {
@@ -2256,26 +2254,109 @@ button.reset {
 
 .chip-wave.is-quiet .chip-wave-text { color: var(--ink-1); }
 
-/* Blight already taken here, carried beside the land number. A land that has taken two is a
-   land the round is being lost in, and that should be visible on the board. */
-.chip-blight-count {
-  font-size: 0.55rem;
+/* The two head badges: the ward standing over this land, and the Blight already lying in it.
+   One shape for both, so the eye learns "glyph plus number in a pill" once and then only has
+   to read the colour. Both carry their own dark backing, by the rule that governs every line
+   on a chip - see the note above .chip-row.
+
+   Bigger than the bare number that used to sit here, and bigger than the unit counts below.
+   These are the only two pieces of a chip that are not a count of pieces standing on the land,
+   and at 0.55rem the Blight tally was the smallest thing on the board while naming the thing
+   that ends the round. The glyph runs larger than its own text - it is what carries at a
+   distance, and the number is only read once the eye has already arrived. */
+.chip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.16rem;
+  font-size: 0.74rem;
   font-weight: 800;
   line-height: 1;
-  padding: 0.12rem 0.26rem;
+  padding: 0.16rem 0.38rem 0.16rem 0.28rem;
   border-radius: 999px;
-  background: rgba(231, 103, 85, 0.28);
-  border: 1px solid rgba(231, 103, 85, 0.6);
-  color: #ffd9d1;
   font-variant-numeric: tabular-nums;
 }
 
+.chip-badge .tok {
+  width: 0.88rem;
+  height: 0.88rem;
+  vertical-align: 0;
+}
+
+/* Blight already taken here, carried beside the land number. A land that has taken two is a
+   land the round is being lost in, and that should be visible on the board.
+
+   Coloured from the printed token rather than from this app's pressure red: the Blight token is
+   a grey-black splotch, and grey is what it is here. It was salmon before, which is the same red
+   the health rings drain in and the same red the wave banner shouts in - three different bad
+   things in one hue, on a chip 90px wide.
+
+   Grey is also the right *weight*, not only the right hue. Blight already lying in a land is a
+   fact, not an alarm: it cannot get worse and there is nothing to do about it, which is exactly
+   the thing on a chip that should not compete with the two threats still in progress above it.
+
+   The one badge on the board that inverts: a black splotch on a pale grey face, rather than a
+   pale mark on a dark pill like everything else on a chip. Three reasons, and they all point the
+   same way.
+
+   It is how the component is printed - a dark blot on a light token - so the badge is the piece
+   the player has held rather than an icon of it.
+
+   It is the only way grey gets to be threatening. Threat here is mass, and mass is dark: a pale
+   splat on black is a hole of light, which reads as a snowflake however ragged its edge. Black
+   on grey is a weight sitting on the land.
+
+   And it is the only element on a chip that is *lighter* than its surroundings, which is what
+   buys it the loudest voice on a board of dark pills without taking any hue away from the two
+   threats still in progress. That is proportionate: this is the count of what has already been
+   lost permanently, and at three of them the round is over.
+
+   The Blight *bar* below stays red. It is not this: it is the rate climbing toward the next one
+   of these, and pressure is what red means here. */
+.chip-blight-count {
+  background: #aab2b5;
+  border: 1px solid rgba(3, 10, 14, 0.65);
+  color: #0d1316;
+  /* Seated rather than floating: the pale face is the brightest thing on the chip and needs a
+     hard shadow under it, or it hovers over the terrain instead of lying on it. */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+}
+
+.chip-blight-count .tok {
+  color: #0d1316;
+  /* .tok's default shadow exists to hold pale pieces off bright desert. This one is the dark
+     half of its own pill and only muddies its edge. */
+  filter: none;
+}
+
+/* The ward, and the first time Defense has been drawn on the board at all. Until now a land
+   behind Defend 2 said so only in its pressure line, and only once the ward covered the attack
+   outright - a partial ward, which is most of them, was invisible on the chip that the player
+   picks their next target from.
+
+   Teal, on the same rule that keeps the strike bar out of pressure red (see .chip-strike): red
+   on a chip means Blight and wounds, and this is the one thing on the board that stops both.
+   It reads at a glance against the violet badge beside it, which is what the pair has to do -
+   they sit in the same row and mean opposite things. */
+.chip-defense {
+  background: rgba(7, 38, 38, 0.85);
+  border: 1px solid rgba(120, 201, 179, 0.65);
+  color: #c6f0e3;
+}
+
+.chip-defense .tok {
+  color: var(--accent-calm);
+  filter: drop-shadow(0 0 1px rgba(3, 14, 20, 0.95));
+}
+
 /* Blight gained this instant, so the player sees which land cost them the round rather
-   than only watching the meter move. */
+   than only watching the meter move. Grey, following the token it announces: this line and the
+   tally in the head are the same event a second apart, and they have to be the same colour or
+   the flash reads as a third kind of bad news. Brighter than the tally, because this one has a
+   second to be caught in and the tally has the rest of the round. */
 .chip-blight {
   font-size: 0.62rem;
   font-weight: 800;
-  color: #ff9d8a;
+  color: #e4eaed;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   animation: defeat-pop 1.1s ease-out forwards;
 }
@@ -2397,6 +2478,11 @@ button.reset {
 }
 
 .detail-row:last-child { border-bottom: 0; }
+
+/* A flex row beats the browser's own rule for [hidden], so the one row that hides itself -
+   the ward, present only while there is a ward to report - was printing "Defense here: 0" on
+   every land on the board instead. */
+.detail-row[hidden] { display: none; }
 
 .detail-key {
   display: inline-flex;

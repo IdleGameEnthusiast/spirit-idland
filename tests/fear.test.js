@@ -374,7 +374,7 @@
     assertClose(engine.presenceFearMultiplier(state), 1.37, 0.0001, "37 points is +37%");
 
     // No FEAR_LADDER_MAX_TIER here on purpose - see the note above
-    // PRESENCE_FEAR_BONUS_PER_POINT in engine.js.
+    // PRESENCE_FEAR_BONUS_PER_POINT in engine/constants.js.
     state.meta.presence = 1000;
     assertClose(engine.presenceFearMultiplier(state), 11, 0.0001, "and it never tops out");
   });

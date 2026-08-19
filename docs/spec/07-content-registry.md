@@ -7,7 +7,7 @@ upgrades, terrain, board, and units.
 
 ## Rules
 
-- Every ID in this file is live in `engine.js`.
+- Every ID in this file is live in `engine/content.js`.
 - Content documented here is limited to what this pack actually specifies.
 - Content marked placeholder is for internal consistency while the loop is built, not a
   balancing decision.
@@ -80,8 +80,8 @@ a whole record of its own:
   "unlockCost": 0,
   "tiers": [
     { "cooldownSeconds": 16, "needsTarget": true, "effect": "push_invaders", "pushCount": 1, "upgradeCost": 40 },
-    { "cooldownSeconds": 32, "needsTarget": true, "effect": "damage_and_push", "damage": 2, "pushCount": 3, "upgradeCost": 150 },
-    { "cooldownSeconds": 48, "needsTarget": true, "effect": "damage_each_invader", "damage": 2 }
+    { "cooldownSeconds": 30, "needsTarget": true, "effect": "damage_and_push", "damage": 2, "pushCount": 3, "upgradeCost": 150 },
+    { "cooldownSeconds": 44, "needsTarget": true, "effect": "damage_each_invader", "damage": 2 }
   ]
 }
 ```
@@ -102,10 +102,10 @@ shared damage rule, and the shared push rule.
 - Unlock: free, in every round's opening hand
 - Needs target: yes, at every tier
 - Tier 1 (8 beats): push 1 explorer/town.
-- Tier 2 (16 beats, 40 Energy): 2 damage, then push up to 3 explorers/towns. The two halves are
+- Tier 2 (15 beats, 40 Energy): 2 damage, then push up to 3 explorers/towns. The two halves are
   independent — if the damage cleared the land, or every neighbour is occupied, the cast still
   counts.
-- Tier 3 (24 beats, 150 Energy): 2 damage to **each** invader in the land, individually. This is the
+- Tier 3 (22 beats, 150 Energy): 2 damage to **each** invader in the land, individually. This is the
   effect that per-unit health exists for: against 4 explorers, 2 towns and 2 cities it kills
   everything but the cities and leaves both of those at 1 health, which the old per-type damage
   model could not describe.
@@ -236,16 +236,34 @@ the second already has its own toggle.
   it is a real decision: which land. The auto-cast runs a per-tier priority list (see
   [08-acceptance-tests.md](./08-acceptance-tests.md#the-innate-power)) and skips the tick
   entirely, cooldown untouched, whenever no priority applies.
-  Tier 1's list is written for what one push can actually buy — position, never a kill — and
-  is deliberately the *last* automation to resolve each tick: it has the shortest cooldown and
-  the weakest effect in the kit, so going first meant the automations that kill and remove
-  chose their target on a board it had already stirred. Its rungs are break a Build, route an
-  undefended unit into Dahan cover, then carry an inland unit onto an open coast where
-  `wash_away` can reach it. There is no protect-the-thin-stack rung at tier 1 — it exists at
-  tier 2 and on `wash_away`, where the push moves three units and shifts real pressure. At one
-  unit it saved no stack and was the exact mirror of the routing rung above it, so on an
-  8-beat clock against the 10-beat Dahan strike it only shuttled the same unit back and forth
-  across the same border.
+  Every tier opens with the same two rungs, because they are the only two in the kit that stop
+  invaders *arriving* rather than rearranging ones already ashore: **deny a Discover** its last
+  foothold, and **break a Build**. Both are asked by simulating the tier's own cast against a
+  scratch board, so the three tiers ask one question and only their answers differ. The deny
+  rung reads `landAcceptsExplorer` — below `EXPLORE_UNRESTRICTED_FROM_WAVE` an inland land takes
+  Explorers only while a neighbour holds a Town or City, so removing that Town cancels a whole
+  seeding. It requires the set of gated lands to *shrink*: shoving the Town one land sideways
+  can close one Discover land and open another, which is a cast for nothing. From wave 10 the
+  rung goes quiet for the rest of the round.
+  Tier 1 continues with **route into cover**, **consolidate onto more Dahan**, then **feed the
+  sea**. Routing now simulates the arrival *and* the destination's next Dahan strike, so it
+  fires only where the Dahan actually finish what lands — the old rung asked merely whether a
+  Dahan stood there and happily sent Towns to lands that could not kill them. Consolidating
+  requires *strictly* more Dahan at the destination than at the source, which is what makes it
+  safe on an 8-beat clock: the move is monotone, so a unit can never be pushed back where it
+  came from. That strictness is what replaced the old protect-the-thin-stack rung, which was
+  the routing rung's exact mirror and shuttled one unit across one border all round.
+  Tier 2 inserts **clear the land outright** above routing — certain where routing is a bet,
+  and it removes a Blight source, a Build target and a Discover foothold at once — and gates
+  its Blight fallback on the cast actually changing the land, so it no longer spends a cooldown
+  scratching a land that holds nothing but Cities. Tier 3 alone puts break-a-Build *above* the
+  deny: it has no push, so it pays for a deny with its whole area hit on a 22-beat clock, to
+  stop a seeding of the weakest unit on the board.
+  Within every rung the tie-break is the land bleeding the most Blight, never the lowest land
+  id. The id order is arbitrary; where the island is actually hurting is not.
+  The Innate is deliberately the *last* automation to resolve each tick: it has the shortest
+  cooldown and the weakest effect in the kit, so going first meant the automations that kill
+  and remove chose their target on a board it had already stirred.
   Switchable off from the card without being un-bought, and one of the three where that
   matters: the Innate picks a land, and a player may want that decision back.
 The three ability automations below are ranked by what their ability puts on the board or takes
@@ -273,8 +291,11 @@ removes. Each rung up is a stronger claim on the round than the one under it.
   every damage number in the kit is losing ground to invader health. Its priority list is split
   the way the ability is: a Build threat the cast would empty, then the coast the sea empties
   hardest, then an undefended land whose push lands on open ground holding Dahan, then the
-  thinnest defended land. The last two require **open ground** — the occupied-neighbour
-  fallback is a trade a player can see the cost of and an automation cannot. Switchable off
+  thinnest defended land. The last two require the push to **land on open ground** — asked of
+  the destination itself, since cover now outranks openness in the destination rule. Wash Away
+  keeps that stricter test where the Innate has relaxed it: it moves a whole land at once, so a
+  stack it concentrates is a much bigger one, and the trade is one a player can see the cost of
+  and an automation cannot. Switchable off
   from the card without being un-bought — the reason the toggle exists at all, since 400 Fear
   used to remove the ability from active play permanently.
 The last two rows are behind **Presence** rather than behind Fear alone (`upgradeNeedsPresence`,
@@ -451,17 +472,12 @@ consequences.
   spent at any time to unlock abilities. Whole-numbered. Persistent across rounds. See
   [02-core-loop.md](./02-core-loop.md#energy).
 
-### Parked
-
-- `essence` — four terrain pools kept as inert placeholders. No generator in this design;
-  see [09-island-board.md](./09-island-board.md#essence) for what's retired versus kept.
-
 ## Localization Registry
 
 - All visible player-facing strings are defined in the `I18N.de` and `I18N.en` tables in
-  `engine.js` — including log lines, which the engine writes and the UI only displays.
+  `i18n.js` — including log lines, which the engine writes and the UI only displays.
 - New content must provide both German and English display strings.
-- **German strings use real umlauts, and `engine.js` is UTF-8 without a BOM.**
+- **German strings use real umlauts, and `i18n.js` is UTF-8 without a BOM.**
 
   This reverses an earlier rule. The source used to be ASCII-only with umlauts transliterated
   (`ae`, `oe`, `ue`) because this file had been corrupted once by a tool that re-encoded it,
