@@ -59,6 +59,51 @@ const DEFAULT_GAME_SPEED = 1;
 // speed with no button to leave it by.
 const PLAYTEST_GAME_SPEEDS = [8];
 
+/* ---------- The fast-forwarded opening (05-progression.md, `presence_deep_water_comes`) ----
+ *
+ * A third pacing control, and the only one the player does not hold: a Presence row that runs
+ * the first waves of every round at 20x and hands the dial back once they are behind.
+ *
+ * It is a *fast-forward and not a skip*, and the distinction is the whole of why the row is
+ * priced as comfort. Speed multiplies dt (see gameSpeed) and reaches no rule, so the
+ * fast-forwarded waves still build, still explore, still blight and still pay their Fear -
+ * every one of them, at full value. What the row buys back is real seconds and nothing else.
+ *
+ * 20x is kept out of GAME_SPEEDS and PLAYTEST_GAME_SPEEDS alike for the reason the comment
+ * above gives: a save must not come back stuck at a speed with no button to leave it by. This
+ * one is never *set*, only applied while the opening runs - `effectiveGameSpeed` reads it,
+ * `state.ui.gameSpeed` never holds it, and the dial keeps drawing the player's own choice.
+ *
+ * Why nothing can be hand-played at this speed, and why that is the row's real gate: a
+ * cooldown ticks in game seconds, so at 20x the whole ability kit fires twenty times faster
+ * than a hand can answer. The row is only *free* to a player who owns the automations, which
+ * puts 8 Presence of `presence_river_knows` + `presence_all_unbidden` underneath it before its
+ * own 3 is asked for. That depth is the gate; the price is not asked to be one.
+ */
+const FAST_FORWARD_SPEED = 20;
+
+/* How much of the all-time record each rung fast-forwards, and the whole of the ladder.
+ *
+ * Keyed to `meta.bestWaveReached` rather than to a flat wave count because the opening a
+ * player finds trivial moves with the run: eight waves is most of an early round and a rounding
+ * error of a deep one. The record only ever ratchets up (see endRound), so what the row grants
+ * grows on its own between purchases - which is what lets three rungs cover the whole game
+ * instead of a rung per depth.
+ *
+ * Floored, always: at a record of 87 the first rung fast-forwards 8 waves and not 9. The share
+ * is deliberately small. Waves the player wants back are the ones before the round becomes a
+ * question, and the cap has to stay well below where the answer starts being in doubt - a row
+ * that fast-forwarded through the part of the round that can be lost would be playing it.
+ *
+ * 3 / 4 / 5 Presence for 10 / 15 / 20%: flat-ish growth, near the 1.3-1.5 the note above
+ * PRESENCE_UPGRADES asks of any repeatable Presence row, because Presence income is
+ * root-shaped and a quadratic ladder dies inside three rungs. The benefit is linear in the
+ * rung, so the cost must not be worse than linear either.
+ */
+const FAST_FORWARD_SHARE_PER_TIER = [0.10, 0.15, 0.20];
+const FAST_FORWARD_MAX_TIER = FAST_FORWARD_SHARE_PER_TIER.length;
+const FAST_FORWARD_COSTS = [3, 4, 5];
+
 // What the two playtest buttons hand out. One number rather than two because they are the same
 // idea - enough of a currency to stop a test being about earning it.
 const PLAYTEST_GRANT = 100;

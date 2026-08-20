@@ -562,6 +562,35 @@ h3 {
 
 .wave-held .hud-wave .value { color: var(--accent-energy); }
 
+/* The fast-forwarded opening (Deep Water Comes Sooner). The wave meter is still a countdown
+   and still draining - it is simply doing it twenty times too fast to read, so the fill drops
+   its easing rather than smearing between two readings a frame apart, and the tile is tinted
+   to say the pace is not the one on the dial. Deliberately quieter than .wave-held: that state
+   is the game waiting on the player, this one is the game getting on without them. */
+.is-fast-forward .hud-wave .value {
+  /* Presence's own colour, because a Presence row is what is doing this and nothing else on
+     the strip is. It also keeps the slot distinct from .wave-held, which takes the Energy
+     accent one rule above. */
+  color: var(--accent-presence);
+  letter-spacing: 0.04em;
+}
+
+.is-fast-forward .hud-wave .meter-fill {
+  transition: none;
+  opacity: 0.75;
+}
+
+/* The dial keeps showing what the player set, so the group says "not right now" rather than
+   moving the lit button somewhere the player cannot press. It stays fully interactive: 0x is
+   the brake on a fast-forward and has to remain reachable. */
+.speed-group.is-fast-forward {
+  border-color: rgba(242, 196, 90, 0.55);
+}
+
+.speed-group.is-fast-forward .speed-label {
+  color: var(--accent-energy);
+}
+
 @keyframes wave-call {
   0%, 100% { filter: brightness(1); }
   50% { filter: brightness(1.3); }
@@ -2861,6 +2890,8 @@ button.reset {
   .land-ring.is-wave-target,
   .land-ring.is-explore-target { animation: none; }
   .hud-blight .meter-fill.is-critical { animation: none; }
+  /* Nothing to drop for the fast-forward: it already turns the meter's easing off, and its
+     other two cues are colour. Named here so the next reader does not go looking. */
   /* The one-shot round-end flash and the Start Next Round pulse are both pure motion with no
      state of their own to fall back to, so reduced motion drops them outright rather than
      freezing them mid-brightness. */

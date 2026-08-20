@@ -275,7 +275,7 @@ function presenceUpgradeName(state, presenceId) {
 function presenceUpgradeText(state, presenceId) {
   const t = locale(state);
   const text = (t.presenceTexts && t.presenceTexts[presenceId]) || "";
-  // The one row that carries a number, and it is not a price: `presence_current_quickens` sells
+  // The rows that carry a number, and none of them is a price: `presence_current_quickens` sells
   // Focus, whose whole rule is that every purchase takes the same amount off a cooldown. The
   // objection above is to figures that move *because the shop was used* - a price that changes
   // as it is bought. This one moves with the speed dial and with nothing else, exactly like the
@@ -290,7 +290,22 @@ function presenceUpgradeText(state, presenceId) {
     // at nine rungs out of ten. It is the Fear shop's own rule (see NEXT_TIER_UPGRADE_TEXT)
     // arriving in this catalogue with the first row that needs it.
     fear: formatFear(ascensionStartFear(state)),
-    step: formatFear(ASCENSION_START_FEAR_PER_TIER)
+    step: formatFear(ASCENSION_START_FEAR_PER_TIER),
+    /* The fast-forward's three figures, live for the same reason the two above it are: the row
+     * is bought three times and what it grants moves at every rung *and* every time the record
+     * does, so a flat sentence would be wrong nearly always.
+     *
+     * `share` deliberately quotes the rung *above* the one owned - what the next click buys,
+     * which is the question a row still on the shelf is being asked - while `waves` quotes what
+     * is granted right now. At the top rung there is no rung above, so `share` falls back to
+     * the one owned and the two figures describe the same thing, which is exactly true then.
+     */
+    share: fastForwardSharePct(Math.min(
+      presenceUpgradeTier(state, "presence_deep_water_comes") + 1,
+      FAST_FORWARD_MAX_TIER
+    )),
+    waves: fastForwardWaves(state),
+    speed: FAST_FORWARD_SPEED
   });
 }
 

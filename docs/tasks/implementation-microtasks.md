@@ -1091,6 +1091,58 @@ to make, so the row is hidden and emptied — `.tier-split[hidden]` is spelled o
 because an author `display: flex` outranks the UA rule that hides `[hidden]` and the row would
 otherwise stay drawn after tier 3 was bought.
 
+### 23. The opening of a round runs at 20x — *built 2026-08-20*
+
+From the Idea Inbox: "presence upgrade to play the first x waves in 20x speed". Landed as
+`presence_deep_water_comes`, three rungs at **3 / 4 / 5 Presence** fast-forwarding the first
+**10 / 15 / 20%** of `meta.bestWaveReached`, always floored — a record of 87 hurries 8 waves at
+the first rung and not 9. Covered by `tests/fastforward.test.js`; `tests/ascension.test.js`
+updated for a fourth shape of Presence row. Unplayed against a live cycle: the figures below are
+a first pass, not a measurement.
+
+**It is a fast-forward and not a skip, and that is the whole design.** `gameSpeed` multiplies
+`dt` and reaches no rule, so every hurried wave builds, explores, blights and pays its Fear at
+full value. The row buys the player's real seconds and never the game's Fear — which is what
+lets it be priced as comfort, and what `tests/fastforward.test.js` asserts directly by playing
+the same four waves hurried and unhurried and comparing the Fear, the Blight and the cards.
+
+**What was asked for and what changed.** The ask was an eight-rung ladder at 1 / 2 / 3… Presence
+a rung, 36 Presence for a 10% cap. Three things moved:
+
+- **The ladder shape.** Cumulative 36 is nearly double the whole rest of the catalogue (20), and
+  it is quadratic against income that is root-shaped and a benefit that is linear in the rung —
+  the exact failure that deleted the seven discount rows. Three rungs at 3 / 4 / 5 keeps growth
+  at 1.33 / 1.25, inside the 1.3–1.5 band the catalogue asks of a repeatable row.
+- **The cap grows with the rung** rather than staying at 10%, because that is what the extra
+  rungs are now selling. It ratchets on its own besides: `bestWaveReached` never falls, so the
+  grant widens between purchases and three rungs can cover the whole game.
+- **The price is not the gate.** Nothing can be hand-cast at 20x — cooldowns tick in game
+  seconds — so the row is only free to a player already holding `presence_river_knows` and
+  `presence_all_unbidden`. That is 8 Presence of depth underneath it, the same argument
+  `presence_river_deepens` is priced on.
+
+**Two behaviours beyond a bigger number on `dt`**, both of them the row's own:
+
+- **The wave gate is released for the hurried waves and closes again after them**, via
+  `waveProceedsUnattended`. `ui.autoProceed` is neither read nor written — a manual player's
+  toggle keeps saying what they set, and they get their gate back at the wave the shop promised.
+- **Card reveals are held back while it runs** (`markCardFx`). `CARD_FX_MS` is 2600 *real* ms
+  against a wave arriving every real second, so each reveal would be overwritten before it could
+  be read. The hand, the log and the drip's schedule are untouched.
+
+**One piece of machinery it added:** `presenceUpgradeCost` now reads a `costs` array as well as a
+flat `cost`, because this is the catalogue's first row priced per rung. Three prices written out,
+not a curve.
+
+**The figure to watch, and the lever.** At a record of 87 the top rung hands back roughly three
+minutes of a fourteen-minute round — about 20% of the sitting-through. If a played cycle wants
+more, **the lever is the share and never the speed**: a larger share hands back more of an
+opening the player has already proven, while a faster speed only coarsens the tick already
+resolving those waves and buys less real time per step past 20x than the step before it. The
+share must stay well below where a round becomes a question, though — a row that hurried through
+the part of a round that can be *lost* would be playing it.
+
+
 ## Idea Inbox
 
 Unsorted and unargued. One line each, written down before it is thought about — the point is
@@ -1106,11 +1158,6 @@ is not a line down here.
 - check if Wash Away works correctly when a land holds more than 3 invaders
 - give tokens for casting abilities, spendable to upgrade them (or route that through the
   Presence shop instead)
-- Presence row: the opening of every round runs at 20x, up to a share of `bestWaveReached`.
-  Not a skip - `gameSpeed` only multiplies `dt`, so the waves still pay and still blight. Asked
-  as an eight-rung ladder at 1/2/3.. Presence (36 total, 10% cap); flat and cheap is the
-  counter-proposal, because the cap ratchets on its own and the automations already gate it -
-  at 20x nothing can be hand-cast. Watch `CARD_FX_MS`: a card a wave at one real second a wave
 
 ### UI
 

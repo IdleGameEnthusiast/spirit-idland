@@ -64,7 +64,8 @@ files are listed by hand in `tests.html`; adding one means adding a `<script>` l
 ## Pacing Checks
 
 The speed dial and the wave gate, in `tests/pacing.test.js`. Most of these are one assertion:
-neither control may change what the round costs.
+neither control may change what the round costs. The third pacing control has a section of its
+own — see [The Fast-Forwarded Opening](#the-fast-forwarded-opening).
 
 1. A fresh game runs at `1x`, where one real second buys one game second.
 2. At `2x` the same wave resolves in half the real seconds, and at `0x` no clock in the round
@@ -85,6 +86,68 @@ neither control may change what the round costs.
 12. Leaving the shop is itself the opening call: the next round's clock runs without one.
 13. Both settings survive a save with the gate they were standing at; a nonsense speed loads
     at `DEFAULT_GAME_SPEED`, and an ended round never loads behind a gate.
+
+## The Fast-Forwarded Opening
+
+`presence_deep_water_comes`, in `tests/fastforward.test.js`. The row is a **speed and nothing
+else**, and most of what follows is that identity — it is the whole defence of the row's price.
+See [02-core-loop.md](./02-core-loop.md#pacing).
+
+**What a rung grants**
+
+1. Unowned on a fresh game: no waves, nothing running fast, and `effectiveGameSpeed` equal to
+   the dial.
+2. Each rung is a share of `meta.bestWaveReached`, **always floored**. At a record of 87 the
+   three rungs grant 8, 13 and 17 waves — 8.7, 13.05 and 17.4 before the floor, so a rounding
+   change breaks all three at once.
+3. A record too shallow to floor to a wave grants none: 0 at a record of 9, and the first wave
+   arrives at a record of 10.
+4. Three rungs at 3 / 4 / 5 Presence, `Infinity` after the third, bought a rung at a time out of
+   the purse and refused when the purse is short.
+
+**The speed it applies**
+
+5. The opening runs at `FAST_FORWARD_SPEED` and hands the dial back after it — three hurried
+   waves in three real seconds, then 1x.
+6. It is off the instant the last hurried wave resolves, not one wave later.
+7. `0x` still stops everything: no wave resolves and the round does not age. The dial stays the
+   brake, and it is the only way out of a fast-forward the player did not want.
+8. It **replaces** the dial rather than multiplying it: 20x on a 2x dial, and 2x comes back
+   after — not 40x, and not 1x.
+
+**The identity the price rests on**
+
+9. A hurried wave pays exactly what an unhurried one pays. Same seed, same board, same four
+   waves: the same Fear, the same Blight and the same cards drawn, with the only difference
+   being how long the player sat through them.
+10. No tick may resolve two waves, even at 20x. `MAX_TICK_SECONDS` is half a wave interval, so a
+    dropped frame during a fast-forward runs the round *slow* and never skips it forward.
+
+**The wave gate**
+
+11. A manual round opens moving and gets its gate back after: the hurried waves go by unasked,
+    the first wave past the cap does not, and `ui.autoProceed` is never touched.
+12. The toggle keeps saying what the player set — `autoProceedOn` stays false while
+    `waveProceedsUnattended` is true.
+
+**Card reveals**
+
+13. Cards arrive but are not announced while it runs: the drip's `drawsTaken` moves, the hand
+    fills, and `ui.cardFx` stays `null`.
+14. Reveals come back the moment the opening is behind — the next draw at the dial's own speed
+    is announced normally.
+
+**Between rounds**
+
+15. Every round gets the same opening off the same record, and a running round cannot widen its
+    own: `meta.bestWaveReached` moves only in `endRound`, so the deeper round is the *next*
+    one's cap.
+16. A round that has ended is not fast-forwarding anything, and the shop is never run at 20x.
+
+**What the shop says**
+
+17. The row quotes the **next** rung's share and the **current** wave count, and at the top rung
+    quotes the one it has. A `Tier n/3` chip is drawn, like the catalogue's other ladder.
 
 ## Playtest Checks
 
@@ -693,21 +756,27 @@ before the auto-cast toggle existed. The rule they enforce is in
    every tick rather than rebuilding the board ten times a second.
 8. The board always shows eight lands, three of them coastal, two per terrain (unchanged
    from the turn-based build; see [09-island-board.md](./09-island-board.md)).
-9. Every countdown on the page is shown in real seconds at the current speed, so two clocks
-   that run together read as one.
+9. Every countdown on the page is shown in real seconds at the speed actually being applied, so
+   two clocks that run together read as one — including through a fast-forwarded opening, where
+   that is `FAST_FORWARD_SPEED` rather than the dial.
 10. A stopped clock says which of the two things stopped it, and the call button is live
     exactly when the gate holds.
+11. A clock running faster than the dial says so too: the wave tile names the fast-forward
+    rather than showing a countdown nobody can read, the dial keeps its own button lit, and both
+    fall back to the pause and the gate when either of those holds instead.
 
 ## Current Validation Status
 
-**461 automated checks, all passing.** Coverage by file:
+**660 automated checks, all passing.** Coverage by file:
 
 | File | Covers |
 | --- | --- |
+| `tests/modules.test.js` | That `index.html` and `tests.html` load the same engine files in the same order |
 | `tests/board.test.js` | Board invariants and adjacency (09) |
 | `tests/setup.test.js` | Round setup, upgrade baseline, round reset |
 | `tests/wave.test.js` | Wave timing, Build, Discover, track shift, the tick cap |
 | `tests/pacing.test.js` | The speed dial and the wave gate (02 Pacing) |
+| `tests/fastforward.test.js` | The fast-forwarded opening: the share, the speed, the gate, and that a hurried wave pays the same |
 | `tests/playtest.test.js` | The redeem code and the playtest tools (06 Playtest Tools) |
 | `tests/ladder.test.js` | The difficulty ladder as the waves climb, and the readout the track prints |
 | `tests/automation.test.js` | The bought automations, their target picks, and the auto-cast toggle |
@@ -721,6 +790,9 @@ before the auto-cast toggle existed. The rule they enforce is in
 | `tests/ascension.test.js` | The Presence layer, the two-key rule, the Presence catalogue |
 | `tests/save.test.js` | Round-trip, no offline credit, migration, normalization, export/import |
 | `tests/compat.test.js` | A save from an earlier build still loads, still plays, still imports |
+| `tests/cards.test.js` | The power card pool, the drip, the offer, the hand and the cast step machine |
+| `tests/autobuy.test.js` | The auto-buy resolver and its Focus rung |
+| `tests/defense.test.js` | Wards: what they absorb and when they lapse |
 | `tests/landstate.test.js` | Land state precedence (06) |
 
 `tests/compat.test.js` is the only suite that reads a fixture rather than building its state

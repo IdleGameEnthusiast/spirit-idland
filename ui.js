@@ -434,8 +434,15 @@ function fmtSeconds(value) {
 //
 // A stopped clock has no rate to divide by, so it reports the game's own seconds. Nothing is
 // moving then, so the reading is a frozen snapshot either way.
+//
+// `effectiveGameSpeed` and not `gameSpeed`, so a countdown stays honest through a fast-forwarded
+// opening - these are the numbers the player is watching move, and during those waves they move
+// at 20x whatever the dial says. This is the opposite call from `dialSecondsText` in the engine,
+// which keeps quoting the dial: that one prices a *purchase* against the round the player has
+// chosen to play, and a shop row flickering to a twentieth of its figure and back would be
+// describing an instant rather than the round.
 function displaySeconds(state, gameSeconds) {
-  const speed = gameSpeed(state);
+  const speed = effectiveGameSpeed(state);
   return fmtSeconds(speed > 0 ? gameSeconds / speed : gameSeconds);
 }
 
@@ -2056,17 +2063,29 @@ function patchHud(state) {
   // The meter turns as the round turns: a round two thirds gone should look like one.
   dom.blightFill.classList.toggle("is-critical", blightPct >= 70);
 
-  // Three readings, and only one of them is a countdown. A held gate is named before a stopped
-  // clock because it is the more specific answer to "why is nothing moving" - and the only one
-  // of the two with a button waiting to be pressed.
+  // Four readings, and only one of them is a countdown. Ordered most specific answer first to
+  // "why does this slot not look like a clock": a held gate has a button waiting to be pressed,
+  // a stopped clock is the dial the player just turned, and a fast-forward is a countdown that
+  // is running - just twenty times too fast to read, which is the one thing the slot can still
+  // usefully say. Pause beats fast-forward because 0x wins over it in the engine too
+  // (see effectiveGameSpeed), and the HUD must not claim motion the tick is not producing.
   const running = state.round.status === "running";
   const held = waveGateHeld(state);
   const stopped = gameSpeed(state) <= 0;
+  const hurrying = running && !stopped && fastForwardActive(state);
   dom.waveValue.textContent = !running
     ? "-"
     : held
       ? t.waveHeldValue
-      : (stopped ? t.wavePausedValue : template(t.secondsShort, { seconds: displaySeconds(state, state.round.waveTimerRemaining) }));
+      : stopped
+        ? t.wavePausedValue
+        : hurrying
+          ? t.waveFastForwardValue
+          : template(t.secondsShort, { seconds: displaySeconds(state, state.round.waveTimerRemaining) });
+  // So app.css can mark the meter as running on something other than the dial. On the body
+  // rather than the meter because the speed dial is elsewhere in the document and wants the
+  // same answer - see patchPacingControls.
+  document.body.classList.toggle("is-fast-forward", hurrying);
   dom.waveFill.style.width = running
     ? `${Math.max(0, Math.min(100, (state.round.waveTimerRemaining / WAVE_INTERVAL_SECONDS) * 100))}%`
     : "0%";
@@ -2283,6 +2302,12 @@ function patchPacingControls(state) {
   // Which speeds the dial offers is the engine's answer, not a flag read twice: the playtest
   // button is in the markup all along and simply hidden while the code has not been redeemed.
   const offered = availableGameSpeeds(state);
+  // The dial keeps drawing the player's own choice through a fast-forwarded opening, and the
+  // group wears a class instead. Lighting a 20x button nothing can be set to - or lighting
+  // none at all - would turn a readout of a setting into a readout of an instant, and the dial
+  // is still live during the fast-forward: 0x brakes it, and the button the player presses has
+  // to be the one that looks pressed afterwards.
+  dom.speedGroup.classList.toggle("is-fast-forward", fastForwardActive(state));
   for (const button of dom.speedGroup.querySelectorAll("[data-game-speed]")) {
     const value = Number(button.getAttribute("data-game-speed"));
     const active = value === speed;

@@ -862,6 +862,38 @@ const PRESENCE_UPGRADES = {
     repeatable: true,
     maxTier: ASCENSION_START_FEAR_MAX_TIER,
     cost: 1
+  },
+
+  /* ---------- The second repeatable row: the opening runs itself, fast ----------
+   *
+   * Three rungs at 3 / 4 / 5 Presence, fast-forwarding the first 10 / 15 / 20% of
+   * `meta.bestWaveReached` at FAST_FORWARD_SPEED. See the note above FAST_FORWARD_SPEED for
+   * the mechanic and above FAST_FORWARD_SHARE_PER_TIER for why the cap is keyed to the record.
+   *
+   * It is the catalogue's first row priced *per rung* rather than flat, which is what `costs`
+   * is for - see presenceUpgradeCost. Three named prices, not a curve: the objection to a
+   * growth curve on a Presence ladder is that it compounds against root-shaped income, and 3 /
+   * 4 / 5 does not compound. Written out because three prices a reader can see beat a
+   * multiplier they have to evaluate.
+   *
+   * Priced as comfort, and it must stay priced as comfort. What it buys is real seconds - the
+   * fast-forwarded waves pay exactly what they would have paid at 1x, so no rung of this row
+   * makes a round worth more Fear than the round before it. That is the line that separates it
+   * from `presence_river_deepens` next door, which does buy power and says so. If a played
+   * cycle wants this row to be *stronger*, the lever is the share and never the speed: a
+   * larger share hands back more of an opening the player has already proven, while a faster
+   * speed only coarsens the tick that is already resolving those waves.
+   *
+   * Deliberately named for what it gets you to rather than what it skips - the deep part of
+   * the round is the part worth playing, and the row's whole promise is arriving there sooner.
+   * "Deep water" is new to both name lists: tide, river, current, headwaters and the island's
+   * memory are all spoken for elsewhere in the two shops.
+   */
+  presence_deep_water_comes: {
+    id: "presence_deep_water_comes",
+    repeatable: true,
+    maxTier: FAST_FORWARD_MAX_TIER,
+    costs: FAST_FORWARD_COSTS
   }
 };
 

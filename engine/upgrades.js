@@ -66,8 +66,8 @@ function presenceUpgradeOwned(state, presenceId) {
   return presenceUpgradeTier(state, presenceId) > 0;
 }
 
-/* How many rungs a row has: one for all but `presence_fear_remains`, which is the
- * repeatable row this signature was kept waiting for (see the note above PRESENCE_UPGRADES).
+/* How many rungs a row has: one for every flat row, and `maxTier` for the two repeatable ones
+ * (see the note above PRESENCE_UPGRADES).
  *
  * A row without `maxTier` is a one-off and answers 1, so the catalogue says nothing it does not
  * mean - only the ladder carries the field. An unknown id answers 0, so `presenceUpgradeMaxed`
@@ -84,15 +84,30 @@ function presenceUpgradeMaxed(state, presenceId) {
   return presenceUpgradeTier(state, presenceId) >= presenceUpgradeMaxTier(presenceId);
 }
 
-// Cost of the *next* rung, mirroring upgradeCost on the Fear side - which is why this takes a
-// state where it used to take an id alone. There is no growth curve here and there is not meant
-// to be one: every Presence price in the catalogue is flat, the ten-rung ladder included (see
-// the note above PRESENCE_UPGRADES for why a Presence ladder cannot afford one). So this
-// answers the row's price until its last rung is taken and Infinity after.
+/* Cost of the *next* rung, mirroring upgradeCost on the Fear side - which is why this takes a
+ * state where it used to take an id alone. Infinity once the last rung is taken.
+ *
+ * A row prices itself one of two ways, and there is still no growth *curve* in either - see
+ * the note above PRESENCE_UPGRADES for why a Presence ladder cannot afford one against
+ * root-shaped income:
+ *
+ *   `cost`  - one price for every rung. Every flat row, and `presence_fear_remains`, whose ten
+ *             rungs are 1 Presence each precisely so the break-even against holding is one
+ *             threshold rather than ten.
+ *   `costs` - a price per rung, read by the tier about to be bought. `presence_deep_water_comes`
+ *             is the only row using it: 3 / 4 / 5, written out rather than computed.
+ *
+ * A `costs` shorter than the row's `maxTier` would be a content bug; the last entry is repeated
+ * rather than reading `undefined`, so the failure is a wrong price and never a NaN one.
+ */
 function presenceUpgradeCost(state, presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return Infinity;
   if (presenceUpgradeMaxed(state, presenceId)) return Infinity;
+  if (Array.isArray(record.costs) && record.costs.length > 0) {
+    const tier = presenceUpgradeTier(state, presenceId);
+    return record.costs[Math.min(tier, record.costs.length - 1)];
+  }
   return record.cost;
 }
 
@@ -136,7 +151,7 @@ function purchasePresenceUpgrade(state, presenceId) {
       cost
     }));
   } else if (record.repeatable) {
-    // The ladder says which rung it just took. Ten identical lines reading "The Fear Remains
+    // A ladder says which rung it just took. Ten identical lines reading "The Fear Remains
     // for 1 Presence" would report a purchase without reporting any progress, and the rung is
     // the only thing that separates the tenth click from the first.
     addLog(state, template(t.presenceTierPurchased, {

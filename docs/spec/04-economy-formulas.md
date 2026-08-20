@@ -151,14 +151,14 @@ settles somewhere else, only this constant moves; nothing is derived from the tw
 ## Wave Timing
 
 ```txt
-step = min(MAX_TICK_SECONDS, dt * ui.gameSpeed)                (0 while paused)
+step = min(MAX_TICK_SECONDS, dt * effectiveGameSpeed)          (0 while paused)
 
 waveTimerRemaining -= step, each tick
 when waveTimerRemaining <= 0:
-    with auto-proceed on:
+    when the wave proceeds unattended:
         resolve one wave (Build, Discover, track shift)
         waveTimerRemaining += WAVE_INTERVAL_SECONDS     (the overshoot is carried)
-    with auto-proceed off:
+    otherwise:
         waveTimerRemaining = 0                          (the overshoot is dropped)
         awaitingWave = true, and no clock advances until the player calls the wave
 ```
@@ -167,6 +167,46 @@ The interval itself is not a player control: nothing shortens it and nothing pul
 forward. What the player sets is how fast its seconds are handed out, and whether the round
 carries on past the end of one — see [02-core-loop.md](./02-core-loop.md#pacing). The timer
 runs whenever the round is `running` and no gate is held, and it deals no damage.
+
+### The speed applied, and the waves that proceed unattended
+
+Two of the three pacing controls reach this loop, and both do it through one function each so
+that nothing downstream of the tick knows either exists.
+
+```txt
+fastForwardWaves   = floor(meta.bestWaveReached * FAST_FORWARD_SHARE_PER_TIER[tier - 1])
+                     0 when tier(presence_deep_water_comes) is 0
+
+FAST_FORWARD_SHARE_PER_TIER = [0.10, 0.15, 0.20]        -> 3 / 4 / 5 Presence a rung
+FAST_FORWARD_SPEED          = 20
+
+fastForwardActive  = round.status == "running" and round.wavesResolved < fastForwardWaves
+
+effectiveGameSpeed = 0                                  when ui.gameSpeed is 0
+                     max(ui.gameSpeed, FAST_FORWARD_SPEED)   when fastForwardActive
+                     ui.gameSpeed                       otherwise
+
+waveProceedsUnattended = ui.autoProceed or fastForwardActive
+```
+
+Every rounding here is **down**, and only `fastForwardWaves` rounds at all: an all-time record
+of 87 fast-forwards 8 waves at the first rung, 13 at the second and 17 at the third. A record
+under 10 fast-forwards nothing at any rung, which is every game before its first round ends.
+
+`<` and not `<=` in `fastForwardActive`: the count is waves *resolved*, so at a cap of 8 it is
+true while waves 1 through 8 resolve and false the instant the eighth is behind. `meta.
+bestWaveReached` only moves in `endRound`, so the cap cannot change under a round that is
+running and the figure is read live rather than frozen into the round snapshot.
+
+The `max` in `effectiveGameSpeed` rather than a bare assignment is for the playtest dial alone:
+8x is already below 20x, but a playtest speed raised past it later must not be quietly slowed
+down by a comfort purchase. `0x` is checked first and unconditionally — the player saying that
+nothing moves outranks the purchase.
+
+`waveProceedsUnattended` is what the gate reads, and `ui.autoProceed` is deliberately left as a
+pure record of the player's toggle: a fast-forward releases the gate without the switch on
+screen ever claiming to have been flipped. See
+[02-core-loop.md](./02-core-loop.md#pacing).
 
 ## Blight Formula
 
@@ -1365,6 +1405,16 @@ in the formulas compensates for it today.
 would outrun it inside three tiers and every rung past the third would be dead. A new repeatable
 row wants a hand-written table or something nearer 1.3–1.5 growth, and — per the rule above —
 it has to pay in a multiplier or a permanence if it is meant to be worth buying at all.
+
+`presence_deep_water_comes` is the row that took the hand-written table: three rungs written
+out as 3 / 4 / 5 rather than computed. Growth of 1.33 then 1.25 sits inside the band above, and
+the reason it can be *near*-linear at all is that what the row grants is near-linear too — 10,
+15, 20% of the same record. A quadratic price against a linear benefit is the shape that killed
+the discount ladders, and the three prices are written out so a reader can check that this is
+not it. See [The fast-forwarded opening](#the-speed-applied-and-the-waves-that-proceed-unattended)
+for what a rung is worth, and note what the row deliberately does **not** pay in: it grants no
+multiplier and no permanence, because it grants no *power* — a hurried wave pays exactly what
+an unhurried one pays, which is why it is priced against the player's real seconds instead.
 
 `presence_fear_remains` is the first repeatable row since, and it took neither branch: a
 **flat** 1 Presence a rung, ten rungs. Even 1.35 growth would put its tenth rung at 15 Presence,

@@ -22,6 +22,20 @@ island board, and the between-round shop.
 - A stopped clock must always say why it stopped. There are two reasons — the speed dial at
   `0x`, and a wave gate waiting to be called — and the wave tile names whichever holds, with
   the gate named first because it is the one with a button waiting to be pressed.
+- **A clock running at a speed the dial does not show must say so too.** The fast-forwarded
+  opening (`presence_deep_water_comes`) is a third answer for the wave tile: the countdown is
+  running, just twenty times too fast to read, so the tile says `waveFastForwardValue` instead
+  of a blur. Ordered after the pause and the gate, both of which are the more specific answer to
+  "why is nothing moving" — and `0x` beats it in the engine too, so the tile must not claim
+  motion the tick is not producing. `body.is-fast-forward` carries it to the stylesheet, which
+  drops the wave meter's easing (two readings a frame apart would smear) and tints the tile in
+  the **Presence** accent, because a Presence row is what is doing this and nothing else on the
+  strip is.
+- **The speed dial keeps drawing the player's own choice throughout a fast-forward.** 20x is on
+  no button and `ui.gameSpeed` never holds it, so lighting one — or lighting none — would turn a
+  readout of a *setting* into a readout of an instant. The group takes `is-fast-forward` instead
+  and stays fully interactive: `0x` is the brake on a running fast-forward and has to remain
+  pressable, and the button the player presses has to be the one that looks pressed after.
 
 ## Required Screen Sections
 
@@ -364,13 +378,16 @@ island board, and the between-round shop.
 - A Presence row reads like a shop row and deliberately so — name, what it grants, price,
   buy — but in the Presence colour rather than the Fear one. The two catalogues must not be
   mistakable for each other at a glance, because the currencies are not interchangeable
-- **Every Presence row is a one-off except `presence_fear_remains`.** A one-off carries
-  `is-one-off`, reads *Unlocked* rather than *Maxed* when bought, and shows no tier chip —
-  `presenceUpgradeStatusText` returns `""` for it, which is the same answer `upgradeStatusText`
-  gives a non-repeatable Fear row. The ladder row takes the other branch of all three: no
-  `is-one-off`, *Maxed* at the top rung, and a `Tier n/10` chip drawn from the Fear shop's own
-  `shopTierLabelMax` — a Presence ladder is not different enough from a Fear ladder to be worth
-  a second phrasing the player has to learn
+- **Every Presence row is a one-off except `presence_fear_remains` and
+  `presence_deep_water_comes`.** A one-off carries `is-one-off`, reads *Unlocked* rather than
+  *Maxed* when bought, and shows no tier chip — `presenceUpgradeStatusText` returns `""` for it,
+  which is the same answer `upgradeStatusText` gives a non-repeatable Fear row. The two ladder
+  rows take the other branch of all three: no `is-one-off`, *Maxed* at the top rung, and a
+  `Tier n/10` or `Tier n/3` chip drawn from the Fear shop's own `shopTierLabelMax` — a Presence
+  ladder is not different enough from a Fear ladder to be worth a second phrasing the player has
+  to learn. `presence_deep_water_comes` is also the only row whose **price moves as it is
+  bought** (3 → 4 → 5, from `costs` rather than `cost`), which the buy button reads live off
+  `presenceUpgradeCost` like every other row
 - A Presence row's text names the Fear rows it grants, and where it quotes a price it does so
   **in words**, not from `baseCost`. That is a deliberate exception to the live-price rule the
   Fear ladders follow: a grant is bought once and its worth is "these rows, forever", so there
@@ -437,10 +454,17 @@ from the dev tools, and still is.
     ability's *own* clock, and the bar draws that clock after the multiplier.
     `abilityFocusSecondsPerStep` takes the same two clamped readings the bar takes and subtracts
     them, rather than returning `focusStepBeats * TIME_SCALE`.
-  - **the speed dial.** Every countdown on the page is drawn `gameSeconds / gameSpeed`, so one
-    beat reads `2 Sec` at 1x, `1 Sec` at 2x and a quarter of one at the playtest speed. The pill
-    goes through `dialSecondsText`, the same division, so the two numbers sitting side by side on
-    the card always agree. This is why no string may hardcode `2s`.
+  - **the speed dial.** One beat reads `2 Sec` at 1x, `1 Sec` at 2x and a quarter of one at the
+    playtest speed. The pill goes through `dialSecondsText` and the countdown beside it through
+    `displaySeconds`, so the two numbers sitting side by side on the card always agree. This is
+    why no string may hardcode `2s`.
+    The two divisors are deliberately **not** the same during a fast-forwarded opening.
+    `displaySeconds` divides by `effectiveGameSpeed` — the speed actually being applied — because
+    a countdown the player is watching move must say how long it really has. `dialSecondsText`
+    keeps dividing by the **dial**, because it prices a *purchase* against the round the player
+    chose to play, and a pill flickering to a twentieth of its figure and back would be
+    describing an instant rather than the round. This is the one place the two readings are
+    allowed to disagree, and the fast-forward is the only thing that makes them.
     Because that division is applied when the pill is **written** and the per-frame patch only
     touches its price and whether it is dead, `gameSpeed` is part of the ability bar's rebuild
     signature - the same reason both shop panels carry it. Without it a turn of the dial leaves

@@ -30,6 +30,14 @@ function resolveWave(state) {
   // so it is castable on this very tick.
   resolveCardDraw(state);
 
+  // The wave the dial comes back at, announced once. Checked on `===` rather than on a
+  // transition flag: the count only ever rises, and by exactly one per call, so the equality
+  // is true on precisely one wave of the round and never on a round with the row unowned
+  // (`fastForwardWaves` answers 0, and `wavesResolved` has just been incremented past it).
+  if (state.round.wavesResolved === fastForwardWaves(state)) {
+    addLog(state, template(locale(state).fastForwardEnded, { wave: state.round.wavesResolved }));
+  }
+
   // After the wave's own line, so the log reads as "wave 50 resolved, and it paid".
   const milestone = gainFearFromWaveMilestone(state);
   if (milestone > 0) {
@@ -133,11 +141,18 @@ function startRound(state) {
   // will run on is written a few lines below and does not exist yet. The two agree by
   // construction: both read the tiers owned at this instant.
   state.round.dahanAttackRemaining = totals.dahanAttackInterval;
+  // Zeroed *before* the gate below reads it, and that order is load-bearing: `fastForwardActive`
+  // asks how many waves this round has resolved, and the count still standing here is the
+  // previous round's. Setting the gate first would open a deep round's opening on the strength
+  // of a count that had already run past the cap.
+  state.round.wavesResolved = 0;
   // A manual round opens on a held gate, so the island stands still until the player has read
   // it. The timer is already full here, so that first click starts the clock without costing
   // a wave - see startNextWave.
-  state.round.awaitingWave = !autoProceedOn(state);
-  state.round.wavesResolved = 0;
+  //
+  // Unless the opening is being fast-forwarded, in which case the round opens moving: the gate
+  // and the fast-forward are answering the same question and the purchase is the later word.
+  state.round.awaitingWave = !waveProceedsUnattended(state);
   state.round.fearEarned = 0;
   state.round.fearEarnedBase = 0;
   state.round.abilityCooldownMult = 1 - totals.cooldownReductionPct;
@@ -197,6 +212,19 @@ function startRound(state) {
     round: state.round.number,
     threshold: state.round.blightThreshold
   }));
+
+  // Straight after the round's own line, because it is a fact about this round rather than an
+  // event inside it: the player is about to watch several waves go by in a couple of seconds
+  // and the log is what says why. Silent when the row is unowned, and silent when it is owned
+  // but the record is too shallow to floor to a wave - a line announcing that nothing will be
+  // fast-forwarded is worse than no line.
+  const hurried = fastForwardWaves(state);
+  if (hurried > 0) {
+    addLog(state, template(locale(state).fastForwardStarted, {
+      waves: hurried,
+      speed: FAST_FORWARD_SPEED
+    }));
+  }
 
   seedRoundDahan(state);
   seedRoundExplore(state);
@@ -310,11 +338,14 @@ function cycleFearTotals(state) {
 }
 
 /* ------------------------------------------------------------------ *
- * Pacing: the speed dial and the wave gate (02-core-loop.md Pacing)     *
+ * Pacing: the speed dial, the wave gate, the fast-forwarded opening     *
+ * (02-core-loop.md Pacing)                                              *
  *                                                                      *
- * Two controls over the same thing - how fast the round is allowed to   *
- * reach the player - and both are settings rather than rules: neither   *
- * changes what a wave costs, only when it is spent.                     *
+ * Three controls over the same thing - how fast the round is allowed to *
+ * reach the player - and all three are settings rather than rules: none *
+ * changes what a wave costs, only when it is spent. The third is the    *
+ * only one the player does not hold a control for; it is bought once in *
+ * the Presence shop and then applies itself.                            *
  * ------------------------------------------------------------------ */
 
 // Game seconds per real second, and the whole of the speed dial: the engine only ever thinks
@@ -334,6 +365,65 @@ function setGameSpeed(state, value) {
   return true;
 }
 
+/* ---------- The fast-forwarded opening ----------
+ *
+ * `presence_deep_water_comes` runs the first waves of every round at FAST_FORWARD_SPEED. See
+ * the note above that constant for the mechanic and the pricing; what follows is the wiring.
+ *
+ * Four small functions rather than one, because four different callers ask four different
+ * questions: how many waves (the shop text), whether it is running now (the tick, the gate and
+ * the HUD), what speed to actually apply (the tick and every countdown on screen), and what
+ * share a given rung is worth (the shop text again).
+ */
+
+// How many waves of this round run fast. Floored, always - at a record of 87 the first rung
+// answers 8 and not 9 - and 0 for a record of 0, which is every game before its first round
+// ends. Read live rather than frozen into the round snapshot because `meta.bestWaveReached`
+// only ever moves in `endRound`, so it cannot change under a round that is running.
+function fastForwardWaves(state) {
+  const tier = Math.min(presenceUpgradeTier(state, "presence_deep_water_comes"), FAST_FORWARD_MAX_TIER);
+  if (tier <= 0) return 0;
+  const best = Math.max(0, Math.floor((state.meta && state.meta.bestWaveReached) || 0));
+  return Math.floor(best * FAST_FORWARD_SHARE_PER_TIER[tier - 1]);
+}
+
+// What one rung is worth, as the whole percent the shop quotes. Takes a tier rather than a
+// state: the row's text asks it about the rung above the one owned, which no state holds.
+function fastForwardSharePct(tier) {
+  const t = Math.max(0, Math.min(Math.floor(Number(tier) || 0), FAST_FORWARD_MAX_TIER));
+  if (t <= 0) return 0;
+  return Math.round(FAST_FORWARD_SHARE_PER_TIER[t - 1] * 100);
+}
+
+// Whether the opening is running fast at this instant. `<` and not `<=`: the count is waves
+// *resolved*, so at a cap of 8 this is true while waves 1 through 8 resolve and false the
+// moment the eighth is behind - which is what makes "fast-forward to wave 8" the promise the
+// shop text makes rather than one wave more.
+//
+// Gated on the round actually running, so a game sitting in the shop is not described as
+// fast-forwarding by a HUD that has nothing to fast-forward.
+function fastForwardActive(state) {
+  return state.round.status === "running" && state.round.wavesResolved < fastForwardWaves(state);
+}
+
+/* The speed the tick and every countdown actually run on, against `gameSpeed`'s dial position.
+ *
+ * Two rules, and both matter:
+ *
+ * - **A stopped clock stays stopped.** 0x is the player saying "nothing moves", and a purchase
+ *   is not allowed to overrule that. It is also what keeps the dial usable as a brake *during*
+ *   a fast-forward.
+ * - **It replaces the dial, it does not multiply it.** 20x on top of a 2x dial would be 40x,
+ *   and the row's promise is a speed rather than a factor. `Math.max` rather than a bare
+ *   assignment for the playtest dial alone: 8x is already below 20x, but a playtest speed
+ *   raised past it later must not be quietly slowed down by a comfort purchase.
+ */
+function effectiveGameSpeed(state) {
+  const dial = gameSpeed(state);
+  if (dial <= 0) return 0;
+  return fastForwardActive(state) ? Math.max(dial, FAST_FORWARD_SPEED) : dial;
+}
+
 function autoProceedOn(state) {
   return state.ui.autoProceed === true;
 }
@@ -346,12 +436,27 @@ function setAutoProceed(state, on) {
   return state.ui.autoProceed;
 }
 
+/* Whether the next wave comes without being asked for.
+ *
+ * Two reasons it might, and they are kept apart on purpose. `autoProceedOn` is the player's
+ * toggle and stays a pure read of it - the switch on screen must say what the player set and
+ * never what a purchase is doing this instant. The fast-forward is the second reason, and it
+ * has to be one: a row that ran the opening at 20x and then stopped at every wave for a click
+ * would have fast-forwarded nothing at all.
+ *
+ * So the gate is released for the fast-forwarded waves and closes again for the first wave
+ * after them - a manual player gets their round back at exactly the wave the shop promised.
+ */
+function waveProceedsUnattended(state) {
+  return autoProceedOn(state) || fastForwardActive(state);
+}
+
 // Whether the round is currently standing still because the player has not called the next
 // wave. It is one flag rather than a round status, because everything else about the round is
 // still true while it waits: the board, the timers and the cooldowns are all exactly where
 // they were, and only the clock is not moving.
 function waveGateHeld(state) {
-  return state.round.awaitingWave === true && !autoProceedOn(state);
+  return state.round.awaitingWave === true && !waveProceedsUnattended(state);
 }
 
 /* ---------- The round gate ----------
@@ -410,7 +515,13 @@ function startNextWave(state) {
 function tick(state, dt) {
   // Real seconds in, game seconds out. Capped after the conversion, not before: the cap is
   // there to swallow a jump after sleep, and that jump is a jump in game time.
-  const step = Math.min(MAX_TICK_SECONDS, Math.max(0, Number(dt) || 0) * gameSpeed(state));
+  //
+  // `effectiveGameSpeed` rather than `gameSpeed`, so a fast-forwarded opening is nothing more
+  // than a larger multiplier on this one line - which is the whole of why the row can promise
+  // that the waves it hurries still cost and pay exactly what they always did. The cap holds
+  // at 20x as it does at 1x: it is half a wave interval, so no tick can ever resolve two
+  // waves, and a frame the browser dropped mid-fast-forward runs slow rather than skipping.
+  const step = Math.min(MAX_TICK_SECONDS, Math.max(0, Number(dt) || 0) * effectiveGameSpeed(state));
   state.time.totalSeconds += step;
   pruneFx(state);
 
@@ -463,7 +574,10 @@ function tick(state, dt) {
   // nothing resolves it except the player, and no clock moves again until they say so. The
   // overshoot is dropped rather than carried - the click buys a whole fresh interval, which
   // is what the bar it refills is promising.
-  if (state.round.waveTimerRemaining <= 0 && !autoProceedOn(state)) {
+  //
+  // `waveProceedsUnattended` and not `autoProceedOn`, so the fast-forwarded opening runs past
+  // this branch without the player's toggle being touched or read wrongly.
+  if (state.round.waveTimerRemaining <= 0 && !waveProceedsUnattended(state)) {
     state.round.waveTimerRemaining = 0;
     state.round.awaitingWave = true;
     return;

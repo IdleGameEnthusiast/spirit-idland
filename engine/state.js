@@ -317,10 +317,23 @@ function markRoundEndFx(state) {
   state.ui.roundEndFx = { at: nowMs() };
 }
 
-// Both draw paths call this, so both get the same announcement. An unknown id writes nothing
-// rather than a reveal with an empty face.
+/* Both draw paths call this, so both get the same announcement. An unknown id writes nothing
+ * rather than a reveal with an empty face.
+ *
+ * And nothing is written at all while the opening is being fast-forwarded. CARD_FX_MS is 2600
+ * *real* milliseconds and a card drips every wave, so at FAST_FORWARD_SPEED a wave arrives
+ * every second and each reveal would be overwritten by the next one before it could be read -
+ * the panel would flicker through a stack of cards and settle on whichever happened to be
+ * last. A reveal nobody can read is not a reveal, and holding them back is what the shop row
+ * says it does.
+ *
+ * The *cards* are unaffected: `grantPowerCard` has already run, the hand is exactly what it
+ * would be at 1x, and the log still records every draw. Only the announcement is skipped, and
+ * only for as long as it could not be seen.
+ */
 function markCardFx(state, cardId, wave) {
   if (!POWER_CARDS[cardId]) return;
+  if (fastForwardActive(state)) return;
   state.ui.cardFx = { cardId, wave: Math.max(0, Math.floor(wave || 0)), at: nowMs() };
 }
 

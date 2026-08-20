@@ -125,7 +125,9 @@ buys the other's precondition and neither buys the other's effect. See
 - Rounds are not tallied. Nothing in the rules or the UI reads a count of attempts, so a save
   that carries a `meta.totalRoundsPlayed` from an older build drops it on load.
 - **`meta.bestWaveReached` is the run's headline score and is never cleared** — not by a round
-  ending, not by ascending. It is what the whole save has ever reached.
+  ending, not by ascending. It is what the whole save has ever reached. It is also the one high
+  score a *mechanic* reads: `presence_deep_water_comes` fast-forwards a share of it at the start
+  of every round, so the never-cleared rule is load-bearing rather than cosmetic.
 - **`meta.cycleBestWave` is the same measure since the last ascension**, and ascension clears
   it.
 
@@ -485,9 +487,9 @@ having to say so. It is the same `!== false` reading `ui.autoCast` takes, for th
 
 ### The Presence catalogue
 
-Three shapes of row. Three of them **grant** Fear rows outright and forever; two unlock a
-capability directly, with no Fear row behind them; and one **endows** the next cycle with the
-Fear it opens its bank on.
+Four shapes of row. Three of them **grant** Fear rows outright and forever; two unlock a
+capability directly, with no Fear row behind them; one **endows** the next cycle with the Fear
+it opens its bank on; and one changes the **pace** of a round without changing anything in it.
 
 | Presence id | Grants | Fear price it retires | Presence cost |
 | --- | --- | --- | --- |
@@ -497,13 +499,41 @@ Fear it opens its bank on.
 | `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | — | 5 |
 | `presence_river_deepens` | auto-buy's top rung, directly — see [Auto-buy](#auto-buy) | — | 5 |
 | `presence_fear_remains` | 50 Fear in the next cycle's bank, per rung — **ten rungs**, see [04-economy-formulas.md](./04-economy-formulas.md#the-endowment-and-what-it-is-worth-against-holding) | — | 1 a rung |
+| `presence_deep_water_comes` | the opening of every round at 20x, as far as 10 / 15 / 20% of `meta.bestWaveReached` — **three rungs**, see [02-core-loop.md](./02-core-loop.md#pacing) | — | 3 / 4 / 5 |
 
 `presence_fear_remains` is the catalogue's **only repeatable row**, and the only one whose
 worth *falls* as the run goes on. Its 50 a rung is flat while cycles grow, so all ten rungs beat
 holding the Presence under a ~5,000-Fear cycle and none of them do above it. That is an accepted
 late-game sink rather than an oversight — the row exists to compress the shopping prologue of a
 cycle, which is a job that stops mattering once cycles are long. It skips no waves: rounds
-always start at wave 0. The lever if it is ever revisited is the 50, not the 1.
+always start at wave 0, and so they do under `presence_deep_water_comes` below, which hurries
+the opening rather than removing it. The lever if it is ever revisited is the 50, not the 1.
+
+`presence_deep_water_comes` is the catalogue's **second repeatable row** and its only one
+priced per rung. It is comfort, unambiguously, and it is the one row here that can be *proved*
+to be: a fast-forwarded wave pays exactly the Fear an unhurried one pays, blights exactly as
+much, and draws exactly the same card, because speed is one multiplication on `dt` and reaches
+no rule. No rung of it makes a round worth more than the round before it. What it buys back is
+the player's real seconds — at a record of 87 the top rung hands back about three minutes of a
+fourteen-minute round.
+
+Two things keep it honest, and both are worth defending if it is ever retuned:
+
+- **The cap is keyed to the record, and floors.** `meta.bestWaveReached` only ratchets up, so
+  what the row grants widens on its own between purchases — which is what lets three rungs
+  cover the whole game rather than needing a rung per depth. The share stays deliberately small:
+  the waves worth handing back are the ones before the round becomes a question, and a row that
+  hurried through the part of a round that can be *lost* would be playing it.
+- **Its gate is its depth, like `presence_river_deepens` below it.** Nothing can be hand-cast at
+  20x — cooldowns tick in game seconds, so the whole kit fires twenty times faster than a hand
+  can answer. The row is only free to a player who already owns `presence_river_knows` and
+  `presence_all_unbidden`, which is 8 Presence before its own 3 is asked for. The price is not
+  asked to be a second gate.
+
+**If it is ever made stronger, the lever is the share and never the speed.** A larger share
+hands back more of an opening the player has already proven; a faster speed only coarsens the
+tick that is already resolving those waves, and buys less real time per step past 20x than the
+step before it.
 
 `presence_river_deepens` is **not** the comfort layer the row it extends is, and the two must
 not be read as the same kind of purchase. `auto_buy_abilities` is defended on the grounds that

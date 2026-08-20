@@ -210,7 +210,11 @@ const I18N = {
       // zieht sich zurück, die Furcht der Invasoren nicht. Bewusst *nicht* "Die Insel erinnert
       // sich" - so heißt schon `power_card_interval` in der Furchtliste, und zwei Zeilen mit
       // fast demselben Namen stünden gleichzeitig nebeneinander im Rail.
-      presence_fear_remains: "Die Furcht bleibt"
+      presence_fear_remains: "Die Furcht bleibt",
+      // Benannt nach dem Ziel, nicht nach dem Übersprungenen - siehe die englische Fassung.
+      // "Tiefes Wasser" ist in beiden Läden neu: Flut, Fluss, Strömung und Quellwasser sind
+      // schon vergeben.
+      presence_deep_water_comes: "Tiefes Wasser kommt früher"
     },
     presenceTexts: {
       presence_tide_returns: "Schenkt dir \"Die Flut kehrt wieder\" (500 Furcht) für immer. Runden starten von selbst - in diesem Zyklus und in jedem danach.",
@@ -218,13 +222,17 @@ const I18N = {
       presence_all_unbidden: "Schenkt dir alle fünf Fähigkeits-Automatiken für immer: Segen, Instinkt, Gabe, Sturzflut und Strömung.",
       presence_current_quickens: "Schaltet Fokus frei: Energie während der Runde ausgeben, um {seconds} Sek von der Abklingzeit einer Fähigkeit zu nehmen - immer wieder, immer gleich viel, zu steigendem Preis, bis auf ein Drittel des Ausgangswerts.",
       presence_river_deepens: "Der Auto-Kauf gibt auch die übrige Energie aus - in Fokus, immer weiter, die ganze Runde lang. Nichts bleibt bis zum Rundenende liegen. Unter \"Anpassen\" stellst du ein, wofür.",
-      presence_fear_remains: "Jede Stufe legt {step} Furcht in die Bank der nächsten Aszension - geschenkt, nicht verdient, und selbst keine Präsenz wert. Bisher: {fear}."
+      presence_fear_remains: "Jede Stufe legt {step} Furcht in die Bank der nächsten Aszension - geschenkt, nicht verdient, und selbst keine Präsenz wert. Bisher: {fear}.",
+      presence_deep_water_comes: "Jede Stufe lässt mehr vom Rundenanfang im Zeitraffer laufen: die ersten {share}% deiner höchsten Welle mit {speed}x, ohne Kartenaufdeckung. Die Wellen zählen und zahlen dabei ganz normal. Zurzeit: {waves} Wellen."
     },
     // Der Trenner für Namenslisten in Logzeilen - siehe die englische Fassung.
     listSeparator: ", ",
     presenceGranted: "{upgrade} für {cost} Präsenz. {unlocks} gehört jetzt für immer dir.",
     presencePurchasedDirect: "{upgrade} für {cost} Präsenz.",
     presenceTierPurchased: "{upgrade}, Stufe {tier}/{max}, für {cost} Präsenz.",
+    fastForwardStarted: "Tiefes Wasser kommt früher: die ersten {waves} Wellen laufen mit {speed}x.",
+    fastForwardEnded: "Welle {wave} - der Zeitraffer endet, das Tempo gehört wieder dir.",
+    waveFastForwardValue: "Zeitraffer",
     presenceOwned: "{upgrade} gehört dir bereits.",
     presenceTooExpensive: "{upgrade} kostet {cost} Präsenz, du hast {presence}.",
     presenceCostLabel: "{cost} Präsenz",
@@ -657,7 +665,12 @@ const I18N = {
       // the Reclaim: the spirit withdraws, the invaders' fear of it does not. Deliberately
       // *not* "The Island Remembers" - that is `power_card_interval` in the Fear shop, and the
       // two rails are on screen together.
-      presence_fear_remains: "The Fear Remains"
+      presence_fear_remains: "The Fear Remains",
+      // Named for where it gets you rather than for what it leaves out: the deep part of the
+      // round is the part worth playing, and arriving there sooner is the whole promise.
+      // "Deep water" is unspoken-for in both shops - tide, river, current and headwaters are
+      // all taken, and the island's memory twice over.
+      presence_deep_water_comes: "Deep Water Comes Sooner"
     },
     presenceTexts: {
       presence_tide_returns: "Yours for good: \"The Tide Returns\" (500 Fear). Rounds start themselves, this cycle and every cycle after it.",
@@ -665,7 +678,8 @@ const I18N = {
       presence_all_unbidden: "Yours for good: all five ability automations - the Boon, the Instinct, the Bounty, the Flood and the Current.",
       presence_current_quickens: "Unlocks Focus: spend Energy mid-round to take {seconds} Sec off one ability's cooldown, again and again, always the same amount, at a rising price - down to a third of where it started.",
       presence_river_deepens: "Auto-buy spends what is left over too - on Focus, again and again, all round long. Nothing is still in the purse when the round ends. \"Customize\" is where you say what it spends it on.",
-      presence_fear_remains: "Each tier puts {step} Fear in the next ascension's bank - granted, not earned, and worth no Presence of its own. So far: {fear}."
+      presence_fear_remains: "Each tier puts {step} Fear in the next ascension's bank - granted, not earned, and worth no Presence of its own. So far: {fear}.",
+      presence_deep_water_comes: "Each tier fast-forwards more of the opening: the first {share}% of your highest wave at {speed}x, with no card reveals. Those waves still count and still pay, in full. Right now: {waves} waves."
     },
     // Says "for good", because that is the whole of what separates a Presence purchase from a
     // Fear one. {unlocks} is one row for two of the three grants and five for the other, joined
@@ -678,6 +692,13 @@ const I18N = {
     // The ladder's line: ten identical purchase lines would report no progress, so the rung is
     // named. Only `presence_fear_remains` ever reaches this.
     presenceTierPurchased: "{upgrade}, tier {tier}/{max}, for {cost} Presence.",
+    // The fast-forward says where it starts and where it stops, because between the two the
+    // log is the only thing moving slowly enough to read.
+    fastForwardStarted: "Deep Water Comes Sooner: the first {waves} waves run at {speed}x.",
+    fastForwardEnded: "Wave {wave} - the fast-forward ends, the pace is yours again.",
+    // Stands in for the wave countdown while the opening runs: at 20x the real figure would be
+    // a blur, and what the player needs from that slot is the reason it is a blur.
+    waveFastForwardValue: "Fast-forward",
     presenceOwned: "{upgrade} is already yours.",
     presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",
     presenceCostLabel: "{cost} Presence",

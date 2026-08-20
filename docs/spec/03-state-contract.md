@@ -377,7 +377,15 @@ Fields the first draft of this contract did not have. Each earns its place:
   `round.wavesResolved`; `ascend()` clears one and never touches the other. Two scores because
   after a Reclaim they answer different questions — how far this player has ever got, and how
   the current climb is going. Neither is read by the ascension unlock, which is priced in
-  Presence; both are score.
+  Presence.
+
+  `cycleBestWave` is score and only score. **`bestWaveReached` no longer is**: it is the input
+  `fastForwardWaves` takes a share of, so the all-time record now decides how much of every
+  round `presence_deep_water_comes` hurries. That makes the never-cleared rule load-bearing
+  rather than cosmetic — a Reclaim that reset it would take the row's grant back with it — and
+  it makes the ratchet a mechanic: the record only ever rises, so what the row grants widens on
+  its own between purchases. Read live rather than snapshotted, which is safe for exactly one
+  reason: `endRound` is the only writer, so it cannot move under a round that is running.
 
   The prefix is the rule: **a `cycle*` field is wiped by ascension and everything else is
   not.** Anything added later that should survive a Reclaim must not be called `cycle*`, and

@@ -537,6 +537,18 @@
     presence_fear_remains: (state) => engine.ascensionStartFear(state)
   };
 
+  /* The fourth kind: a row that changes the *pace* of a round without changing anything in it.
+   * `presence_deep_water_comes` is the only one, and it is a separate table rather than another
+   * endowment because what it grants is a share of `meta.bestWaveReached` - a fresh game has no
+   * record, so the reader has to set one up before there is anything for the row to be worth.
+   * The pair it is held to is the same shape as the other two: nothing before, something after. */
+  const PACING_READERS = {
+    presence_deep_water_comes: (state) => {
+      state.meta.bestWaveReached = 100;
+      return engine.fastForwardWaves(state);
+    }
+  };
+
   // Every Presence row must do one of the three things the catalogue knows how to do, or it is a
   // purchase nothing in the game reacts to. Granting is checked above ("every grant names a real
   // one-off Fear row"); this is the check that no row does none of them.
@@ -549,8 +561,8 @@
       }
 
       const gate = CAPABILITY_GATES[id];
-      const endowment = ENDOWMENT_READERS[id];
-      assert(gate || endowment, `${id} grants nothing, gates nothing and endows nothing`);
+      const reader = ENDOWMENT_READERS[id] || PACING_READERS[id];
+      assert(gate || reader, `${id} grants nothing, gates nothing, endows nothing and hurries nothing`);
 
       const { state } = newGame();
       if (gate) {
@@ -558,9 +570,9 @@
         grantPresence(state, id);
         assert(gate(state), `${id} is owned, but the capability it gates did not open`);
       } else {
-        assertEqual(endowment(state), 0, `${id} endows a fresh game before it is bought`);
+        assertEqual(reader(state), 0, `${id} pays out on a fresh game before it is bought`);
         grantPresence(state, id);
-        assert(endowment(state) > 0, `${id} is owned, but the number it endows did not move`);
+        assert(reader(state) > 0, `${id} is owned, but the number it moves did not move`);
       }
     }
   });

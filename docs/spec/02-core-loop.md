@@ -10,7 +10,8 @@ upgrade shop between rounds.
 
 - A round runs in real time. Nothing *inside* it waits for player input: no wave, no strike
   and no Blight ever stops to ask. The clock the round runs on is the player's, though — they
-  set how fast it turns and whether it stops at each wave. See [Pacing](#pacing).
+  set how fast it turns and whether it stops at each wave, and one Presence row fast-forwards
+  the opening of every round. See [Pacing](#pacing).
 - Exactly one loss condition exists: Blight reaching `round.blightThreshold`. There is no
   other way for a round to end.
 - Casting an ability is cooldown-gated, not resource-gated. Energy gates *access* to an
@@ -118,7 +119,7 @@ until there is a curve to tune it against.
 
 ## Pacing
 
-Two controls over one thing: how fast the round reaches the player. Neither changes what the
+Three controls over one thing: how fast the round reaches the player. None changes what the
 round *costs*. A wave still takes one whole wave interval, an ability still fires the same
 number of times inside one, and a land under the same damage still takes exactly as many
 waves to Blight — because only the map from real seconds to game seconds moves.
@@ -150,7 +151,40 @@ timer refills. With it off:
   anything itself: the next tick finds the timer at 0 and runs the wave down the same path
   every automatic wave takes.
 
-**The auto-cast toggles** (`ui.autoCast`, all on by default) are the third preference of this
+**The fast-forwarded opening** is the third, and the only one the player holds no control for:
+it is bought once in the Presence shop and then applies itself at the start of every round.
+`presence_deep_water_comes` runs the first `floor(meta.bestWaveReached * share)` waves of a
+round at `FAST_FORWARD_SPEED` (20x), where `share` is 10 / 15 / 20% at its three rungs. Always
+floored: an all-time record of 87 fast-forwards 8 waves at the first rung, not 9.
+
+- **It is a fast-forward and not a skip**, and everything else in this section is why that
+  distinction is the whole row. Speed is one multiplication on `dt` and reaches no rule, so
+  every hurried wave builds, explores, blights and pays its Fear exactly as it would at 1x.
+  The row buys real seconds and nothing else — no round is worth more Fear for having been
+  hurried through.
+- **It replaces the dial, it does not multiply it.** 20x on a 2x dial is 20x, not 40x. The dial
+  keeps drawing the player's own choice throughout, and gets the round back untouched after.
+- **`0x` still wins.** The player saying that nothing moves outranks a purchase, which is also
+  what leaves a brake on a fast-forward already running.
+- **The wave gate is released for those waves and closes again after them.** A row that ran the
+  opening at 20x and then stopped at every wave for a click would have fast-forwarded nothing.
+  `ui.autoProceed` is not read or written by any of this — the toggle keeps saying what the
+  player set, and a manual round gets its gate back at exactly the wave the shop promised.
+- **No card is revealed while it runs.** `CARD_FX_MS` is 2600 *real* milliseconds against a
+  wave that now arrives every real second, so each reveal would be overwritten before it could
+  be read. The cards themselves are unaffected: the hand, the log and the drip's schedule are
+  what they would be at 1x, and only the announcement is held back. See `markCardFx` in
+  `engine/state.js`.
+- **The tick cap holds at 20x as it does at 1x.** `MAX_TICK_SECONDS` is half a wave interval,
+  so no tick can resolve two waves however fast the round is running — a frame the browser
+  dropped mid-fast-forward makes the round run *slow*, never skip ahead.
+
+Why the row can be priced as comfort rather than as power: a cooldown ticks in game seconds, so
+at 20x the whole ability kit fires twenty times faster than a hand can answer. It is only free
+to a player who already owns the automations, which puts 8 Presence underneath it before its
+own 3 is asked for. See [05-progression.md](./05-progression.md#the-presence-catalogue).
+
+**The auto-cast toggles** (`ui.autoCast`, all on by default) are the fourth preference of this
 kind, and the same shape as the speed dial and the wave gate: they change what the player has
 to press, never what the rules are. One switch per ability automation, on the ability's own
 card, saying whether that automation still casts. Switching one off stops future casts and nothing

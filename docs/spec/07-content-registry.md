@@ -455,8 +455,9 @@ ordering may be worth retuning to 5 / 8 / 15.
 | --- | --- | --- | --- |
 | `presence_fear_remains` — *Die Furcht bleibt* / The Fear Remains | the next Reclaim opens its bank with `tier × 50` Fear — `ascend` reads it through `ascensionStartFear` | 1 a rung | 10 |
 
-**The only repeatable row in the catalogue**, and the only one for which
-`presenceUpgradeMaxTier` answers anything but 1. It is named for what survives the Reclaim
+**The first repeatable row in the catalogue**, and one of the two for which
+`presenceUpgradeMaxTier` answers anything but 1 — the other is
+[`presence_deep_water_comes`](#the-row-that-hurries-the-opening) below. It is named for what survives the Reclaim
 rather than for water like the rest of the catalogue — the spirit withdraws, the invaders' fear
 of it does not. It is deliberately **not** called *The Island Remembers*: that name belongs to
 `power_card_interval` in the Fear shop, and the two rails are on screen at the same time.
@@ -481,6 +482,42 @@ for what that costs the row late: every rung shares one break-even, so the whole
 worth taking below a ~5,000-Fear cycle and none of it above. That makes it an accepted
 late-game sink rather than a competitive buy, and the lever if it is ever revisited is the 50
 rather than the 1.
+
+### The row that hurries the opening
+
+| id | does | cost | rungs |
+| --- | --- | --- | --- |
+| `presence_deep_water_comes` — *Tiefes Wasser kommt früher* / Deep Water Comes Sooner | the first `floor(meta.bestWaveReached × share)` waves of every round run at 20x, with no card reveals — `tick` reads it through `effectiveGameSpeed` | 3 / 4 / 5 | 3 |
+
+The catalogue's **second repeatable row and its only per-rung price**, carried in a `costs`
+array rather than the flat `cost` every other row uses (see `presenceUpgradeCost`). Three
+prices written out rather than a growth curve: the objection to a curve on a Presence ladder is
+that it compounds against root-shaped income, and 3 / 4 / 5 does not compound. `share` is
+`FAST_FORWARD_SHARE_PER_TIER` — 10, 15 and 20% — and every rung floors, so a record of 87
+hurries 8 waves at the first rung and not 9.
+
+Named for where it gets the player rather than for what it leaves out: the deep part of the
+round is the part worth playing, and arriving there sooner is the whole promise. *Deep water* is
+unspoken-for in both shops — tide, river, current and headwaters are taken, and the island's
+memory twice over.
+
+**It is a fast-forward and not a skip, and every rule about the row follows from that.** It
+skips no waves: rounds still start at wave 0, every hurried wave still builds, explores, blights
+and pays, and the difficulty ladder still climbs from the bottom. Speed is one multiplication on
+`dt` and reaches no rule, so what the row costs the game is nothing and what it buys the player
+is real seconds. That is what makes it the fourth shape of Presence row — it grants no Fear row,
+opens no capability and endows no cycle — and what makes it safe to price as comfort. See
+[02-core-loop.md](./02-core-loop.md#pacing) for the mechanic in full and
+[05-progression.md](./05-progression.md#the-presence-catalogue) for the pricing argument.
+
+Two behaviours it owns that are not simply "a bigger number on `dt`":
+
+- **It releases the wave gate for the waves it hurries** and closes it again after them, without
+  touching or being recorded in `ui.autoProceed`. A row that ran the opening at 20x and stopped
+  at every wave for a click would have hurried nothing.
+- **It holds back card reveals while it runs** (`markCardFx`). `CARD_FX_MS` is 2600 *real*
+  milliseconds against a wave that now arrives every real second, so each reveal would be
+  overwritten before it could be read. The hand, the log and the drip's schedule are untouched.
 
 ### The rows that used to lower a price
 
