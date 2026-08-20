@@ -271,13 +271,30 @@
         <small id="abilitiesHint" class="action-info"></small>
         <div class="ability-purse">
           <span id="energyLabel">Energie</span>
+          <!-- Where the round's Energy goes: into Focus, or up the Innate's tiers. In the middle
+               of the purse, between the label and the total, because it divides that total -
+               and it is drawn only once auto-buy is owned, its dial stands at the top rung, and
+               the Innate still has a tier left to buy (see renderEnergySplit). -->
+          <span id="energySplit" class="tier-split" role="group" hidden></span>
           <!-- Playtest only, and inside the purse rather than beside the panel: it is the
                number it changes that makes it legible, the same way the Fear button sits in
                the shop's purse. It sits left of that number so the total stays the last thing
                on the row, where the eye already looks for it. -->
           <button type="button" id="playtestEnergyBtn" class="purse-btn playtest-tool" hidden>+100 Energie</button>
+          <!-- Beside the playtest grant rather than beside the panel, for the same reason that
+               one is here: it is read next to the number it decides the spending of. It appears
+               once auto-buy is owned - before that there is nothing for it to configure - and
+               the sheet it opens is the sibling below. -->
+          <button type="button" id="autoBuyBtn" class="purse-btn" aria-expanded="false" aria-pressed="false" aria-controls="autoBuySheet" hidden>Anpassen</button>
           <strong id="energyValue">0</strong>
         </div>
+
+        <!-- The auto-buy sheet. It unfolds in place and pushes the ability bar down, which is
+             why the round's start folds it away again (see startRound): reading it and playing
+             are not things anyone does at once, so it never has to be open while waves run.
+             Above the Energy hint so the panel reads purse, then what spends the purse, then
+             where the purse comes from. -->
+        <div id="autoBuySheet" class="autobuy" hidden></div>
         <!-- Where Energy comes from, under the number itself. It is the one currency the
              player earns by fighting rather than by surviving, and nothing else on the page
              says so - least of all the purse, which only ever shows a total. -->

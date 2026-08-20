@@ -66,6 +66,43 @@ const I18N = {
     abilityUpgradeBtn: "Stufe {tier}: {cost} Energie",
     abilityFocusBtn: "{cost} Energie - Abklingzeit -{seconds} Sek",
     abilityFocusHint: "Fokus: Jeder Kauf nimmt weitere {seconds} Sek von dieser Abklingzeit - immer gleich viel, zu steigendem Preis. Schluss ist bei {floor} Sek, einem Drittel des Ausgangswerts.",
+
+    /* Die Auto-Kauf-Lade. Der Knopf sitzt in der Energie-Börse, die Lade klappt darunter auf.
+       Die drei Sprossen sind kumulativ - jede schließt die darüber ein - deshalb trägt die
+       unterste ein "+" im Namen und die oberen nicht. Die Innate-Stufen sind keine Sprosse
+       mehr: darüber entscheidet "Energie in" in der Energie-Börse. */
+    autoBuyBtn: "Anpassen",
+    autoBuyBtnHint: "Einstellen, wofür die Runde ihre Energie von selbst ausgibt.",
+    autoBuyTitle: "Auto-Kauf",
+    autoBuySub: "Wie weit die Runde ihre Energie von selbst ausgibt.",
+    autoBuySpendLegend: "Ausgeben für",
+    autoBuyModeOff: "Nichts",
+    autoBuyModeOffWhy: "alles von Hand",
+    autoBuyModeUnlocks: "Freischaltungen",
+    // Sagt, was diese Sprosse nicht kauft, statt die Preisleiter aufzuzählen: die Innate-Stufen
+    // sind der eine Kauf, den sie auslässt, und "Energie in" nebenan ist der Grund.
+    autoBuyModeUnlocksWhy: "(außer Innate)",
+    autoBuyModeFocus: "+ Fokus",
+    autoBuyModeFocusWhy: "der ganze Rest",
+    // Steht statt "der ganze Rest", solange die Präsenz-Zeile fehlt. Nennt sie beim Namen,
+    // weil die Sprosse sonst nur grau ist und nicht sagt, woran es liegt.
+    autoBuyModeFocusLocked: "braucht \"Der Fluss gräbt tiefer\"",
+    innateSplitLegend: "Energie in",
+    innateSplitFocus: "Fokus",
+    innateSplitTier: "Innate-Stufe {tier}",
+    innateSplitHint: "Wohin die Automatik die Energie dieser Runde steckt. Auf eine Stufe gestellt spart sie darauf, statt Fokus zu kaufen - ist die Stufe erreicht, geht wieder alles in Fokus. Von Hand bleibt jede Stufe kaufbar.",
+    autoBuyOrderLegend: "Fokus-Reihenfolge",
+    autoBuyOrderValue: "Bester Wert",
+    autoBuyOrderValueWhy: "Tempo je Energie",
+    autoBuyOrderCheap: "Günstigste Sprosse",
+    autoBuyOrderCheapWhy: "breit statt tief",
+    autoBuyFocusLegend: "Fokus erlaubt für",
+    // Abklingzeit jetzt, und wo die Leiter dieser Fähigkeit endet.
+    autoBuyFocusRange: "{now} → {floor}",
+    autoBuyFocusRangeHint: "Abklingzeit jetzt {now} Sek, Ende der Leiter {floor} Sek.",
+    autoBuyFoot: "Nicht ausgegebene Energie verfällt am Rundenende.",
+    autoBuyCloseHint: "Esc, oder daneben klicken",
+    autoBuyDone: "Fertig",
     abilityNames: {
       innate_power: "Angeborene Kraft",
       boon_of_vigor: "Boon of Vigor",
@@ -166,6 +203,13 @@ const I18N = {
       // Nimmt sich, was die fünf Furchtzeilen im Namen teilen - siehe die englische Fassung.
       presence_all_unbidden: "Alles von selbst",
       presence_current_quickens: "Die Strömung eilt",
+      // Nimmt den Fluss der Zeile auf, die sie erweitert ("Der Fluss weiß, was er braucht"):
+      // dieselbe Automatik, eine Sprosse tiefer.
+      presence_river_deepens: "Der Fluss gräbt tiefer",
+      // Nicht nach Wasser benannt wie die übrigen, sondern nach dem, was bleibt: der Geist
+      // zieht sich zurück, die Furcht der Invasoren nicht. Bewusst *nicht* "Die Insel erinnert
+      // sich" - so heißt schon `power_card_interval` in der Furchtliste, und zwei Zeilen mit
+      // fast demselben Namen stünden gleichzeitig nebeneinander im Rail.
       presence_fear_remains: "Die Furcht bleibt"
     },
     presenceTexts: {
@@ -173,6 +217,7 @@ const I18N = {
       presence_river_knows: "Schenkt dir \"Der Fluss weiß, was er braucht\" (200 Furcht) für immer. Fähigkeiten kaufen sich von selbst - in diesem Zyklus und in jedem danach.",
       presence_all_unbidden: "Schenkt dir alle fünf Fähigkeits-Automatiken für immer: Segen, Instinkt, Gabe, Sturzflut und Strömung.",
       presence_current_quickens: "Schaltet Fokus frei: Energie während der Runde ausgeben, um {seconds} Sek von der Abklingzeit einer Fähigkeit zu nehmen - immer wieder, immer gleich viel, zu steigendem Preis, bis auf ein Drittel des Ausgangswerts.",
+      presence_river_deepens: "Der Auto-Kauf gibt auch die übrige Energie aus - in Fokus, immer weiter, die ganze Runde lang. Nichts bleibt bis zum Rundenende liegen. Unter \"Anpassen\" stellst du ein, wofür.",
       presence_fear_remains: "Jede Stufe legt {step} Furcht in die Bank der nächsten Aszension - geschenkt, nicht verdient, und selbst keine Präsenz wert. Bisher: {fear}."
     },
     // Der Trenner für Namenslisten in Logzeilen - siehe die englische Fassung.
@@ -483,6 +528,33 @@ const I18N = {
     abilityUnlockBtn: "{cost} Energy",
     abilityTierLabel: "Tier {tier}",
     abilityUpgradeBtn: "Tier {tier}: {cost} Energy",
+    autoBuyBtn: "Customize",
+    autoBuyBtnHint: "Set how far the round spends its own Energy.",
+    autoBuyTitle: "Auto-Buy",
+    autoBuySub: "How far the round spends its own Energy.",
+    autoBuySpendLegend: "Spends on",
+    autoBuyModeOff: "Nothing",
+    autoBuyModeOffWhy: "all by hand",
+    autoBuyModeUnlocks: "Unlocks",
+    autoBuyModeUnlocksWhy: "(except Innate)",
+    autoBuyModeFocus: "+ Focus",
+    autoBuyModeFocusWhy: "everything left",
+    autoBuyModeFocusLocked: "wants \"The River Runs Deeper\"",
+    innateSplitLegend: "Energy to",
+    innateSplitFocus: "Focus",
+    innateSplitTier: "Innate Tier {tier}",
+    innateSplitHint: "Where the automation puts this round's Energy. Set to a tier it saves for that tier rather than buying Focus, and hands everything back to Focus once it gets there. By hand, every tier stays buyable.",
+    autoBuyOrderLegend: "Focus order",
+    autoBuyOrderValue: "Best value",
+    autoBuyOrderValueWhy: "speed per Energy",
+    autoBuyOrderCheap: "Cheapest rung",
+    autoBuyOrderCheapWhy: "wide, not deep",
+    autoBuyFocusLegend: "Focus allowed on",
+    autoBuyFocusRange: "{now} → {floor}",
+    autoBuyFocusRangeHint: "Cooldown now {now} Sec, end of the ladder {floor} Sec.",
+    autoBuyFoot: "Energy left unspent burns at the end of the round.",
+    autoBuyCloseHint: "Esc, or click away",
+    autoBuyDone: "Done",
     abilityFocusBtn: "{cost} Energy - Cooldown -{seconds} Sec",
     abilityFocusHint: "Focus: each purchase takes another {seconds} Sec off this cooldown - always the same amount, at a rising price. It stops at {floor} Sec, a third of where the ability started.",
     abilityNames: {
@@ -568,6 +640,7 @@ const I18N = {
     ascensionRoundHint: "Between rounds only.",
     ascensionShopLabel: "What Presence unlocks",
     ascended: "Ascension {count}. {generated} Fear this cycle became {presence} Presence - {total} in all. The island begins again.",
+    // A second Reclaim line, printed only when the ladder has rungs on it - see `ascend`.
     ascendedStartFear: "The fear remains: {fear} Fear is already waiting.",
     ascendRefused: "Not yet. Ascending waits for the end of a round, and for a cycle worth giving back.",
     presenceNames: {
@@ -578,6 +651,12 @@ const I18N = {
       // pairing off the two shops rather than learning a mapping.
       presence_all_unbidden: "Everything Unbidden",
       presence_current_quickens: "The Current Quickens",
+      // Takes the river from the row it extends - the same automation, one rung deeper.
+      presence_river_deepens: "The River Runs Deeper",
+      // The catalogue's only ladder. Not named for water like the rest but for what survives
+      // the Reclaim: the spirit withdraws, the invaders' fear of it does not. Deliberately
+      // *not* "The Island Remembers" - that is `power_card_interval` in the Fear shop, and the
+      // two rails are on screen together.
       presence_fear_remains: "The Fear Remains"
     },
     presenceTexts: {
@@ -585,6 +664,7 @@ const I18N = {
       presence_river_knows: "Yours for good: \"The River Knows Its Own Need\" (200 Fear). Abilities buy themselves, this cycle and every cycle after it.",
       presence_all_unbidden: "Yours for good: all five ability automations - the Boon, the Instinct, the Bounty, the Flood and the Current.",
       presence_current_quickens: "Unlocks Focus: spend Energy mid-round to take {seconds} Sec off one ability's cooldown, again and again, always the same amount, at a rising price - down to a third of where it started.",
+      presence_river_deepens: "Auto-buy spends what is left over too - on Focus, again and again, all round long. Nothing is still in the purse when the round ends. \"Customize\" is where you say what it spends it on.",
       presence_fear_remains: "Each tier puts {step} Fear in the next ascension's bank - granted, not earned, and worth no Presence of its own. So far: {fear}."
     },
     // Says "for good", because that is the whole of what separates a Presence purchase from a
@@ -595,6 +675,8 @@ const I18N = {
     listSeparator: ", ",
     presenceGranted: "{upgrade} for {cost} Presence. {unlocks} is yours for good.",
     presencePurchasedDirect: "{upgrade} for {cost} Presence.",
+    // The ladder's line: ten identical purchase lines would report no progress, so the rung is
+    // named. Only `presence_fear_remains` ever reaches this.
     presenceTierPurchased: "{upgrade}, tier {tier}/{max}, for {cost} Presence.",
     presenceOwned: "{upgrade} is already yours.",
     presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",

@@ -92,6 +92,31 @@ function createInitialState() {
       // it. A preference like the two above and the five beside them - it survives ascension
       // with the rest of `ui.*`, because a setting the player put somewhere should stay there.
       cardOptions: { ...POWER_CARD_OPTION_DEFAULTS },
+      // How far auto-buy goes with the round's Energy, and how it chooses once it gets there.
+      // A preference like the switches above it, and it survives ascension with the rest of
+      // `ui.*` for the same reason - a setting the player put somewhere should stay there.
+      //
+      // `mode` opens at the top rung, not the bottom: every rung above "focus" is behaviour the
+      // game already had, and the one rung that is new is gated by Presence rather than by this
+      // field (see autoBuyModeRank). So a save carrying the default behaves exactly as it did
+      // before the dial existed, and starts spending into Focus the moment the row is bought.
+      //
+      // `innateCap` counts the way the card does - 3 is "Tier 3", the top of the Innate's
+      // ladder, which is where auto-buy already stopped. Literal rather than derived from
+      // abilityMaxTier, because the state contract documents literal shapes.
+      //
+      // `focusAbilities` holds only refusals: absent means allowed, so a card drawn for the
+      // first time needs no entry - see autoBuyFocusAllowed.
+      autoBuy: {
+        mode: "focus",
+        innateCap: 3,
+        focusOrder: "value",
+        focusAbilities: {}
+      },
+      // Whether the auto-buy sheet is unfolded. Disclosure rather than a rule, but it sits here
+      // with the other preferences because that is what it is - and because the round's start
+      // closes it (see startNextRound), which is a thing the engine has to be able to do.
+      autoBuyOpen: false,
       // The playtest code, once redeemed. It sits with the other settings rather than in meta
       // because it is the same kind of thing: how the game is being read, not what has been
       // earned inside it. Nothing in the rules reads it - see the playtest section.
@@ -253,6 +278,45 @@ function normalizeState(raw) {
     autoCast[abilityId] = rawAutoCast[abilityId] !== false;
   }
   merged.ui.autoCast = autoCast;
+
+  /* The auto-buy dial. Three of its four fields go through the engine's own setters, which are
+   * already the validators - a bad `mode` falls back to the default there rather than being
+   * checked twice with two chances to disagree.
+   *
+   * `focusAbilities` is the one rebuilt by hand, and it is rebuilt as a list of *refusals*
+   * rather than from a registry the way ui.autoCast is. The difference is what the two are
+   * keyed by: autoCast has a fixed five, one per automation the shop sells, so a registry can
+   * name them all. Focus applies to the kit and to every power card, and cards arrive over a
+   * cycle - rebuilding from the full catalogue would write a settled `true` for a card the
+   * player has never seen. Storing only the offs keeps absent meaning allowed, which is what
+   * autoBuyFocusAllowed reads and what makes a newly drawn card focusable without a click.
+   *
+   * Unknown ids are dropped, so a save cannot hold a preference for an ability the catalogue
+   * no longer has - the same rule upgrades.purchased follows. */
+  const storedAutoBuy = merged.ui.autoBuy && typeof merged.ui.autoBuy === "object" ? merged.ui.autoBuy : {};
+  // The three readers already fall back and clamp - they have to, since they answer for a
+  // state built by hand in a test as readily as for a loaded one. So the normalizer reads
+  // through them rather than repeating their rules, and what it writes back is what every
+  // other caller would have got anyway.
+  merged.ui.autoBuy = storedAutoBuy;
+  merged.ui.autoBuy = {
+    mode: autoBuyMode(merged),
+    innateCap: autoBuyTierCap(merged),
+    focusOrder: autoBuyFocusOrder(merged),
+    focusAbilities: {}
+  };
+
+  const storedFocusAbilities = storedAutoBuy.focusAbilities && typeof storedAutoBuy.focusAbilities === "object"
+    ? storedAutoBuy.focusAbilities
+    : {};
+  const focusAbilities = {};
+  for (const abilityId of Object.keys(storedFocusAbilities)) {
+    if (!ABILITIES[abilityId] && !POWER_CARDS[abilityId]) continue;
+    if (storedFocusAbilities[abilityId] === false) focusAbilities[abilityId] = false;
+  }
+  merged.ui.autoBuy.focusAbilities = focusAbilities;
+
+  merged.ui.autoBuyOpen = merged.ui.autoBuyOpen === true;
   merged.ui.selectedLand = isLandId(merged.ui.selectedLand) ? merged.ui.selectedLand : null;
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);

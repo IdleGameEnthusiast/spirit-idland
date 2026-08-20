@@ -874,6 +874,211 @@ button.reset {
   gap: 0.4rem;
 }
 
+/* ------------------------------------------------------------------ *
+ * The auto-buy sheet (06-ui-contract.md#the-auto-buy-sheet)            *
+ * ------------------------------------------------------------------ */
+
+/* The purse button while the sheet is open. It is the same button pressed rather than a second
+   one that says "close", so the thing that opened the drawer is the thing that shuts it and
+   there is never a pair of controls to tell apart. */
+.purse-btn[aria-pressed="true"] {
+  border-color: rgba(242, 196, 90, 0.85);
+  background: rgba(242, 196, 90, 0.28);
+  color: var(--ink-0);
+}
+
+/* Inset rather than raised: it belongs to the purse above it, so it takes the purse's gold on
+   its border and sits *into* the panel instead of floating over it like a dialog. Nothing here
+   overlays the board - the sheet is read, then folded away. */
+.autobuy {
+  margin-top: 0.5rem;
+  border: 1px solid rgba(242, 196, 90, 0.35);
+  border-radius: 10px;
+  background: rgba(8, 22, 28, 0.55);
+  padding: 0.6rem 0.65rem 0.7rem;
+}
+
+.autobuy[hidden] { display: none; }
+
+.autobuy-title {
+  font-family: "Cinzel", "Times New Roman", serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--accent-energy);
+  margin: 0 0 0.15rem;
+}
+
+.autobuy-sub {
+  display: block;
+  color: var(--ink-1);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  margin-bottom: 0.55rem;
+}
+
+.autobuy-group {
+  border: 0;
+  margin: 0 0 0.55rem;
+  padding: 0;
+  min-width: 0;   /* a fieldset defaults to min-content, which stops the rows from shrinking */
+}
+
+.autobuy-legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+  opacity: 0.75;
+}
+
+/* A rung of the spend ladder. The name left, the reason right, the whole row clickable - the
+   same shape the ability foot's switch has, so the panel has one row idiom and not two. */
+.autobuy-step {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--ink-1);
+}
+
+.autobuy-step:hover { background: rgba(247, 241, 222, 0.05); }
+.autobuy-step input { accent-color: var(--accent-energy); margin: 0; }
+.autobuy-step .st-name { color: var(--ink-0); }
+
+.autobuy-step .st-why {
+  margin-left: auto;
+  font-size: 0.68rem;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.autobuy-step.is-active { background: rgba(242, 196, 90, 0.12); }
+
+/* The ladder is cumulative, and this is the only thing on the row that says so: every rung at
+   or under the chosen one lights its marker, so "everything down to here" is visible rather
+   than something the wording has to carry alone. */
+.st-rung {
+  width: 0.9rem;
+  text-align: center;
+  opacity: 0.35;
+  font-size: 0.7rem;
+}
+
+.autobuy-step.is-covered .st-rung {
+  opacity: 1;
+  color: var(--accent-energy);
+}
+
+/* A rung the Presence row has not opened yet. Not `disabled` on the input alone: the row has to
+   read as a thing that exists and is not available, because its caption names the row that
+   would open it. */
+.autobuy-step.is-locked { opacity: 0.45; cursor: default; }
+.autobuy-step.is-locked:hover { background: none; }
+
+.autobuy-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.8rem;
+  color: var(--ink-1);
+}
+
+/* The only thing on its row, so it takes the whole width rather than hugging the right edge:
+   with no label beside it there is nothing for it to be right-aligned against. */
+.autobuy-row select {
+  flex: 1;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid rgba(247, 241, 222, 0.2);
+  border-radius: 6px;
+  background: rgba(8, 22, 28, 0.85);
+  color: var(--ink-0);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.autobuy-note {
+  padding: 0 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--ink-1);
+  opacity: 0.65;
+}
+
+/* A group the dial has not reached. Dimmed and inert rather than removed, so the sheet does not
+   change height as the ladder is walked - a panel that reflows under the pointer is a panel
+   that gets misclicked. */
+.autobuy-group.is-off { opacity: 0.3; pointer-events: none; }
+
+.focus-list { display: grid; gap: 0.1rem; }
+
+.focus-list .ability-auto {
+  margin: 0;
+  padding: 0.2rem 0.4rem;
+  border-radius: 7px;
+  font-size: 0.78rem;
+}
+
+.focus-list .ability-auto:hover { background: rgba(247, 241, 222, 0.05); }
+
+.focus-list .fx-cd {
+  margin-left: auto;
+  margin-right: 0.5rem;
+  font-size: 0.68rem;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.autobuy-foot {
+  margin: 0.6rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--ink-1);
+  opacity: 0.7;
+}
+
+/* The way out, at the end of the thing being read. The purse button is the other way, but after
+   a scroll it is behind the player rather than in front of them. */
+.autobuy-close {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(247, 241, 222, 0.1);
+}
+
+.autobuy-close .esc-hint {
+  font-size: 0.66rem;
+  color: var(--ink-1);
+  opacity: 0.55;
+}
+
+.autobuy-done {
+  width: auto;
+  margin: 0;
+  padding: 0.18rem 0.7rem;
+  border: 1px solid rgba(247, 241, 222, 0.25);
+  border-radius: 999px;
+  background: rgba(247, 241, 222, 0.06);
+  color: var(--ink-0);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.autobuy-done:hover {
+  transform: none;
+  border-color: rgba(247, 241, 222, 0.5);
+  background: rgba(247, 241, 222, 0.14);
+}
+
 /* Focus is a pill, not a price bar. It is bought over and over and all it does is shorten the
    countdown it stands next to, so it is cut to that countdown's size - the same footnote type -
    and wears Energy's gold on its outline rather than a filled button's weight. The foot below is
@@ -1042,8 +1247,66 @@ button.reset {
 /* The auto-cast switch: the one control on a card that is otherwise all state and price, so
    it is drawn quiet - footnote weight, the card's own ink, no fill and no border of its own.
    Pushed to the far end of the foot so it reads as one thing wherever it lands: opposite the
-   tier row on the Innate's card, and alone on the right of every other. */
+   tier price on the Innate's card, and alone on the right of every other. */
 .ability-foot .ability-auto { margin-left: auto; }
+
+/* Where the round's Energy goes: into Focus, or up the Innate's tiers. Settings of one dial,
+   so it is drawn the way the speed dial is - a segmented row where the chosen one is lit and
+   the rest recede - rather than as a row of separate buttons, which would read as three
+   commands instead of one choice.
+
+   It sits in the middle of the Energy purse, held there by its own auto margins rather than by
+   an order in the markup: the total and the purse's buttons carry auto margins of their own, so
+   the free space is shared out between them and the split stays between the label and the
+   number whether the playtest grant is showing or not. */
+.tier-split {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin: 0 auto;
+}
+
+/* An author `display` outranks the UA rule that hides [hidden] elements, so the row would stay
+   drawn after the last tier is bought without this. */
+.tier-split[hidden] { display: none; }
+
+.tier-split-label {
+  margin-right: 0.1rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+}
+
+.tier-split-btn {
+  width: auto;
+  margin: 0;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.tier-split-btn:hover {
+  color: var(--ink-0);
+  border-color: rgba(247, 241, 222, 0.25);
+}
+
+/* Lit in the purse's own gold rather than the water blue it wore on the card: it is inside the
+   gold box now, and a chosen setting that answers in another currency's colour reads as a
+   different thing than the number beside it. */
+.tier-split-btn.is-active {
+  color: var(--accent-energy);
+  border-color: rgba(242, 196, 90, 0.55);
+  background: rgba(242, 196, 90, 0.18);
+}
 
 .ability-auto {
   display: inline-flex;

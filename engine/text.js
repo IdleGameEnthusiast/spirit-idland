@@ -342,6 +342,28 @@ function abilityFocusPillParts(state, abilityId) {
   };
 }
 
+/* Where an ability stands on its Focus ladder, as two numbers: the cooldown it has right now
+ * and the one its ladder ends at. The auto-buy sheet's per-ability rows are the only reader.
+ *
+ * It says the same thing the pill says, from the other end. The pill answers "what does the
+ * next rung cost", which is the question in front of a player about to click; the sheet asks
+ * "is this ability worth letting the bot spend on at all", and that is answered by how much
+ * clock there is left to buy. An ability already sitting on its floor shows two equal numbers,
+ * which is the honest way to say the switch beside it no longer decides anything.
+ *
+ * Both figures take the round's permanent haste the same way the pill's floor does, so the two
+ * controls on one card cannot quote different clocks.
+ */
+function abilityFocusRangeParts(state, abilityId) {
+  const mult = roundCooldownMult(state);
+  const now = abilityFocusedCooldownSeconds(state, abilityId) * mult;
+  const floor = abilityFocusFloorBeats(state, abilityId) * TIME_SCALE * mult;
+  return {
+    now: dialSecondsText(state, Math.max(1, now)),
+    floor: dialSecondsText(state, Math.max(1, floor))
+  };
+}
+
 /* ---------- The rows that describe where they stand ----------
  *
  * Every other repeatable pays a constant per tier, so "+1 Dahan, per tier" answers the only

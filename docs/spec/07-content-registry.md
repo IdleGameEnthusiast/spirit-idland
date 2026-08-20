@@ -353,7 +353,12 @@ all. See [the Presence catalogue](#the-presence-catalogue) below.
 - `auto_buy_abilities` — one-time, granted permanently by `presence_river_knows`. Each tick,
   this round's Energy spends itself on the
   ability bar: the locked kit abilities first, cheapest before dearest (5 / 10 / 20), then one
-  rung of the Innate's tier ladder if the Energy is still there. `baseCost` 200 — under the
+  rung of the Innate's tier ladder if the Energy is still there — and then, once
+  `presence_river_deepens` is owned, everything left over into Focus. **How far it goes is a
+  cumulative dial the player sets** (`ui.autoBuy.mode`, four rungs from `off` to `focus`), with
+  an Innate tier cap set on the Innate's own card — how far up its tiers the round's Energy goes
+  before the rest falls through to Focus — and a choice of which Focus rung to buy next; see
+  [05-progression.md](./05-progression.md#auto-buy). `baseCost` 200 — under the
   three ability automations it sits beside, because what it sells is less than they do. It
   spends Energy the round was already going to spend, in the order
   a settled player already spends it, and buys back the clicks rather than any new power.
@@ -413,16 +418,29 @@ a decision worth nobody's second Reclaim. Their Fear rows keep their prices and 
 row without it is a one-off whatever else the record says — see
 [The row that endows a cycle](#the-row-that-endows-a-cycle) for the one row that does.
 
-### The row that grants nothing
+### The rows that grant nothing
 
 | id | does | cost |
 | --- | --- | --- |
 | `presence_current_quickens` — *Die Strömung eilt* / The Current Quickens | unlocks Focus directly — no Fear row, `abilityFocusUnlocked` reads it | 5 |
+| `presence_river_deepens` — *Der Fluss gräbt tiefer* / The River Runs Deeper | opens auto-buy's top rung — no Fear row, `autoBuyFocusUnlocked` reads it | 5 |
 
-It has no Fear row to name itself after, carries no `grants`, and is the one row in the
-catalogue to touch the board through what it opens rather than through a Fear row. A structural
-test allows exactly this id to grant nothing; any other row that granted nothing would be a
-purchase the game never reacts to.
+Neither has a Fear row to name itself after and neither carries `grants`; they are the two rows
+in the catalogue that touch the board through what they open rather than through a Fear row.
+The structural test in `tests/ascension.test.js` names each by the **reader that gates on it**
+rather than by id, and asserts the pair — false on a fresh game, true once owned. A row whose
+gate was never wired to anything fails that second half, where a list of allowed ids would have
+let it pass for being on the list. The row below is checked the same way, by the number it
+moves rather than by its id.
+
+`presence_river_deepens` takes the river from the row it extends (`presence_river_knows`): the
+same automation, one rung deeper. It needs that row for the resolver and
+`presence_current_quickens` for the ladders it spends into, which puts it 13 Presence deep — its
+gate is that depth, and its price is not asked to be one. It is priced level with
+`presence_current_quickens` rather than under it, and if a played cycle shows the pair arriving
+too easily together, **this** is the row to move: Focus by hand has to stay reachable before
+Focus by itself. See [05-progression.md](./05-progression.md#the-presence-catalogue) for why it
+is not the comfort layer the row it extends is.
 
 The first two grants together cost exactly what a first Reclaim is shaped to pay (about 5), so
 the first ascension buys both. That is deliberate — the first one should read as an unambiguous

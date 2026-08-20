@@ -297,7 +297,7 @@ function abilityCooldownBeats(record) {
 /* ---------- One ladder, named ----------
  *
  * Every figure below is a reading of one record's ladder: where it starts, how fast it climbs,
- * how long it is, and where its floor sits. They used to be eight functions each re-deriving
+ * how long it is, and where its floor sits. They used to be nine functions each re-deriving
  * those four from the record on their own. Naming the ladder once and reading it out is the
  * same rule stated in one place instead of nine - and it is what lets a tiered ability answer
  * for the tier it is standing on without any of them knowing that tiers exist.
@@ -464,7 +464,21 @@ function abilityFocusCost(state, abilityId) {
   return abilityFocusLadderTotal(state, abilityId, bought + 1) - abilityFocusEnergy(state, abilityId);
 }
 
-function purchaseAbilityFocus(state, abilityId) {
+/* `quiet` is the auto-buy path, and it is the one place a Focus purchase differs from a
+ * clicked one - the refusal above and the confirmation below are both dropped.
+ *
+ * The rule it follows is not "automated purchases are silent": `resolveAutoBuyAbilities` logs
+ * every unlock and every tier it buys, because a clicked purchase and an automated one being
+ * the same purchase is the whole design of that resolver. The rule is **bounded events log,
+ * repeating ones do not** - the same line auto-cast draws. A round buys three unlocks and two
+ * tiers and then has nothing left to buy, so those five lines are five lines. Focus never
+ * stops: it is bought again every time the purse refills, for as long as the round runs, and
+ * at a rung a second late in a long round the log would be the only thing in the log.
+ *
+ * The player is not left guessing what was bought. The cooldown on the card is the feedback,
+ * and it is a better one than a line that has already scrolled away.
+ */
+function purchaseAbilityFocus(state, abilityId, quiet) {
   const t = locale(state);
   if (!abilityFocusUnlocked(state)) return false;
   if (!abilityIsUnlocked(state, abilityId)) return false;
@@ -473,11 +487,13 @@ function purchaseAbilityFocus(state, abilityId) {
   const cost = abilityFocusCost(state, abilityId);
   if (!Number.isFinite(cost)) return false;
   if (state.resources.energy < cost) {
-    addLog(state, template(t.abilityFocusTooExpensive, {
-      ability: abilityName(state, abilityId),
-      cost,
-      energy: state.resources.energy
-    }));
+    if (!quiet) {
+      addLog(state, template(t.abilityFocusTooExpensive, {
+        ability: abilityName(state, abilityId),
+        cost,
+        energy: state.resources.energy
+      }));
+    }
     return false;
   }
 
@@ -501,13 +517,68 @@ function purchaseAbilityFocus(state, abilityId) {
     slot.cooldownRemaining = Math.min(slot.cooldownRemaining, abilityCooldownSeconds(state, abilityId));
   }
 
-  addLog(state, template(t.abilityFocused, {
-    ability: abilityName(state, abilityId),
-    cost,
-    seconds: step,
-    cooldown: dialSecondsText(state, abilityCooldownSeconds(state, abilityId))
-  }));
+  if (!quiet) {
+    addLog(state, template(t.abilityFocused, {
+      ability: abilityName(state, abilityId),
+      cost,
+      seconds: step,
+      cooldown: dialSecondsText(state, abilityCooldownSeconds(state, abilityId))
+    }));
+  }
   return true;
+}
+
+/* ---------- What one rung is worth, per Energy ----------
+ *
+ * The ranking auto-buy sorts by, and the only place in the engine that puts a number on
+ * "which purchase is the better one". 04-economy-formulas.md#what-a-focus-rung-is-worth.
+ *
+ * Three factors, multiplied:
+ *
+ *   worth x (1/next - 1/now) / cost
+ *
+ * The middle term is the honest reading of "faster": casts per beat gained, not seconds
+ * removed. Seconds removed is flat by construction - every rung takes `focusStepBeats` off -
+ * so ranking by it would rank by price alone and call the result a rate. Nor is it percent of
+ * the cooldown, which is the framing the subtractive rework threw out (see the ladder note
+ * above): under it the tail of every ladder reads as worthless, when the tail is in fact where
+ * a rung buys the most.
+ *
+ * `worth` is what one cast of this ability is worth, and it is **read back out of the
+ * catalogue rather than tabled again here**. abilityFocusBaseCost documents the anchor the
+ * balance pass priced every ladder by - `worth * 100 / cooldownBeats` - so inverting it,
+ * `anchor * cooldownBeats / 100`, recovers the number that pass was working from. That
+ * matters more than the arithmetic: a second table of per-ability weights would be a second
+ * balance surface, and it would drift from the ladders the first time either was retuned.
+ * There is exactly one statement of what a cast is worth, and both readers of it agree.
+ *
+ * A tiered ability answers for the tier it is standing on, because every figure here comes
+ * through abilityRecord - so the Innate's worth jumps when tier 2 is bought, which is correct
+ * and is what makes the bot re-rank it against the rest of the kit on the spot.
+ *
+ * The 100 is a scale factor and cancels out of any comparison. It is kept so a value printed
+ * while debugging is the same number the anchor rule quotes, rather than one a hundred times
+ * off it.
+ */
+function abilityFocusValuePerEnergy(state, abilityId) {
+  const cost = abilityFocusCost(state, abilityId);
+  if (!Number.isFinite(cost) || cost <= 0) return 0;
+
+  const record = abilityRecord(state, abilityId);
+  if (!record) return 0;
+
+  const now = abilityFocusedCooldownSeconds(state, abilityId) / TIME_SCALE;
+  const next = Math.max(
+    abilityFocusFloorBeats(state, abilityId),
+    now - abilityFocusStepBeats(state, abilityId)
+  );
+  // A rung that removes no beat is worth nothing rather than infinitely much. It should be
+  // unreachable - abilityFocusCost has already quoted Infinity at the floor - but this is the
+  // divisor of a ranking, so it is checked rather than assumed.
+  if (!(next > 0) || next >= now) return 0;
+
+  const worth = abilityFocusBaseCost(state, abilityId) * abilityCooldownBeats(record) / 100;
+  return worth * (1 / next - 1 / now) / cost;
 }
 
 function tickCooldowns(state, dt) {
@@ -1016,12 +1087,257 @@ function startCooldown(state, abilityId) {
   acceptPowerCard(state, abilityId);
 }
 
+/* ---------- Auto-buy: how far the round spends its own Energy ----------
+ *
+ * 05-progression.md#auto-buy, 06-ui-contract.md#the-auto-buy-sheet.
+ *
+ * One cumulative dial rather than a switch per thing bought. Each rung includes the ones above
+ * it, and the order is the order the resolver spends in - which is what lets the sheet be read
+ * top to bottom as a description of what will happen.
+ *
+ * "Off" and "unlocks only" are rungs of this same dial rather than controls of their own.
+ * A master switch plus a scope switch plus a preset picker would be three controls describing
+ * one decision, and they would be able to disagree with each other; a dial cannot.
+ *
+ * **The Innate's tiers are not a rung.** They used to be one, between the unlocks and Focus,
+ * and the split control on the Energy purse replaced it: "Energy to Focus, or to Innate Tier
+ * n" answers the same question with the price of the next tier in view, and two controls for
+ * one decision is exactly what this dial exists not to be. So the unlocks rung buys unlocks
+ * and nothing else, and the tiers are bought at the top rung, where the split says how far
+ * (see autoBuyTierWanted). A save carrying the retired "tiers" is not a mode any more and
+ * falls back through autoBuyMode like any other unknown string.
+ *
+ * The top rung is gated by Presence rather than by preference - see autoBuyModeRank, which
+ * clamps it. A save may hold "focus" without owning the row, and should: buying
+ * `presence_river_deepens` then turns it on with no second click, the same courtesy
+ * autoCastMarkup extends to an automation bought mid-round.
+ */
+const AUTO_BUY_MODES = ["off", "unlocks", "focus"];
+const AUTO_BUY_MODE_RANK = { off: 0, unlocks: 1, focus: 2 };
+const AUTO_BUY_MODE_DEFAULT = "focus";
+const AUTO_BUY_FOCUS_ORDERS = ["value", "cheap"];
+const AUTO_BUY_FOCUS_ORDER_DEFAULT = "value";
+
+// A ladder is finite - every ability's rungs run out at its floor - so this can only ever be
+// reached by a bug. It is here so that a bug is a stalled tick rather than a hung tab.
+const AUTO_BUY_FOCUS_MAX_STEPS = 200;
+
+// Whether the round's leftover Energy may go into Focus at all. Two owned things and not one:
+// the resolver has to be owned (`auto_buy_abilities`, through the round snapshot) and so does
+// this row. Read as the top rung's gate rather than as a resolver of its own.
+function autoBuyFocusUnlocked(state) {
+  return presenceUpgradeOwned(state, "presence_river_deepens");
+}
+
+// Whether there is anything to configure, which is what decides whether the sheet's button is
+// drawn at all. Ownership rather than the round snapshot, the same reading autoCastOwned takes:
+// the purchase is permanent, so the control it comes with appears at once and never leaves.
+function autoBuyOwned(state) {
+  return upgradeTier(state, "auto_buy_abilities") > 0;
+}
+
+function autoBuySettings(state) {
+  return (state && state.ui && state.ui.autoBuy) || {};
+}
+
+// The dial as a number, clamped to what is actually owned. Everything below reads this rather
+// than the stored string, so the Presence gate is applied in exactly one place.
+function autoBuyModeRank(state) {
+  const stored = autoBuySettings(state).mode;
+  const rank = AUTO_BUY_MODE_RANK[stored];
+  const ceiling = autoBuyFocusUnlocked(state) ? AUTO_BUY_MODE_RANK.focus : AUTO_BUY_MODE_RANK.unlocks;
+  return Math.min(Number.isFinite(rank) ? rank : AUTO_BUY_MODE_RANK[AUTO_BUY_MODE_DEFAULT], ceiling);
+}
+
+// The stored setting, unclamped - what the sheet draws as chosen. It is deliberately not
+// autoBuyModeRank's answer: a player who picked the top rung before owning the row should see
+// their own choice sitting there, not the rung the gate is holding them at.
+function autoBuyMode(state) {
+  const stored = autoBuySettings(state).mode;
+  return AUTO_BUY_MODES.includes(stored) ? stored : AUTO_BUY_MODE_DEFAULT;
+}
+
+function setAutoBuyMode(state, mode) {
+  if (!AUTO_BUY_MODES.includes(mode)) return false;
+  if (!state.ui.autoBuy || typeof state.ui.autoBuy !== "object") state.ui.autoBuy = {};
+  state.ui.autoBuy.mode = mode;
+  return true;
+}
+
+/* How far up its tiers a tiered ability is allowed to be carried, as the number the card
+ * prints - "Tier 3", not the zero-based index abilityTier answers with. The player is choosing
+ * off the card, so the setting is in the card's own counting, and `1` means "never upgrade it".
+ *
+ * One cap for every tiered ability, because there is exactly one tiered ability: the Innate.
+ * The UI names it as the Innate's for that reason. A second tiered ability wants a map keyed
+ * by ability here rather than a second meaning loaded onto this number.
+ *
+ * It binds `resolveAutoBuyAbilities` and nothing else. The tier button on the card ignores it
+ * completely - capping the bot must never take a purchase away from the player's own hand.
+ */
+function autoBuyTierCap(state) {
+  const stored = Math.floor(Number(autoBuySettings(state).innateCap));
+  const max = abilityMaxTier("innate_power") + 1;
+  return Number.isFinite(stored) ? clamp(stored, 1, max) : max;
+}
+
+function setAutoBuyTierCap(state, tier) {
+  const max = abilityMaxTier("innate_power") + 1;
+  const wanted = Math.floor(Number(tier));
+  if (!Number.isFinite(wanted)) return false;
+  if (!state.ui.autoBuy || typeof state.ui.autoBuy !== "object") state.ui.autoBuy = {};
+  state.ui.autoBuy.innateCap = clamp(wanted, 1, max);
+  return true;
+}
+
+/* Whether the bot should be carrying this ability up a tier right now - the one question both
+ * autoBuyReserve and the tier loop ask, so the two can never disagree about what the purse is
+ * being saved for.
+ *
+ * 05-progression.md#where-the-energy-goes.
+ *
+ * The cap is the whole answer, and it is only ever asked at the top rung: the tiers are bought
+ * there and nowhere else, so a caller below it has no tier question to put. That is what makes
+ * the cap a split rather than a limit - it divides the Energy between two claims, tiers and
+ * Focus, and both are live wherever this is read (see 06-ui-contract.md#the-innate-s-energy-split).
+ */
+function autoBuyTierWanted(state, abilityId) {
+  if (!abilityIsTiered(abilityId)) return false;
+  if (!Number.isFinite(abilityUpgradeCost(state, abilityId))) return false;
+  // The cap counts the way the card does, so tier index 1 is "Tier 2" and a cap of 2 stops here
+  // rather than one rung short of itself.
+  return abilityTier(state, abilityId) + 1 < autoBuyTierCap(state);
+}
+
+function autoBuyFocusOrder(state) {
+  const stored = autoBuySettings(state).focusOrder;
+  return AUTO_BUY_FOCUS_ORDERS.includes(stored) ? stored : AUTO_BUY_FOCUS_ORDER_DEFAULT;
+}
+
+function setAutoBuyFocusOrder(state, order) {
+  if (!AUTO_BUY_FOCUS_ORDERS.includes(order)) return false;
+  if (!state.ui.autoBuy || typeof state.ui.autoBuy !== "object") state.ui.autoBuy = {};
+  state.ui.autoBuy.focusOrder = order;
+  return true;
+}
+
+// Per-ability opt-out, `!== false` like autoCast: absent means allowed, so a card drawn for the
+// first time is focusable without the player having to say so, and a save written before this
+// existed loads with everything allowed.
+function autoBuyFocusAllowed(state, abilityId) {
+  const list = autoBuySettings(state).focusAbilities;
+  return !list || list[abilityId] !== false;
+}
+
+function setAutoBuyFocusAllowed(state, abilityId, on) {
+  if (!abilityBaseRecord(abilityId)) return false;
+  if (!state.ui.autoBuy || typeof state.ui.autoBuy !== "object") state.ui.autoBuy = {};
+  const list = state.ui.autoBuy.focusAbilities && typeof state.ui.autoBuy.focusAbilities === "object"
+    ? state.ui.autoBuy.focusAbilities
+    : {};
+  // Only the refusals are stored - see normalizeState. Allowing something again deletes the
+  // key rather than writing `true`, so the saved object stays a list of exceptions.
+  if (on === false) list[abilityId] = false;
+  else delete list[abilityId];
+  state.ui.autoBuy.focusAbilities = list;
+  return true;
+}
+
+/* ---------- The reserve: what Focus is not allowed to touch ----------
+ *
+ * Focus runs last in the tick, which is *not* on its own enough to keep it from starving the
+ * two rungs above it, and the difference is where the Energy actually comes from. A round is
+ * fed a few Energy at a time over minutes, not in lumps. Focus has no ceiling and a floor price
+ * of 3, so a resolver that spent everything each tick would hold the purse between 0 and 2 for
+ * the whole round - and the 5 the cheapest unlock wants, or the 150 the Innate's last tier
+ * wants, would never once be on the table. Ordering fixes what happens inside a tick; only a
+ * reserve fixes what happens across them.
+ *
+ * So Focus may spend the purse down to this figure and no further: **the cheapest thing
+ * auto-buy still intends to buy that is not Focus.**
+ *
+ * Cheapest-outstanding rather than the whole remaining bill, because that is what the loops
+ * above actually take next - unlocks go cheapest-first, and tiers one rung at a time. The purse
+ * climbs to 5, spends it, then reserves 10, and so on up through 20, 40, 150; each is banked
+ * only while it is the next thing wanted, and everything above it still pours into the clock.
+ *
+ * This is what makes the Innate cap a real choice rather than a label. The cap is how much the
+ * player is willing to have banked before Focus gets anything: at 3 the round saves toward 150
+ * and the clock waits, at 1 nothing is ever saved for and the first spare 3 Energy buys a beat.
+ * That trade - and the risk that a round ends with 150 banked and unspent - is the decision the
+ * cap exists to put in the player's hands.
+ */
+function autoBuyReserve(state) {
+  const rank = autoBuyModeRank(state);
+  if (rank < AUTO_BUY_MODE_RANK.unlocks) return 0;
+
+  let cheapest = Infinity;
+  for (const abilityId of lockedAbilityIds(state)) {
+    const cost = abilityUnlockCost(state, abilityId);
+    if (Number.isFinite(cost) && cost < cheapest) cheapest = cost;
+  }
+  // Unlocks before tiers here too, and for the same reason the resolver takes them in that
+  // order: while one is outstanding it is the next purchase, so it is the one being saved for.
+  if (Number.isFinite(cheapest)) return cheapest;
+
+  // Tiers are bought at the top rung only, so below it there is nothing left to bank for -
+  // and no Focus to bank it away from either.
+  if (rank < AUTO_BUY_MODE_RANK.focus) return 0;
+
+  // Through autoBuyTierWanted rather than the cap directly, so a tier the payback test is
+  // currently declining is not banked for either - which is the whole of what "auto" does to
+  // this page. Refusing to save for it is what hands the Energy to Focus.
+  for (const abilityId of unlockedAbilityIds(state)) {
+    if (!autoBuyTierWanted(state, abilityId)) continue;
+    const cost = abilityUpgradeCost(state, abilityId);
+    if (Number.isFinite(cost) && cost < cheapest) cheapest = cost;
+  }
+
+  // Nothing left to save for: the kit is bought and the cap is reached, so Focus is the only
+  // claim on the Energy and it may have all of it.
+  return Number.isFinite(cheapest) ? cheapest : 0;
+}
+
+/* Which ability the next Focus rung should be bought for, or null when none is affordable.
+ *
+ * Both orders answer over the same eligible set: unlocked, allowed, still on its ladder, and
+ * affordable *right now* out of what the reserve leaves. Affordability is part of the pick
+ * rather than a check after it, because the alternative is a bot that stalls all round saving
+ * for the best rung it has ever seen while three cheap ones sit unbought - and Energy that is
+ * still in the purse at the end of the round is Energy burned.
+ */
+function pickAutoBuyFocusTarget(state) {
+  const cheapest = autoBuyFocusOrder(state) === "cheap";
+  const spendable = state.resources.energy - autoBuyReserve(state);
+  if (spendable <= 0) return null;
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const abilityId of unlockedAbilityIds(state)) {
+    if (!autoBuyFocusAllowed(state, abilityId)) continue;
+    const cost = abilityFocusCost(state, abilityId);
+    if (!Number.isFinite(cost) || cost > spendable) continue;
+
+    // Cheapest sorts on a price that must be *minimised*, the other on a value maximised, so
+    // the score is negated rather than the comparison forked. Ties fall to the first ability
+    // in kit order, which is what unlockedAbilityIds already hands over.
+    const score = cheapest ? -cost : abilityFocusValuePerEnergy(state, abilityId);
+    if (best === null || score > bestScore) {
+      best = abilityId;
+      bestScore = score;
+    }
+  }
+
+  return best;
+}
+
 /* ---------- Auto-buy: the round's Energy spends itself ----------
  *
  * The one automation that spends a currency rather than a cooldown. Every other one buys back
- * a cast; this buys back the two purchases the ability bar asks for - unlocking a locked
- * ability and raising the Innate's tier - which by the time it is affordable a player is
- * making in the same order every round anyway.
+ * a cast; this buys back the purchases the ability bar asks for - unlocking a locked ability,
+ * and (once `presence_river_deepens` is owned) raising the Innate's tier as far as the split
+ * asks for and pouring what is left into Focus.
  *
  * Unlocks first and tiers after, which is not kit order and not price order across the whole
  * bar. Two reasons, and they point the same way: an unlock is the cheaper claim on the Energy
@@ -1029,13 +1345,20 @@ function startCooldown(state, abilityId) {
  * waiting on - each of them sits idle all round on an ability that was never bought. Saving
  * toward a tier while Wash Away stays locked is the one order no player actually plays.
  *
- * It goes through unlockAbility and upgradeAbility rather than writing the state itself, so an
- * automated purchase and a clicked one are the same purchase: same refusals, same round-local
- * bookkeeping, same log line. Nothing here can overspend, because each call re-reads the purse
- * the one before it left behind.
+ * Focus last, and last for a harder reason than taste: it is the only one of the three that
+ * can never finish. The unlocks run out and the tiers run out, so putting either behind an
+ * unbounded sink would starve it forever.
+ *
+ * It goes through unlockAbility, upgradeAbility and purchaseAbilityFocus rather than writing
+ * the state itself, so an automated purchase and a clicked one are the same purchase: same
+ * refusals, same round-local bookkeeping. Nothing here can overspend, because each call
+ * re-reads the purse the one before it left behind.
  */
 function resolveAutoBuyAbilities(state) {
   if (activeUpgradeTier(state, "auto_buy_abilities") <= 0) return;
+
+  const rank = autoBuyModeRank(state);
+  if (rank <= AUTO_BUY_MODE_RANK.off) return;
 
   // Cheapest first within the unlocks, so a round holding 15 Energy takes the 5 and the 10
   // rather than stalling in kit order on a 20 it cannot afford yet.
@@ -1050,11 +1373,40 @@ function resolveAutoBuyAbilities(state) {
   // One rung per ability per tick. A tier is dear enough that no round buys two in the same
   // beat, and stepping rather than climbing keeps this from emptying a purse the unlocks above
   // may want on the very next tick.
-  for (const abilityId of unlockedAbilityIds(state)) {
-    if (!abilityIsTiered(abilityId)) continue;
-    const cost = abilityUpgradeCost(state, abilityId);
-    if (!Number.isFinite(cost) || state.resources.energy < cost) continue;
-    upgradeAbility(state, abilityId);
+  if (rank >= AUTO_BUY_MODE_RANK.focus) {
+    for (const abilityId of unlockedAbilityIds(state)) {
+      // The same question autoBuyReserve asked when it decided what to bank for, so the purse
+      // this loop is spending was saved for exactly the tier it is about to buy.
+      if (!autoBuyTierWanted(state, abilityId)) continue;
+      const cost = abilityUpgradeCost(state, abilityId);
+      if (!Number.isFinite(cost) || state.resources.energy < cost) continue;
+      upgradeAbility(state, abilityId);
+    }
+  }
+
+  if (rank >= AUTO_BUY_MODE_RANK.focus) resolveAutoBuyFocus(state);
+}
+
+/* Focus, until the purse cannot afford another rung.
+ *
+ * Drained rather than stepped, which is the opposite of what the tier loop above does, and the
+ * difference is what the two are spending into. A tier is one dear rung with more behind it,
+ * so stepping leaves the purse able to answer a cheaper claim next tick. Focus is the *last*
+ * claim on the Energy by construction - there is nothing after it to save for, and what is
+ * unspent at the end of the round is destroyed. Leaving Energy in the purse here is not
+ * prudence, it is waste.
+ *
+ * Re-picking the target every iteration rather than buying out one ability: each purchase
+ * moves that ability up its own ladder and changes what the next rung is worth, so a list
+ * chosen once would be stale by its second entry.
+ */
+function resolveAutoBuyFocus(state) {
+  if (!abilityFocusUnlocked(state) || !autoBuyFocusUnlocked(state)) return;
+
+  for (let step = 0; step < AUTO_BUY_FOCUS_MAX_STEPS; step += 1) {
+    const abilityId = pickAutoBuyFocusTarget(state);
+    if (!abilityId) return;
+    if (!purchaseAbilityFocus(state, abilityId, true)) return;
   }
 }
 

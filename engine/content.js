@@ -812,6 +812,33 @@ const PRESENCE_UPGRADES = {
     cost: 5
   },
 
+  /* The fourth rung on auto-buy's ladder: the round's leftover Energy goes into Focus.
+   *
+   * No `grants`, like the row above it - `autoBuyFocusUnlocked` reads it straight off
+   * `presenceUpgradeOwned`. It needs both of the rows it sits between to mean anything
+   * (`presence_river_knows` for the resolver, `presence_current_quickens` for the ladders it
+   * spends into), which puts it 13 Presence deep and makes it a third-Reclaim row. That depth
+   * is the gate; the price is not asked to be one.
+   *
+   * **It is not the comfort layer `auto_buy_abilities` is, and it must not be priced as one.**
+   * That row's defence - "it spends Energy the round was already going to spend" - is exactly
+   * what is untrue here. Energy does not survive a round (startRound resets the purse and
+   * `abilityFocusEnergy` with it), so once the unlocks and the tiers are bought, every Energy
+   * the round earns afterwards is burned at its end. This row is the first thing that turns
+   * that residue into throughput, and the Focus ladders are deep enough to absorb any purse.
+   * It buys power, not clicks.
+   *
+   * 5 all the same, matching `presence_current_quickens` rather than undercutting it: the row
+   * that opens Focus and the row that spends it automatically are worth the same, and a
+   * player who has bought the first has already said what they think of the second. If a
+   * played cycle shows the pair arriving too easily together, the lever is this row rather
+   * than the one below - Focus by hand must stay reachable before Focus by itself.
+   */
+  presence_river_deepens: {
+    id: "presence_river_deepens",
+    cost: 5
+  },
+
   /* ---------- The one repeatable row: a cycle that does not start from nothing ----------
    *
    * Ten rungs, 1 Presence each, and every rung puts 50 more Fear in the bank at the moment of
@@ -822,8 +849,8 @@ const PRESENCE_UPGRADES = {
    * instead of ten.
    *
    * It grants no Fear row and touches no board, which puts it with `presence_current_quickens`
-   * rather than with the three automation grants - but unlike that row it unlocks nothing
-   * either. `ascend` reads its tier directly through
+   * and `presence_river_deepens` rather than with the three automation grants - but unlike
+   * those two it unlocks nothing either. `ascend` reads its tier directly through
    * `ascensionStartFear`, which is the whole of the wiring.
    *
    * Flat cost is also why `presenceUpgradeCost` needs no growth curve: it answers `cost` for

@@ -10,7 +10,7 @@
 (function () {
   const {
     engine, test, assert, assertEqual, assertClose, newGame, advance,
-    clearBoard, setLand, unlockAllAbilities, grantUpgrade
+    clearBoard, setLand, unlockAllAbilities, grantUpgrade, grantPresence
   } = typeof require === "function" ? require("./harness.js") : window.SpiritTests;
 
   function fullKit(options) {
@@ -531,8 +531,12 @@
   });
 
   test("auto-buy: raises the Innate once the kit is bought and the Energy is there", () => {
+    // The tiers are bought at the dial's top rung, which `presence_river_deepens` is the gate
+    // on (see AUTO_BUY_MODES). Focus is the other half of that rung and stays asleep here:
+    // it wants `presence_current_quickens` as well, and this state does not own it.
     const { state } = fullKit();
     grantUpgrade(state, "auto_buy_abilities");
+    grantPresence(state, "presence_river_deepens");
     state.resources.energy = 40;
 
     engine.resolveAutoBuyAbilities(state);
@@ -544,6 +548,7 @@
   test("auto-buy: one rung per tick, never two", () => {
     const { state } = fullKit();
     grantUpgrade(state, "auto_buy_abilities");
+    grantPresence(state, "presence_river_deepens");
     state.resources.energy = 1000;
 
     engine.resolveAutoBuyAbilities(state);

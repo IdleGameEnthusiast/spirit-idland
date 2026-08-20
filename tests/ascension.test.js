@@ -525,7 +525,8 @@
    * gate was never wired to anything fails that second half, where a list of ids would have let
    * it pass for having been added to the list. */
   const CAPABILITY_GATES = {
-    presence_current_quickens: (state) => engine.abilityFocusUnlocked(state)
+    presence_current_quickens: (state) => engine.abilityFocusUnlocked(state),
+    presence_river_deepens: (state) => engine.autoBuyFocusUnlocked(state)
   };
 
   /* The third kind of row, and the newest: one that neither grants a Fear row nor opens a

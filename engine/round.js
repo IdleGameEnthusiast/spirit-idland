@@ -160,6 +160,16 @@ function startRound(state) {
   state.round.abilityTiers = {};
   state.round.abilityFocusEnergy = {};
 
+  // The auto-buy sheet folds itself away as the round begins (06-ui-contract.md#the-auto-buy-sheet).
+  // It unfolds in place, above the ability bar, and pushes the bar down the page - which is
+  // harmless while the player is reading it and a misclick waiting to happen once waves are
+  // running. Closing it here rather than refusing to open it during a round is what lets the
+  // rule be "it is never open while you are playing" without ever being "not now".
+  //
+  // Here rather than in ui.js because rounds start without a click: `auto_start_round` would
+  // otherwise leave it open on exactly the setup that never touches the button.
+  state.ui.autoBuyOpen = false;
+
   // Cards die with the round that drew them, exactly like Energy and everything Energy bought.
   // What survives is `powerCards.owned`, which this never touches - the Presence bought the
   // card, and the round has to earn the right to hold it all over again. Cleared before

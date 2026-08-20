@@ -356,10 +356,138 @@ in the state they last chose, not reset.
 [04-economy-formulas.md](./04-economy-formulas.md#unit-stats)), and a new age counting from one
 reads better than a run that remembers every attempt.
 
+### Auto-buy
+
+`auto_buy_abilities` spends the round's Energy on the ability bar every tick. **How far it goes
+is one cumulative dial**, stored at `ui.autoBuy.mode`, and each rung includes the ones above it.
+The order of the rungs is the order the resolver spends in, which is what lets the sheet that
+draws them be read top to bottom as a description of what will happen.
+
+| Rung | What it buys | Gate |
+| --- | --- | --- |
+| `off` | nothing at all | — |
+| `unlocks` | the locked kit, cheapest first — **and nothing of the Innate**, which the rung's own caption says | — |
+| `focus` | the above, then Innate tiers up to the cap, then Focus with everything left | `presence_river_deepens` |
+
+**The Innate's tiers are not a rung of their own.** They were one, between the unlocks and
+Focus, until the [Energy split](#where-the-energy-goes) moved that decision into the Energy
+purse: *Energy to: Focus | Innate Tier 2 | Innate Tier 3* answers the same question with the
+price of the next tier in view, and a rung as well would be one decision wearing two controls —
+which is the thing this dial exists not to be. So the tiers ride on the top rung with Focus,
+where the split divides the two, and `unlocks` buys the kit and stops. A save carrying the
+retired `tiers` is not a mode any more and falls back to the default, which is that top rung.
+
+It is one dial rather than a master switch plus a scope switch plus a preset picker, because
+those would be three controls describing one decision — and three controls can disagree with
+each other where a dial cannot. "Spend nothing" and "spend on unlocks only" are rungs of this
+same ladder, not settings of their own.
+
+**Unlocks before tiers**, which is neither kit order nor price order across the bar. An unlock
+is the cheaper claim on the Energy (5 / 10 / 20 against 40 / 150), and it is what the three cast
+automations are waiting on — each of them idles all round on an ability that was never bought.
+
+**Focus last**, and for a harder reason than taste: it is the only one of the three that can
+never finish. Unlocks run out and tiers run out, so putting either behind an unbounded sink
+would starve it for the whole round.
+
+One consequence of the tiers riding the top rung: until `presence_river_deepens` is bought, a
+round with auto-buy owned buys the kit and nothing else, and the Innate is climbed by hand. That
+is the honest reading of the sheet — the rung says *Unlocks (except Innate)* — and the row that
+opens the top rung costs 5 Presence.
+
+**Tiers step; Focus drains — down to the reserve.** The tier loop buys at most one rung per
+ability per tick, so a dear purchase never empties a purse a cheaper claim wants next tick. The
+Focus loop buys until nothing is affordable, because what is unspent when a round ends is
+destroyed: leaving Energy in the purse is not prudence, it is waste.
+
+#### The reserve
+
+Running last in the tick is **not** on its own enough to stop Focus starving the two rungs above
+it, and the reason is where Energy comes from. A round is fed a few Energy at a time over
+minutes, not in lumps. Focus has no ceiling and a floor price of 3, so a resolver that spent
+everything each tick would hold the purse between 0 and 2 for the whole round — and the 5 the
+cheapest unlock wants, or the 150 the Innate's last tier wants, would never once be on the
+table. Ordering fixes what happens *inside* a tick; only a reserve fixes what happens *across*
+them.
+
+So Focus may spend the purse down to **the cheapest thing auto-buy still intends to buy that is
+not Focus**, and no further. Cheapest-outstanding rather than the whole remaining bill, because
+that is what the loops above actually take next: the purse climbs to 5, spends it, reserves 10,
+and so on up through 20, 40, 150 — each banked only while it is the next thing wanted, with
+everything above it still pouring into the clock.
+
+**This is what makes the Innate cap a decision rather than a label.** The cap is how much the
+player is willing to have banked before Focus gets anything. At 3 the round saves toward 150 and
+the clock waits for it; at 1 nothing is ever saved toward and the first spare 3 Energy buys a
+beat. The risk on the high side is a round that ends with 150 banked and unspent — which is
+exactly the trade the cap exists to hand over.
+
+The cap acts **here** rather than in the tier loop, which is what makes "leave the Innate alone"
+mean something: a tier the cap refuses is not banked toward, so the Energy falls through to Focus
+of its own accord. Both the reserve and the tier loop ask through one predicate
+(`autoBuyTierWanted`), so the purse can never be saved for a purchase the loop then declines.
+
+#### Where the Energy goes
+
+`ui.autoBuy.innateCap` counts the way the card does — `3` is Tier 3, the top of the ladder, and
+the default, so a save that has never touched it behaves exactly as auto-buy always did. `1`
+means "never upgrade it", which is the same statement as "put the Energy into Focus instead".
+
+**It is a split, not a ceiling**, and the two readings only differ where there is something for
+the Energy to go to instead. Both claims live on the dial's **top rung** — the tiers are bought
+there and nowhere else, and so is Focus — so that is the only rung at which the setting is ever
+read, and the only one at which its control is drawn. One rung down neither claim is being paid,
+so there is nothing to divide.
+
+**The player sets it in the Energy purse**, not in the auto-buy sheet — a segmented row reading
+*Energy to: Focus | Innate Tier 2 | Innate Tier 3*, in the middle of the purse between the label
+and the total. It divides that total, and the purse is the one line on the page that is about
+nothing else; the sheet beside it holds the settings that are about the bot. See
+[06-ui-contract.md](./06-ui-contract.md#the-innates-energy-split).
+
+The options are the tiers still **above** the current one, so the control shrinks as the Innate
+climbs and is gone once nothing is left to buy. Reaching the target reads as *Focus* again of its
+own accord, which is the whole of "buy up to here, then go back to Focus" — no second rule.
+
+**Why the player and not a formula.** An earlier cut of this had the bot decide, comparing what a
+tier buys against what the same Energy buys in Focus. It measured correctly and still chose
+wrongly, because the input it measures against is wrong: `worth` for a tier is recovered by
+inverting its Focus anchor, and the Innate's tier 1 anchor was never derived from what a push is
+worth — it was picked so its ladder totals exactly tier 2's price (see `ABILITIES.innate_power`).
+Inverting it credits one push at 0.24, two-thirds of a Boon cast, for relocating a single unit
+that pays no Fear and no Energy. A tier-1 ladder bought to its floor then reads as almost as good
+as tier 2, and the bot declines the upgrade forever. Killing outweighs moving by more than the
+anchors say, and until the anchors say so this is the player's call.
+
+**It binds the automation and nothing else.** The tier button on the card ignores it completely:
+capping the bot must never take a purchase away from the player's own hand.
+
+One cap covers every tiered ability, because there is exactly one tiered ability. A second one
+wants a map keyed by ability rather than a second meaning loaded onto this number.
+
+#### Which rung it buys next
+
+Two orders, at `ui.autoBuy.focusOrder`. Both choose over the same eligible set — unlocked,
+allowed, still on its ladder, and affordable *right now*.
+
+- **`value`** (default) — the highest
+  [value per Energy](./04-economy-formulas.md#what-a-focus-rung-is-worth).
+- **`cheap`** — the lowest price on the board.
+
+Affordability is measured against what [the reserve](#the-reserve) leaves, and is part of the
+choice rather than a check after it. The alternative is a bot that stalls all round saving for
+the finest rung it has ever seen while cheap ones go unbought, and then hands the round's end a
+full purse to burn.
+
+`ui.autoBuy.focusAbilities` is the per-ability opt-out, stored as a list of **refusals only**:
+absent means allowed, so a power card drawn for the first time is focusable without the player
+having to say so. It is the same `!== false` reading `ui.autoCast` takes, for the same reason.
+
 ### The Presence catalogue
 
-Two shapes of row. Three of them **grant** Fear rows outright and forever; the fourth unlocks a
-capability directly, with no Fear row behind it.
+Three shapes of row. Three of them **grant** Fear rows outright and forever; two unlock a
+capability directly, with no Fear row behind them; and one **endows** the next cycle with the
+Fear it opens its bank on.
 
 | Presence id | Grants | Fear price it retires | Presence cost |
 | --- | --- | --- | --- |
@@ -367,6 +495,7 @@ capability directly, with no Fear row behind it.
 | `presence_river_knows` | `auto_buy_abilities` | 200 a cycle | 3 |
 | `presence_all_unbidden` | all five ability auto-casts | 1,025 a cycle | 5 |
 | `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | — | 5 |
+| `presence_river_deepens` | auto-buy's top rung, directly — see [Auto-buy](#auto-buy) | — | 5 |
 | `presence_fear_remains` | 50 Fear in the next cycle's bank, per rung — **ten rungs**, see [04-economy-formulas.md](./04-economy-formulas.md#the-endowment-and-what-it-is-worth-against-holding) | — | 1 a rung |
 
 `presence_fear_remains` is the catalogue's **only repeatable row**, and the only one whose
@@ -375,6 +504,22 @@ holding the Presence under a ~5,000-Fear cycle and none of them do above it. Tha
 late-game sink rather than an oversight — the row exists to compress the shopping prologue of a
 cycle, which is a job that stops mattering once cycles are long. It skips no waves: rounds
 always start at wave 0. The lever if it is ever revisited is the 50, not the 1.
+
+`presence_river_deepens` is **not** the comfort layer the row it extends is, and the two must
+not be read as the same kind of purchase. `auto_buy_abilities` is defended on the grounds that
+it spends Energy the round was going to spend anyway; that defence is exactly what fails here.
+Energy does not survive a round, so once the unlocks and the tiers are bought, everything the
+round earns afterwards is burned at its end. This row is the first thing that turns that
+residue into throughput, and the Focus ladders are deep enough to absorb any purse. **It buys
+power, not clicks.**
+
+Its gate is its depth rather than its price: it needs `presence_river_knows` for the resolver
+and `presence_current_quickens` for the ladders it spends into, which puts it 13 Presence deep
+and makes it a third-Reclaim row. It matches `presence_current_quickens` at 5 rather than
+undercutting it — a player who has bought the row that opens Focus has already said what they
+think of the row that spends it. If a played cycle shows the pair arriving too easily together,
+the lever is this row and not the one under it: Focus by hand has to stay reachable before
+Focus by itself.
 
 **Ten Presence buys every automation in the game, for the rest of the run.** A granted row is
 owned on the far side of a Reclaim: `ascend` empties `upgrades.purchased`, and `upgradeTier`

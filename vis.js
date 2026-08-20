@@ -99,6 +99,21 @@
   state.round.cards = createRoundCardsState();
   state.round.cards.nextDrawWave = state.round.wavesResolved + 3;
 
+  /* The auto-buy sheet, unfolded. It is the hardest surface in the rail to reach by playing -
+   * three Presence rows and 13 Presence between them - and it is the one thing on the page that
+   * changes where everything under it starts, so the fixture owns the lot and leaves the drawer
+   * open. The top rung matters twice over: it is also the only rung that draws the Innate's
+   * Energy split on its card.
+   *
+   * The cap is set *above* the tier the Innate is standing on, so the split renders with a tier
+   * lit rather than with Focus. At or below the current tier it reads as Focus - which is a real
+   * state and the default one, and so says nothing about how a chosen target looks. */
+  state.upgrades.purchased.auto_buy_abilities = 1;
+  state.presenceUpgrades.purchased.presence_current_quickens = 1;
+  state.presenceUpgrades.purchased.presence_river_deepens = 1;
+  state.ui.autoBuy.innateCap = 3;
+  state.ui.autoBuyOpen = true;
+
   state.ui.selectedLand = "6";
 
   // index.html?vis&ended shows the between-round shop over the same frozen board, which is

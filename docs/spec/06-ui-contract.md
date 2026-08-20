@@ -364,15 +364,23 @@ island board, and the between-round shop.
 - A Presence row reads like a shop row and deliberately so — name, what it grants, price,
   buy — but in the Presence colour rather than the Fear one. The two catalogues must not be
   mistakable for each other at a glance, because the currencies are not interchangeable
-- **Every Presence row is a one-off**, so each carries `is-one-off`, the bought label is
-  *Unlocked* and never *Maxed*, and no row shows a tier chip. All three followed the discount
-  ladders out — `presenceUpgradeStatusText`, `presenceMaxedBtn` and the laddered branch are
-  deleted rather than left answering constants
+- **Every Presence row is a one-off except `presence_fear_remains`.** A one-off carries
+  `is-one-off`, reads *Unlocked* rather than *Maxed* when bought, and shows no tier chip —
+  `presenceUpgradeStatusText` returns `""` for it, which is the same answer `upgradeStatusText`
+  gives a non-repeatable Fear row. The ladder row takes the other branch of all three: no
+  `is-one-off`, *Maxed* at the top rung, and a `Tier n/10` chip drawn from the Fear shop's own
+  `shopTierLabelMax` — a Presence ladder is not different enough from a Fear ladder to be worth
+  a second phrasing the player has to learn
 - A Presence row's text names the Fear rows it grants, and where it quotes a price it does so
   **in words**, not from `baseCost`. That is a deliberate exception to the live-price rule the
   Fear ladders follow: a grant is bought once and its worth is "these rows, forever", so there
   is no number that moves. The row granting all five auto-casts quotes no price at all — five
   prices summed into one figure is arithmetic the player did not ask for
+- **The ladder row is the exception to that exception**, and takes the live-price rule back:
+  its text quotes what it endows now and what one more rung adds, both filled at render. It is
+  bought ten times and what it grants moves every time, so a sentence written flat would be
+  wrong at nine rungs out of ten. The objection above is to a number re-read every frame on a
+  row bought *once*, which is a different case
 - A bought Presence row sinks into its own sold-out block, folded shut behind a count, exactly
   as a bought one-off does in the Fear shop
 
@@ -501,6 +509,104 @@ from the dev tools, and still is.
   the page says — that it and everything bought with it reset when a round starts. It names
   `headwaters` as the one thing that reset does not take to zero, since the shop row is
   otherwise the only place a player could learn that a round can open with Energy at all.
+
+## The auto-buy sheet
+
+A drawer under the Energy purse holding every setting the auto-buy resolver reads
+([05-progression.md](./05-progression.md#auto-buy)). It is closed by default and unfolds in
+place, above the ability bar.
+
+- **The button lives in the purse**, beside the playtest grant and at the same footnote weight:
+  it is only ever read next to the number whose spending it decides. It appears the instant
+  `auto_buy_abilities` is **owned** (`autoBuyOwned`, off `upgradeTier`, not the round snapshot)
+  and never disappears again — the same reading the auto-cast switch takes.
+- **It is the same button pressed, not a second one that says close.** `aria-pressed` and
+  `aria-expanded` both follow the open state, so the control that opened the drawer is the
+  control that shuts it, and there is never a pair to tell apart.
+- **The spend ladder is drawn cumulative.** Every rung at or below the chosen one lights its
+  marker, so "everything down to here" is visible rather than carried by the wording alone.
+  `off` is never marked as covered — it is the absence of the ladder, not its first rung.
+- **The top rung is drawn even before `presence_river_deepens` is owned**, greyed, with a
+  caption naming the row that would open it. A control that appears from nowhere later is a
+  control the player never learns is coming.
+- **Every visual reads the effective rank, not the stored preference.** They differ on exactly
+  one save — one that chose the top rung before owning the row — and drawing the stored choice
+  there would describe something the game is not doing. The preference is not lost by going
+  undrawn; it is still what turns Focus on, with no second click, when the row is bought.
+- **Groups the dial has not reached are dimmed and inert, never removed.** The sheet must not
+  change height as the ladder is walked: a panel that reflows under the pointer is a panel that
+  gets misclicked.
+- **The Innate cap is not in the sheet.** It lives in the Energy purse, beside the button that
+  opens the sheet — see [The Innate's Energy split](#the-innates-energy-split) below. The sheet
+  holds what is about the bot; where this round's Energy goes is about the purse.
+- **The Innate's tiers are not a rung.** The ladder is `off` / `unlocks` / `+ Focus`, and the
+  `unlocks` rung carries the caption *(except Innate)* — the one thing it deliberately leaves
+  out, decided by the split instead. Saying so on the rung is what keeps the removed rung from
+  reading as a lost feature.
+- **The per-ability opt-outs use the auto-cast switch verbatim.** Both answer "may the
+  automation touch this ability", one wave of the hand apart, and giving the second question a
+  different shape would make them look like different kinds of decision. An ability with no
+  Focus ladder is left out of the list rather than shown dead.
+- **Prices in the captions are built from the catalogue**, never written into `i18n.js`. A price
+  in a translation is a price that goes stale silently in one language and not the other.
+
+### The Innate's Energy split
+
+A segmented row in the Energy purse, between the label and the total, reading *Energy to:
+Focus | Innate Tier 2 | Innate Tier 3*. It sets `ui.autoBuy.innateCap` — see
+[05-progression.md](./05-progression.md#where-the-energy-goes) for what it means.
+
+- **In the purse, not on the card and not in the sheet.** It divides this round's Energy between
+  two claims, and the purse is the line that *is* this round's Energy — the number it splits is
+  the number beside it. It is held in the middle by its own auto margins rather than by an order
+  in the markup, so it stays between the label and the total whether or not the playtest grant
+  is showing. There is exactly one control for it — no mirror in the sheet, because two editable
+  copies of one setting can disagree.
+- **The option names carry "Innate"** — *Innate Tier 2*, not *Tier 2*. On the card the ability
+  was the heading above it; in the purse nothing else names it, and a bare tier number beside an
+  Energy total says nothing about what it is a tier of.
+- **Drawn only at the dial's top rung**, and that is the whole of the visibility rule. One rung
+  down the bot buys neither tiers nor Focus, so the control would be offering a choice between
+  two things that are not happening. It is gone entirely once the last tier is bought: with
+  nothing above the current tier there is no split left to make.
+- **The options are the tiers still above the current one**, read off the catalogue rather than
+  written out, so the row shrinks as the Innate climbs and is gone once nothing is left to buy.
+  A fourth tier would appear here without the file being touched.
+- **Reaching the target reads as *Focus* again.** A cap at or below the tier already standing is
+  not a target, it is "leave it alone" — so the row answers Focus of its own accord rather than
+  pointing at a tier that has already been bought. That is "buy up to here, then back to Focus"
+  drawn, with no second rule behind it.
+- **A segmented pill, the same shape as the speed dial**, for the same reason: these are settings
+  of one control, so the chosen one is lit and the rest recede. A row of equal buttons would read
+  as three commands rather than one choice.
+- **The chosen option is patched, the option list is rebuilt.** Which one is lit moves on every
+  click and must not rebuild the row under the pointer; how many there are moves only with the
+  dial and with the tier, and its own signature carries both (`energySplitSignature`) — the row
+  is not in the ability bar any more, so it renders and patches on its own.
+
+### Folding it away
+
+Five ways, all writing through one setter so the button's pressed state, the sheet's `hidden`
+and the saved flag can never disagree:
+
+1. the purse button again, 2. **Done** at the foot — because after a scroll the purse button is
+behind the player rather than in front of them, and it returns focus to that button so the
+keyboard is not stranded on a node that just vanished, 3. **Esc**, 4. a click outside, and
+5. **the round's own start**, which is in the engine (`startRound`) rather than here because a
+round can begin with nobody clicking anything.
+
+That fifth one is what earns the whole design. The sheet pushes the ability bar down the page,
+which is harmless while it is being read and a misclick waiting to happen once waves are
+running — so rather than refusing to open during a round, it simply cannot survive into one.
+Reading it and playing are not things anyone does at once.
+
+**Clicking away is bound to `click`, not `pointerdown`.** Closing the sheet pulls the ability
+bar up the page; on `pointerdown` that happens *between* press and release, and the click is
+then dispatched to the common ancestor of what was pressed and what was released — so a press
+aimed at a card lands on whatever slid into its place. That is the misclick the round's collapse
+exists to prevent, reintroduced by the control meant to be harmless. On `click` the shift
+happens after the event has been delivered. The click is not swallowed either: this is an inline
+drawer, not a modal, and a click on the board is a click on the board.
 
 ## Power Cards
 
@@ -716,6 +822,13 @@ Two clarifications the implementation forced:
   **on** is patched per frame like every other value: folding it into the signature would
   rebuild the whole bar on every click of the box and destroy the running cooldown sweep, which
   is the exact failure the render/patch split exists to prevent.
+- The auto-buy sheet splits the same way. Its rebuild signature carries only what changes its
+  *shape* — the language, whether it is open, whether either Presence row is owned, and which
+  abilities are in the bar to be listed. Everything the player can move (the chosen rung, the
+  cap, the order, the switches) and everything that moves on its own (the cooldown figures, which
+  the bot is still buying down while the sheet is open) is patched. Folding the chosen rung into
+  the signature would rebuild the sheet on every click of a radio, which is how a `<select>`
+  loses focus mid-choice.
 - The Dahan strike bar's **fill** is patched per frame like the two bars above it, and the
   fraction is computed **once per frame rather than once per bar** — there is one clock for the
   whole island, so eight bars asking for it separately would be seven wasted answers. Its

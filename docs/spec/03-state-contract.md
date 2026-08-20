@@ -54,6 +54,13 @@ Define the canonical save shape for the round-based redesign.
       "wash_away": true,
       "flash_floods": true
     },
+    "autoBuy": {
+      "mode": "focus",
+      "innateCap": 3,
+      "focusOrder": "value",
+      "focusAbilities": {}
+    },
+    "autoBuyOpen": false,
     "playtest": false,
     "defeatFx": null,
     "blightFx": null,
@@ -272,6 +279,38 @@ Fields the first draft of this contract did not have. Each earns its place:
   next round, and buying an automation mid-round still does nothing until the next round takes
   its snapshot. Switching off stops future casts and nothing else — no cooldown is reset, shortened or
   lengthened, no cast is undone, nothing is refunded, and the upgrade is never un-bought.
+- **`ui.autoBuy`** — how far `auto_buy_abilities` spends the round's Energy, and how it chooses
+  once it gets there. See [05-progression.md](./05-progression.md#auto-buy) for the dial itself.
+  A preference like the switches above it, and it survives a Reclaim with the rest of `ui.*`.
+  Four fields:
+  - `mode` — one of `off` / `unlocks` / `focus`, cumulative in that order. It is
+    stored at the **top** rung by default and gated below it: `autoBuyModeRank` clamps the
+    stored value to what is owned, so a save may carry `focus` without owning
+    `presence_river_deepens` and start acting on it the instant the row is bought, with no
+    second click. `autoBuyMode` returns the stored preference and `autoBuyModeRank` what it
+    actually does — the two differ on exactly that one save, and the UI draws the rank.
+    A save from before the Energy split may hold the retired `tiers`; it is not a mode any
+    more and falls back to the default like any other unknown string, which is the top rung —
+    where the tiers are bought now.
+  - `innateCap` — a tier **as the card counts it**, so `3` is Tier 3 and `1` is "never upgrade
+    it". It is the split of the round's Energy between the tier ladder and Focus, and it is set
+    in the Energy purse rather than in the auto-buy sheet — see
+    [05-progression.md](./05-progression.md#where-the-energy-goes). It is only ever read at the
+    dial's top rung, because that is where the tiers are bought: below it the bot buys neither
+    tiers nor Focus, so there is nothing for a split to divide. It binds the resolver
+    only in any case; `upgradeAbility` ignores it, and capping the automation never takes a
+    purchase away from the player's own hand.
+  - `focusOrder` — `value` or `cheap`.
+  - `focusAbilities` — the per-ability opt-out, stored as **refusals only**. Absent means
+    allowed, the same `!== false` reading `ui.autoCast` takes, which is what makes a newly
+    drawn power card focusable without a click. Unlike `ui.autoCast` it is *not* rebuilt from a
+    registry: Focus applies to the kit and to every card, and cards arrive across a cycle, so
+    rebuilding would write a settled `true` for a card the player has never seen. Unknown ids
+    are dropped on load.
+- **`ui.autoBuyOpen`** — whether the auto-buy sheet is unfolded. Disclosure rather than a rule,
+  but it lives in the state because the **engine** closes it: `startRound` sets it false, so a
+  round begun by `auto_start_round` — which no click ever touches — folds it away too. See
+  [06-ui-contract.md](./06-ui-contract.md#the-auto-buy-sheet).
 - **`ui.playtest`** — whether the playtest code has been redeemed, and with it the only thing
   in the state no rule reads: it widens the speed dial, reveals two buttons that hand out
   currency and one readout of the cycle's Fear, and nothing else in the engine branches on it.
@@ -286,7 +325,13 @@ Fields the first draft of this contract did not have. Each earns its place:
   and counting it as such would corrupt the one number the ledger exists to report. Granted is
   still counted, because it is still spendable: `generated + granted - spent` is `meta.fear`,
   and that identity is what makes the readout self-checking. A *cycle* is the span between
-  ascensions, and `ascend()` is what zeroes all three. Read through `cycleFearTotals()`.
+  ascensions, and `ascend()` is what zeroes all three — except that `granted` opens the new
+  cycle at `ascensionStartFear(state)` rather than at 0, matched by the same figure in
+  `meta.fear`, so the identity holds on the new cycle's first tick as `0 + n - 0 = n`. That is
+  `presence_fear_remains`, and it lands in **granted** for exactly the reason the playtest
+  button does: a head start is not income, and counting it as such would let it mint Presence
+  of its own. See
+  [07-content-registry.md](./07-content-registry.md#the-row-that-endows-a-cycle). Read through `cycleFearTotals()`.
   **On load, an absent `cycleFearGenerated` means "the bank was earned, and so was what it has
   already bought"**, not zero — and not `meta.fear` either, which was the first answer and was
   wrong by exactly the size of the player's shopping. Fear leaves the bank in one place only

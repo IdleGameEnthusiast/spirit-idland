@@ -76,6 +76,9 @@ const dom = {
   energyLabel: document.getElementById("energyLabel"),
   energyValue: document.getElementById("energyValue"),
   energyHint: document.getElementById("energyHint"),
+  energySplit: document.getElementById("energySplit"),
+  autoBuyBtn: document.getElementById("autoBuyBtn"),
+  autoBuySheet: document.getElementById("autoBuySheet"),
   abilityBar: document.getElementById("abilityBar"),
 
   mapTitle: document.getElementById("mapTitle"),
@@ -121,6 +124,8 @@ const renderCache = {
   language: null,
   map: null,
   ladder: null,
+  energySplit: null,
+  autoBuySheet: null,
   abilityBar: null,
   shop: null,
   presenceShop: null,
@@ -806,6 +811,304 @@ function renderLandDetail(state) {
       </div>
     </div>
   `;
+}
+
+/* ------------------------------------------------------------------ *
+ * The auto-buy sheet (06-ui-contract.md#the-auto-buy-sheet)            *
+ *                                                                      *
+ * The drawer under the Energy purse, holding every setting the auto-buy *
+ * resolver reads. Same split as the ability bar below it: built when    *
+ * its shape changes, patched every frame otherwise - so choosing a rung *
+ * does not rebuild the node the pointer is on.                          *
+ * ------------------------------------------------------------------ */
+
+// What changes the sheet's shape: the language, whether it is open at all, whether either
+// Presence row has been bought - the top rung and the two Focus groups appear with them - and
+// which abilities are in the bar to be listed. Nothing that merely *moves* is in here: the
+// chosen rung, the cap, the order, the switches and the cooldown figures are all patched, which
+// is what lets a click on a radio leave the rest of the sheet standing.
+function autoBuySheetSignature(state) {
+  return [
+    currentLang(state),
+    state.ui.autoBuyOpen === true ? 1 : 0,
+    autoBuyOwned(state) ? 1 : 0,
+    abilityFocusUnlocked(state) ? 1 : 0,
+    autoBuyFocusUnlocked(state) ? 1 : 0,
+    unlockedAbilityIds(state).join(",")
+  ].join("|");
+}
+
+// One rung of the spend ladder. `locked` is the top rung before its Presence row is owned: it
+// is drawn, and says what would open it, rather than being left out - a control that appears
+// from nowhere later is a control the player never learns is coming.
+function autoBuyStepMarkup(mode, name, why, locked) {
+  const input = locked
+    ? `<input type="radio" name="autoBuyMode" value="${mode}" disabled>`
+    : `<input type="radio" name="autoBuyMode" value="${mode}" data-auto-buy-mode="${mode}">`;
+  return `
+    <label class="autobuy-step${locked ? " is-locked" : ""}" data-mode="${mode}">
+      ${input}
+      <span class="st-rung" aria-hidden="true">${mode === "off" ? "·" : "&#8627;"}</span>
+      <span class="st-name">${name}</span>
+      <span class="st-why">${why}</span>
+    </label>
+  `;
+}
+
+function autoBuyOrderMarkup(order, name, why) {
+  return `
+    <label class="autobuy-step" data-order="${order}">
+      <input type="radio" name="autoBuyOrder" value="${order}" data-auto-buy-order="${order}">
+      <span class="st-rung" aria-hidden="true">·</span>
+      <span class="st-name">${name}</span>
+      <span class="st-why">${why}</span>
+    </label>
+  `;
+}
+
+/* The per-ability opt-outs, on the same switch the ability foot uses for auto-cast. Deliberately
+ * the same control: both answer "may the automation touch this ability", one wave of the hand
+ * apart, and giving the second question a different shape would make them look like different
+ * kinds of decision.
+ *
+ * Over `unlockedAbilityIds`, so it lists the kit and whatever cards the round is holding - the
+ * same set the resolver actually walks. An ability that cannot be focused at all is left out
+ * rather than shown dead: with no ladder there is nothing for the switch to permit.
+ */
+function autoBuyFocusListMarkup(state) {
+  const t = locale(state);
+  const rows = unlockedAbilityIds(state)
+    .filter((abilityId) => abilityFocusMaxPurchases(state, abilityId) > 0)
+    .map((abilityId) => {
+      const parts = abilityFocusRangeParts(state, abilityId);
+      return `
+        <label class="ability-auto" title="${template(t.autoBuyFocusRangeHint, parts)}">
+          <input type="checkbox" data-auto-buy-focus="${abilityId}">
+          <span>${abilityName(state, abilityId)}</span>
+          <span class="fx-cd" data-role="range" data-range-ability="${abilityId}"></span>
+          <span class="auto-switch" aria-hidden="true"></span>
+        </label>
+      `;
+    })
+    .join("");
+  return `<div class="focus-list">${rows}</div>`;
+}
+
+function renderAutoBuySheet(state) {
+  const t = locale(state);
+  dom.autoBuyBtn.hidden = !autoBuyOwned(state);
+  dom.autoBuySheet.hidden = !(autoBuyOwned(state) && state.ui.autoBuyOpen === true);
+  if (dom.autoBuySheet.hidden) {
+    dom.autoBuySheet.innerHTML = "";
+    return;
+  }
+
+  const focusUnlocked = autoBuyFocusUnlocked(state);
+
+  dom.autoBuySheet.innerHTML = `
+    <p class="autobuy-title">${t.autoBuyTitle}</p>
+    <small class="autobuy-sub">${t.autoBuySub}</small>
+
+    <fieldset class="autobuy-group">
+      <legend class="autobuy-legend">${t.autoBuySpendLegend}</legend>
+      ${autoBuyStepMarkup("off", t.autoBuyModeOff, t.autoBuyModeOffWhy, false)}
+      ${autoBuyStepMarkup("unlocks", t.autoBuyModeUnlocks, t.autoBuyModeUnlocksWhy, false)}
+      ${autoBuyStepMarkup(
+        "focus",
+        t.autoBuyModeFocus,
+        focusUnlocked ? t.autoBuyModeFocusWhy : t.autoBuyModeFocusLocked,
+        !focusUnlocked
+      )}
+    </fieldset>
+
+
+    <fieldset class="autobuy-group" data-group="order">
+      <legend class="autobuy-legend">${t.autoBuyOrderLegend}</legend>
+      ${autoBuyOrderMarkup("value", t.autoBuyOrderValue, t.autoBuyOrderValueWhy)}
+      ${autoBuyOrderMarkup("cheap", t.autoBuyOrderCheap, t.autoBuyOrderCheapWhy)}
+    </fieldset>
+
+    <fieldset class="autobuy-group" data-group="which">
+      <legend class="autobuy-legend">${t.autoBuyFocusLegend}</legend>
+      ${autoBuyFocusListMarkup(state)}
+    </fieldset>
+
+    <p class="autobuy-foot">${t.autoBuyFoot}</p>
+
+    <div class="autobuy-close">
+      <span class="esc-hint">${t.autoBuyCloseHint}</span>
+      <button type="button" class="autobuy-done" data-auto-buy-done>${t.autoBuyDone}</button>
+    </div>
+  `;
+}
+
+/* Per-frame patch: everything the player can move, plus the cooldown figures, which move on
+ * their own as the bot spends. No node is replaced, so a click never lands on a node that has
+ * been swapped under the pointer mid-press. */
+function patchAutoBuySheet(state) {
+  const t = locale(state);
+  const open = autoBuyOwned(state) && state.ui.autoBuyOpen === true;
+
+  dom.autoBuyBtn.hidden = !autoBuyOwned(state);
+  dom.autoBuyBtn.textContent = t.autoBuyBtn;
+  dom.autoBuyBtn.title = t.autoBuyBtnHint;
+  dom.autoBuyBtn.setAttribute("aria-expanded", String(open));
+  dom.autoBuyBtn.setAttribute("aria-pressed", String(open));
+  dom.autoBuySheet.hidden = !open;
+  if (!open) return;
+
+  /* Every visual here reads the *effective* rank, not the stored preference. The two differ on
+   * exactly one save - one that chose the top rung before owning the Presence row - and showing
+   * the stored choice there would draw a sheet that describes something the game is not doing.
+   * The preference is not lost by being undrawn: it is still what turns Focus on, with no
+   * second click, the moment the row is bought (see autoBuyModeRank). */
+  const rank = autoBuyModeRank(state);
+  for (const step of dom.autoBuySheet.querySelectorAll(".autobuy-step[data-mode]")) {
+    const mode = step.getAttribute("data-mode");
+    const stepRank = AUTO_BUY_MODES.indexOf(mode);
+    step.classList.toggle("is-active", stepRank === rank);
+    // "Everything down to here", which is what makes the ladder read as cumulative. "Off" is
+    // never covered - it is the absence of the ladder rather than its first rung.
+    step.classList.toggle("is-covered", stepRank > 0 && stepRank <= rank);
+    const box = step.querySelector("input");
+    if (box) box.checked = stepRank === rank;
+  }
+
+  // Dimmed by what the dial has reached, so the sheet says what will happen rather than what
+  // could. Inert, not removed: the height stays put as the ladder is walked.
+  for (const name of ["order", "which"]) {
+    const group = dom.autoBuySheet.querySelector(`[data-group=${name}]`);
+    if (group) group.classList.toggle("is-off", rank < AUTO_BUY_MODES.indexOf("focus"));
+  }
+
+
+  const order = autoBuyFocusOrder(state);
+  for (const box of dom.autoBuySheet.querySelectorAll("[data-auto-buy-order]")) {
+    box.checked = box.getAttribute("data-auto-buy-order") === order;
+  }
+
+  for (const box of dom.autoBuySheet.querySelectorAll("[data-auto-buy-focus]")) {
+    box.checked = autoBuyFocusAllowed(state, box.getAttribute("data-auto-buy-focus") || "");
+  }
+
+  // The cooldowns move under the sheet while it is open - the bot is still spending, and the
+  // wave clock is still running - so they are patched rather than left as the rebuild wrote them.
+  // The row's tooltip says the same two numbers and is rewritten with them: it was drawn once at
+  // build time, which is exactly long enough to start disagreeing with the cell beside it.
+  for (const cell of dom.autoBuySheet.querySelectorAll("[data-range-ability]")) {
+    const abilityId = cell.getAttribute("data-range-ability") || "";
+    const parts = abilityFocusRangeParts(state, abilityId);
+    cell.textContent = template(t.autoBuyFocusRange, parts);
+    const row = cell.closest(".ability-auto");
+    if (row) row.title = template(t.autoBuyFocusRangeHint, parts);
+  }
+}
+
+// Opening, closing, and the one writer both go through - so the button's pressed state, the
+// sheet's `hidden`, and the saved flag can never disagree with each other.
+function setAutoBuyOpen(state, open) {
+  state.ui.autoBuyOpen = open === true && autoBuyOwned(state);
+  updateUI(state);
+  persist();
+}
+
+/* ------------------------------------------------------------------ *
+ * The Innate's Energy split                                            *
+ * (06-ui-contract.md#the-innates-energy-split,                         *
+ *  05-progression.md#where-the-energy-goes)                            *
+ *                                                                      *
+ * Where the automation puts this round's Energy: into Focus, or up the  *
+ * Innate's tiers.                                                      *
+ *                                                                      *
+ * It sits in the Energy purse, between the label and the total, because *
+ * it is a question about the purse - which of two claims this round's   *
+ * Energy answers - and the purse is the one line on the page that is    *
+ * about nothing else. On the Innate's card it was a setting about the   *
+ * bot hiding among prices to press; here it stands beside the number it *
+ * divides, next to the "Customize" button holding the rest of the bot's *
+ * settings.                                                            *
+ *                                                                      *
+ * Drawn only at the top rung of the dial, and that is the whole of the  *
+ * visibility rule. One rung down the bot buys neither tiers nor Focus,  *
+ * so the control would be offering a choice between two things that are *
+ * not happening - see autoBuyTierWanted, which is only asked there.     *
+ *                                                                      *
+ * The options are the tiers still *above* the one the Innate stands on, *
+ * so the row shrinks as it climbs and is gone once the last tier is     *
+ * bought. They are read off the catalogue rather than written out, so a *
+ * fourth tier would appear here without this file being touched.       *
+ *                                                                      *
+ * A segmented pill, the same shape and the same reasoning as the speed  *
+ * dial: settings of one control, where the chosen one is lit and the    *
+ * others recede.                                                       *
+ * ------------------------------------------------------------------ */
+
+// The Innate, without this file being the second place that says so. One cap is stored for one
+// tiered ability (see autoBuyTierCap), and this is that ability, read off the kit.
+function energySplitAbilityId(state) {
+  for (const abilityId of spiritAbilityIds(state)) {
+    if (abilityIsTiered(abilityId)) return abilityId;
+  }
+  return null;
+}
+
+// What changes the row's shape: the language, the rung the dial stands on - which is also what
+// decides whether it is drawn at all - and the tier the Innate has reached, since every
+// purchase takes an option off the row. The *chosen* option is patched per frame, like the
+// auto-cast boxes, so clicking one does not rebuild the row under the pointer.
+function energySplitSignature(state) {
+  return [
+    currentLang(state),
+    autoBuyOwned(state) ? autoBuyModeRank(state) : -1,
+    abilityTier(state, energySplitAbilityId(state) || "")
+  ].join("|");
+}
+
+function renderEnergySplit(state) {
+  const t = locale(state);
+  const abilityId = energySplitAbilityId(state);
+  const drawn = abilityId !== null
+    && autoBuyOwned(state)
+    && autoBuyModeRank(state) >= AUTO_BUY_MODE_RANK.focus
+    // Nothing above the tier it stands on: there is no split left to make, so the row goes
+    // rather than standing there offering Focus against nothing.
+    && Number.isFinite(abilityUpgradeCost(state, abilityId));
+
+  dom.energySplit.hidden = !drawn;
+  if (!drawn) {
+    dom.energySplit.innerHTML = "";
+    return;
+  }
+
+  dom.energySplit.setAttribute("aria-label", t.innateSplitLegend);
+  dom.energySplit.title = t.innateSplitHint;
+
+  const current = abilityTier(state, abilityId) + 1;
+  // Which option is lit is left to the patch below, which runs on this frame and every one
+  // after it - writing it here as well would be the same rule in two places.
+  const options = [`<button type="button" class="tier-split-btn" data-tier-split="${abilityId}" data-tier-split-cap="1">${t.innateSplitFocus}</button>`];
+  for (let tier = current + 1; tier <= abilityMaxTier(abilityId) + 1; tier += 1) {
+    options.push(`<button type="button" class="tier-split-btn" data-tier-split="${abilityId}" data-tier-split-cap="${tier}">${template(t.innateSplitTier, { tier })}</button>`);
+  }
+
+  dom.energySplit.innerHTML = `
+    <span class="tier-split-label">${t.innateSplitLegend}</span>
+    ${options.join("")}
+  `;
+}
+
+// A cap at or below the tier already reached is not a target, it is "leave it alone" - which is
+// what Focus means. Reaching the target lands here too, so the row answers "Focus" again of its
+// own accord rather than pointing at a tier that has already been bought.
+function patchEnergySplit(state) {
+  if (dom.energySplit.hidden) return;
+  const cap = autoBuyTierCap(state);
+  for (const button of dom.energySplit.querySelectorAll("[data-tier-split]")) {
+    const abilityId = button.getAttribute("data-tier-split") || "";
+    const targeted = cap > abilityTier(state, abilityId) + 1 ? cap : 0;
+    const mine = Number(button.getAttribute("data-tier-split-cap"));
+    button.classList.toggle("is-active", mine === 1 ? targeted === 0 : targeted === mine);
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1570,7 +1873,7 @@ function renderPresenceShop(state) {
 
   function renderRow(presenceId, soldOutRow, parent) {
     // The same three-way the Fear shop's renderRow makes, and for the same reason: one row in
-    // this catalogue is a ladder now (`presence_fear_remains`), so the tier chip and the
+    // this catalogue is a ladder now (`presence_island_remembers`), so the tier chip and the
     // "Maxed" button label are back for it. A one-off still draws no chip and still reads
     // "Unlocked" rather than "Maxed" - `presenceUpgradeStatusText` returns "" for it, and
     // `is-one-off` keeps the layout it already had.
@@ -2220,6 +2523,24 @@ function updateUI(state) {
   patchSaveStatus(state);
   patchNextCardHint(state);
 
+  // Before the bar, because it sits above the bar and its unfolding is what decides where the
+  // bar starts on the page.
+  // The purse's own control, drawn ahead of the sheet that unfolds beneath it - the two are
+  // read as one row and the split is the half that is always there.
+  const nextEnergySplitSig = energySplitSignature(state);
+  if (renderCache.energySplit !== nextEnergySplitSig) {
+    renderEnergySplit(state);
+    renderCache.energySplit = nextEnergySplitSig;
+  }
+  patchEnergySplit(state);
+
+  const nextAutoBuySig = autoBuySheetSignature(state);
+  if (renderCache.autoBuySheet !== nextAutoBuySig) {
+    renderAutoBuySheet(state);
+    renderCache.autoBuySheet = nextAutoBuySig;
+  }
+  patchAutoBuySheet(state);
+
   const nextAbilitySig = abilityBarSignature(state);
   if (renderCache.abilityBar !== nextAbilitySig) {
     renderAbilityBar(state);
@@ -2344,6 +2665,108 @@ dom.autoRoundBtn.addEventListener("click", () => {
   setAutoStartRound(state, !autoStartRoundOn(state));
   updateUI(state);
   persist();
+});
+
+/* ---------- The auto-buy sheet ----------
+ *
+ * Four ways out, all writing through setAutoBuyOpen: the purse button again, the Done button at
+ * the foot, Esc, and a click outside. The fifth is the round's own start, and that one is in
+ * the engine (see startRound) because a round can begin without anybody clicking anything.
+ */
+dom.autoBuyBtn.addEventListener("click", () => {
+  setAutoBuyOpen(state, state.ui.autoBuyOpen !== true);
+});
+
+/* The Energy split, in the purse beside that button. Its own listener rather than the sheet's:
+ * it is not in the sheet, and it stays reachable while the sheet is folded away - which is the
+ * point of it being on the purse at all. */
+dom.energySplit.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const split = target.closest("[data-tier-split]");
+  if (!split) return;
+  setAutoBuyTierCap(state, Number(split.getAttribute("data-tier-split-cap")));
+  updateUI(state);
+  persist();
+});
+
+dom.autoBuySheet.addEventListener("click", (event) => {
+  const target = event.target;
+
+  const done = target.closest("[data-auto-buy-done]");
+  if (done) {
+    setAutoBuyOpen(state, false);
+    // The click came from inside the thing that just vanished, so the keyboard would otherwise
+    // be left on a detached node and tab from the top of the document.
+    dom.autoBuyBtn.focus();
+    return;
+  }
+
+  // The whole row is claimed, not the radio inside it - a click on the label's text arrives
+  // once as itself and once as the click the label synthesizes on the input, and only the
+  // second carries the data attribute. The same double-event the ability foot's switch has.
+  const step = target.closest(".autobuy-step[data-mode]");
+  if (step) {
+    const box = step.querySelector("[data-auto-buy-mode]");
+    if (box) {
+      setAutoBuyMode(state, box.getAttribute("data-auto-buy-mode") || "");
+      updateUI(state);
+      persist();
+    }
+    return;
+  }
+
+  const orderRow = target.closest(".autobuy-step[data-order]");
+  if (orderRow) {
+    const box = orderRow.querySelector("[data-auto-buy-order]");
+    if (box) {
+      setAutoBuyFocusOrder(state, box.getAttribute("data-auto-buy-order") || "");
+      updateUI(state);
+      persist();
+    }
+    return;
+  }
+
+  const focusRow = target.closest(".ability-auto");
+  if (focusRow) {
+    const box = target.closest("[data-auto-buy-focus]");
+    if (box) {
+      // Read off the box rather than derived from autoBuyFocusAllowed, for the same reason the
+      // auto-cast switch does: deriving it would make the first click of a default-on switch a
+      // no-op that appears to un-tick itself.
+      setAutoBuyFocusAllowed(state, box.getAttribute("data-auto-buy-focus") || "", box.checked === true);
+      updateUI(state);
+      persist();
+    }
+  }
+});
+
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (state.ui.autoBuyOpen !== true) return;
+  setAutoBuyOpen(state, false);
+  dom.autoBuyBtn.focus();
+});
+
+/* Clicking away, on `click` and deliberately not on `pointerdown`.
+ *
+ * Closing the sheet takes it out of the flow and pulls the ability bar up the page. On
+ * pointerdown that happens *between* the press and the release, and a click is dispatched to
+ * the common ancestor of what was pressed and what was released - so a press aimed at a card
+ * would land on whatever slid into its place. That is the misclick the round's own collapse
+ * exists to prevent, reintroduced by the control meant to be harmless.
+ *
+ * On `click` the shift happens after the event has already been delivered, so the press does
+ * what it was aimed at and the sheet folds away behind it. Clicking away is not swallowed
+ * either: this is an inline drawer, not a modal, and a click on the board is a click on the
+ * board.
+ */
+document.addEventListener("click", (event) => {
+  if (state.ui.autoBuyOpen !== true) return;
+  const target = event.target;
+  if (dom.autoBuySheet.contains(target) || dom.autoBuyBtn.contains(target)) return;
+  setAutoBuyOpen(state, false);
 });
 
 dom.abilityBar.addEventListener("click", (event) => {

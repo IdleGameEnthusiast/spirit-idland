@@ -348,10 +348,53 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     to two decimals instead of a tier, quotes the strike interval in the speed dial's own
     seconds, and logs a purchase as Fear in and haste out.
 14. `auto_buy_abilities` spends the round's Energy on the bar each tick: the locked kit first,
-    cheapest before dearest, so a purse of 15 takes the 5 and the 10 and leaves the 20; then
-    one Innate rung per tick, never two, and never before the kit is bought. Bought mid-round
+    cheapest before dearest, so a purse of 15 takes the 5 and the 10 and leaves the 20; then —
+    once `presence_river_deepens` opens the top rung — one Innate rung per tick, never two, and
+    never before the kit is bought. Bought mid-round
     it spends nothing until the next round starts, like every other automation. What it buys
     arrives ready and can be cast by an automation on the same tick.
+14b. **The auto-buy dial** (`tests/autobuy.test.js`, [05-progression.md](./05-progression.md#auto-buy)):
+    - `off` spends nothing at all; `unlocks` buys the kit and stops before the Innate — tiers
+      and Focus both ride the top rung, so neither is bought a rung down. The retired `tiers`
+      rung is refused by the setter, and a save holding it loads as the top rung.
+    - The dial defaults to the top rung and is **clamped by ownership, not by the stored value**:
+      a fresh game reads `focus` as the preference and behaves at `unlocks`, and buying the
+      Presence row turns it on with no second click. An unknown mode is refused by the setter.
+    - The Innate cap defaults to the ladder's top, so an untouched save behaves as before. Capped
+      at 2 the Innate stops one rung short across repeated ticks and the 150 is never spent;
+      capped at 1 it is never upgraded. What the cap refuses goes into Focus instead. It binds the
+      resolver only — `upgradeAbility` still works by hand. Out-of-range values are clamped.
+    - **The split** ([05-progression.md](./05-progression.md#where-the-energy-goes)). At the dial's
+      top rung the cap decides how far the Innate climbs: set to Focus nothing is banked for it and
+      the reserve is 0, set to Tier 2 the 40 is banked and the climb is wanted. Reaching the target
+      hands the Energy back to Focus — the reserve drops to 0 with no second rule. A target two
+      rungs up still climbs one rung per tick. **Below the top rung there is nothing to divide**:
+      at `unlocks` no tier is bought whatever the cap says, and nothing is banked toward one. The
+      top of the ladder stops it. It binds the automation only — `upgradeAbility`
+      still works by hand — and what it refuses reaches Focus in the same tick.
+    - Focus **drains** the purse rather than stepping, stops exactly on each ability's floor, and
+      terminates on any purse (every ladder is finite). It runs after the unlocks, never instead
+      of them.
+    - **The reserve.** Fed a trickle of 2 Energy a tick — under the cheapest Focus rung — a round
+      still reaches every unlock (5 / 10 / 20) and the Innate's capped tier (40, then 150).
+      Without a reserve Focus holds the purse between 0 and 2 forever and none of those five
+      prices is ever on the table, which spending order within a tick does not fix. Once the kit
+      is bought and the cap reached the reserve is 0 and Focus takes everything; at a cap of 1 it
+      is 0 from the first tick. "Everything" means nothing buyable is left unbought — not that the
+      purse is near zero, since Focus prices climb above what is left over.
+    - Automated Focus purchases are **silent**; a clicked one still logs. Bounded events log,
+      repeating ones do not — the same line auto-cast draws.
+    - `value` order picks the argmax of
+      [value per Energy](./04-economy-formulas.md#what-a-focus-rung-is-worth) over everything
+      affordable *right now*; `cheap` picks the lowest price. Nothing affordable means nothing
+      picked, never a saved-for rung.
+    - The per-ability opt-out stores **refusals only**: a refused ability is skipped and its
+      neighbours are not, a card in hand is focusable with no click, refusing everything spends
+      nothing and does not hang, and an unknown ability is not stored.
+    - The settings survive a save, a Reclaim, and nonsense in the save file; a save written
+      before the dial existed loads at the defaults and behaves exactly as auto-buy did.
+    - `ui.autoBuyOpen` is closed by `startRound` — so a round begun by `auto_start_round`, which
+      no click touches, folds the sheet away too — and left alone by `endRound`.
 15. **The auto-cast toggle.** Each of the five ability automations can be switched off from its
     ability card without being un-bought (`ui.autoCast`, `autoCastOwned`, `autoCastOn`,
     `setAutoCast`):
@@ -396,7 +439,8 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    and every `ui` preference — language, speed, auto-proceed, auto-round, all five auto-cast
    switches — reads exactly what it read before.
 5. **The Presence catalogue.** A row costs its price in `meta.presence` and is refused when the
-   Presence purse is short; a second buy of a one-time row is refused. Buying one writes into
+   Presence purse is short; a second buy of a one-time row is refused, and an eleventh buy of
+   the one ten-rung row is refused. Buying one writes into
    `presenceUpgrades.purchased` and never into `upgrades.purchased`. Fear is not spendable on
    it and Presence is not spendable in the Fear shop.
 6. **The two-key rule end to end.** With `presence_tide_returns` bought and 500 Fear banked,
@@ -418,10 +462,11 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    of them.** Walked over `PRESENCE_UPGRADE_IDS`: a row with `grants` carries a non-empty list,
    and a row without one is named in the test's own gate or endowment table and checked through
    the **reader**, not the id — false/0 on a fresh game, true/positive once the row is owned.
-   Two rows are on that side today: `presence_current_quickens` opens `abilityFocusUnlocked`,
-   and `presence_fear_remains` moves `ascensionStartFear`. Naming the reader rather than the id
-   is what stops a row that was never wired to anything passing for having been added to a
-   list — see [Focus Checks](#focus-checks).
+   Three rows are on that side today: `presence_current_quickens` opens `abilityFocusUnlocked`,
+   `presence_river_deepens` opens `autoBuyFocusUnlocked`, and `presence_fear_remains` moves
+   `ascensionStartFear`. Naming the reader rather than the id is what stops a row that was never
+   wired to anything passing for having been added to a list — see
+   [Focus Checks](#focus-checks).
 10. **A grant hands over every automation it names, for no Fear at all.** 5 Presence buys
     `presence_all_unbidden`, deducting exactly 5, after which all five rows it names read tier 1
     with `upgrades.purchased` still empty and `cycleFearSpent` still 0.
@@ -472,19 +517,29 @@ for the formulas these checks hold.
    [04-economy-formulas.md](../spec/04-economy-formulas.md#the-innates-three-ladders): tier 1
    five rungs from 8 beats to 3, tier 2 ten from 15 to 5, tier 3 fourteen from 22 to 8. Tier 1's
    whole ladder costs 40, which is exactly `upgradeCost` for tier 2.
+   **The seven cards.** Each walked the same way against the table in
+   [04-economy-formulas.md](../spec/04-economy-formulas.md#the-seven-card-ladders), from its own
+   cooldown down to a third of it: `pull_beneath` and `song_of_sanctity` six rungs from 10 beats
+   to 4, `uncanny_melting` and `natures_resilience` eight from 12 to 4, `encompassing_ward`
+   thirteen from 20 to 7, `accelerated_rot` twenty from 30 to 10, `tsunami` thirty-three from 50
+   to 17. Every card anchor lands in the 16–25 band, and `tsunami` opens **below**
+   `pull_beneath` — the slowest card buys the cheapest beat, the same way round the kit has it
+   between `wash_away` and Innate tier 3.
    **The derived defaults.** An ability naming no floor takes one third of its own cooldown,
-   rounded up, one beat a rung — every power card, from its own cooldown. A named floor wins
-   over the derived one; all three Innate tiers name theirs, and each is that tier's own third
-   written out. The figures are read off the tier standing in the slot, so buying Innate tier 2
-   moves its floor from 3 to 5, and Energy past a shortened ladder's end rests on the floor
-   rather than driving the cooldown below it.
+   rounded up, one beat a rung, growing 1.5. Nothing in the catalogue leans on that today — every
+   ladder is tuned — so it is exercised against a record the test adds and removes. A named floor
+   wins over the derived one; all three Innate tiers name theirs, and each is that tier's own
+   third written out. The figures are read off the tier standing in the slot, so buying Innate
+   tier 2 moves its floor from 3 to 5, and Energy past a shortened ladder's end rests on the
+   floor rather than driving the cooldown below it.
 2. **Cost anchors to what the ability already costs, unless it names its own anchor.** The
    first Focus purchase on `rivers_bounty` — which names none — costs exactly its own
    `abilityUnlockCost`. `boon_of_vigor` (`unlockCost: 0`) falls back to a flat 3. A named
    `focusBaseCost` wins over the unlock price: `flash_floods` 5 and `wash_away` 6 — both
    **under** their own unlock prices, because a beat off a 25- or 30-beat clock is only a 4%
    and a 3% gain. Growth is per ability too: 1.5 by default, 1.3 for the Floods, 1.25 for Wash
-   Away, the two ladders long enough that 1.5 would price their tails out of every round.
+   Away, the two ladders long enough that 1.5 would price their tails out of every round —
+   and 1.12 for `tsunami`, whose thirty-three rungs are the longest ladder in the game.
    Both are read off `abilityRecord`, so a **tier** may name them: `innate_power` carries no
    anchor of its own and its three tiers name 3, 8 and 25, growing 1.5, 1.5 and 1.25.
 3. **Cost grows 1.5x per purchase, compounding, per ability.** Buying Focus for one ability
@@ -521,8 +576,28 @@ for the formulas these checks hold.
    tier 3's ladder is dearer at every cumulative point, so the count can hold or fall across the
    seam but never climb for free. With nothing invested, a new tier opens at its own anchor,
    undiscounted.
-9. Both locales name `presence_current_quickens` and carry the Focus button label and its two
-   log lines.
+9. Both locales name `presence_current_quickens` and carry the Focus button label, its hint, and
+   its two log lines.
+10. **Every string about the ladder quotes seconds, never a percentage.** `abilityFocusBtn`,
+    `abilityFocusHint` and `abilityFocused` all carry `{seconds}`, and none carries `{pct}` — the
+    percentage was the last survivor of the multiplicative curve and it hid the one rule the
+    ladder runs on. The hint names `{floor}` and the mechanic by name, which the label
+    (`25 Energy - Cooldown -2 Sec`) has no room for; the log names the `{cooldown}` it landed on.
+    The two blurbs describing Focus in general — the Presence row that sells it and the cooldown
+    hint on a card in the offer — take `{seconds}` too, rather than having a figure written into
+    six translations.
+11. **The seconds quoted are the seconds the bar loses**, past both corrections.
+    `abilityFocusSecondsPerStep` returns game seconds after the round's permanent haste —
+    `TIME_SCALE` at `abilityCooldownMult` 1, half of it at 0.5 — and buying the rung it just
+    priced moves `abilityCooldownSeconds` by exactly that. `abilityFocusPillParts` and
+    `focusStepSecondsText` then draw it through the **speed dial**, so the same rung reads `2` at
+    `gameSpeed` 1 and `1` at 2, exactly as the countdown beside it does; the Energy price does not
+    move with the dial. At the floor the step reads 0 and the price reads `Infinity`, which is
+    what takes the pill off the card.
+12. **The log is written at the dial the purchase was made at** — `-1 Sec ... 11 Sec` for a
+    purchase made at 2x where the same purchase at 1x logs `-2 Sec ... 22 Sec`. The step is read
+    **before** the investment is written, so the rung that lands *on* the floor still reports the
+    beat it bought rather than pricing a rung that no longer exists.
 
 ## Power Card Checks
 

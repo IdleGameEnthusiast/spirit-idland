@@ -888,6 +888,85 @@ The carry is exactly what makes that no longer true — a beat bought at tier 1 
 tier 2's ladder — so the gate went with the change that killed its reason. Every unlocked
 ability now shows a Focus pill on the same rule.
 
+### 19. Auto-buy spends the leftovers on Focus, and gets a control panel — *built 2026-08-20*
+
+From the Idea Inbox: "the upgrade to `presence_river_knows` needs its own row — auto-buy that
+spends Energy on Focus, customizable." Landed close to as designed, with three things argued out
+during the design pass and one changed after it. Covered by `tests/autobuy.test.js` (38 checks);
+`tests/ascension.test.js`'s structural row check was rewritten to suit.
+
+**A fifth Presence row, `presence_river_deepens` (5), granting nothing.** It opens auto-buy's top
+rung, the way `presence_current_quickens` opens Focus, and `autoBuyFocusUnlocked` reads it
+directly. Its gate is its depth — it wants both of the rows it sits between, so it is 13 Presence
+deep and a third-Reclaim purchase — rather than its price.
+
+**It is not the comfort layer the row it extends is, and the doc says so.** `auto_buy_abilities`
+is defended at 200 Fear on the grounds that it spends Energy the round was going to spend
+anyway. That defence fails here: Energy does not survive a round, so once the unlocks and the
+tiers are bought, everything earned afterwards burns at the round's end. This row is the first
+thing that converts that residue into throughput, and the Focus ladders are deep enough to
+absorb any purse. **It buys power, not clicks** — which is also why "spend everything" is never
+the wrong policy and the settings are about *order*, never about whether to hold.
+
+**One cumulative dial, not a preset picker.** The design started as "buy all unlocks first, then
+best focus rate" versus two alternative presets. What shipped is a four-rung ladder — `off`,
+`unlocks`, `+ tiers`, `+ focus` — each rung including the ones above it, in the order the
+resolver actually spends. "Spend nothing" and "unlocks only", asked for late, are simply its
+bottom two rungs rather than controls of their own: a master switch plus a scope switch plus a
+preset picker is three controls describing one decision, and three controls can disagree.
+"Cheapest focus rung always" survived as one of two orders; "always cheapest overall" was cut,
+because buying a 3-Energy Focus rung ahead of a 5-Energy unlock starves three automations the
+player has already paid for.
+
+**"Best focus rate" is not a percentage of cooldown.** That framing is exactly the one the
+subtractive ladder rework threw out (item 18): under it the tail of every ladder reads as
+worthless, when the tail is where a rung buys the most. `abilityFocusValuePerEnergy` ranks by
+casts-per-beat gained per Energy, weighted by what one cast of that ability is worth — and that
+weight is **recovered from the catalogue rather than tabled again**, by inverting the anchor rule
+`anchor = worth * 100 / cooldownBeats` that the balance pass already priced every ladder by.
+There is one statement in the game of what a cast is worth, and both readers of it agree by
+construction. Which ability this puts first is a reading of the tuned ladders, so the test
+asserts the argmax property rather than naming a winner.
+
+**The Innate cap changes behaviour players already own**, so it defaults to the ladder's top and
+binds `resolveAutoBuyAbilities` alone — the tier button on the card ignores it. Its reason is the
+early cycle: a round that cannot reach tier 3 should not bank toward it while the Focus ladders
+sit unbought.
+
+**The reserve, added after review — and the bug it fixes was in the first cut.** Focus running
+last in the tick reads like enough to keep it from starving the rungs above it. It is not, and
+the reason is that a round is fed a few Energy at a time rather than in lumps: with no ceiling
+and a floor price of 3, Focus held the purse between 0 and 2 for the whole round, so 5 / 10 / 20
+and 40 / 150 were never once on the table. Ordering fixes what happens *inside* a tick; only a
+reserve fixes what happens *across* them. Focus now spends down to **the cheapest thing auto-buy
+still intends to buy that is not Focus**, and no further.
+
+That is also what turns the Innate cap from a label into a decision: the cap is how much the
+player is willing to have banked before the clock gets anything. At 3 the round saves toward 150
+and Focus waits; at 1 nothing is saved toward and the first spare 3 Energy buys a beat. The
+regression tests feed a round 2 Energy a tick — deliberately under the cheapest rung — because
+that is the only shape of income that shows the failure at all.
+
+**Automated Focus purchases are silent, and unlocks and tiers still log.** Not "automation is
+quiet" — the rule is that bounded events log and repeating ones do not. A round buys three
+unlocks and two tiers and then stops; Focus is bought again every time the purse refills, and at
+a rung a second in a long round the log would hold nothing else.
+
+**The sheet, and the one thing that changed after the design pass.** "Customize" sits in the
+Energy purse and unfolds a drawer above the ability bar. It pushes the bar down the page, which
+is harmless while it is being read and a misclick waiting to happen once waves are running — the
+first answer was to allow opening it only between rounds, and the better one, taken instead, is
+that **`startRound` folds it away**. So it may be opened at any time and simply cannot survive
+into play. That collapse is in the engine rather than `ui.js` because `auto_start_round` begins
+rounds that no click ever touches.
+
+Four more ways out: the button again (it stays visibly pressed), **Done** at the foot, **Esc**,
+and clicking away — the last bound to `click` and *not* `pointerdown`, because closing on
+pointerdown shifts the layout between press and release and dispatches the click to whatever slid
+into place, which is the very misclick the round's collapse exists to prevent.
+
+**Not yet measured against a played round.** See the Balance questions below.
+
 ### 20. A Presence ladder that endows the next cycle with Fear — *built 2026-08-20*
 
 `presence_fear_remains` — *Die Furcht bleibt* / The Fear Remains. Ten rungs at a
@@ -942,7 +1021,75 @@ compresses is worth compressing at all.
 
 ---
 
----
+### 21. The Innate's Energy split moves onto its card — *built 2026-08-20*
+
+From the player: auto-buy should hold off on an Innate tier until it is actually worth taking.
+Built first as a formula and then, on the evidence that formula produced, cut back to a control.
+Covered by the new group in `tests/autobuy.test.js` (7 checks).
+
+**The formula worked and still chose wrong, which is the finding.** The first cut compared what a
+tier buys against what the same Energy buys in Focus, over the beats the round had left — a real
+payback test, income rate and all. Run against a live save at wave 58 it declined tier 2 and was
+*right on its own inputs*: it scored the upgrade at +25% throughput.
+
+The inputs are what is wrong. `worth` for any cast is recovered by inverting its Focus anchor,
+and that inversion is only valid where the anchor was derived from worth. The Innate's tier 1
+anchor was not: it was picked so the ladder totals exactly 40, matching tier 2's `upgradeCost`
+so the round faces a clean either/or (see `ABILITIES.innate_power`). Inverting it credits one
+push at 0.24 — two-thirds of a Boon cast — for relocating a single unit that pays no Fear and no
+Energy. A tier 1 ladder bought to its 3-beat floor then reads as nearly as good as a fresh tier 2,
+and the bot declines the upgrade for the rest of the round. Killing outweighs moving by more than
+the anchors say.
+
+**The anchors were left alone.** Retuning anchor 1 down to 2 would fix the symptom by breaking a
+deliberate design point — the ladder would cost 27 and no longer match the tier price. Giving a
+record its own `worth` field would work, but it is a second balance surface, and
+04-economy-formulas.md argues against exactly that by name. Neither is worth it when the decision
+can simply be handed back.
+
+**So the cap became a control instead of a calculation.** `ui.autoBuy.innateCap` already meant
+"climb to here, then let Focus have the rest"; it moved from a select in the auto-buy sheet to a
+segmented row on the Innate's card — *Energy to: Focus | Tier 2 | Tier 3* — showing only the
+tiers still above the current one. No new state, and the sheet's copy was deleted rather than
+mirrored, since two editable copies of one setting can disagree.
+
+**The cap now binds only at the dial's top rung.** One rung down there is no Focus for the Energy
+to go to, so a cap would leave the bot holding a purse it may not spend. `autoBuyTierWanted` steps
+it aside there and the control is not drawn — the engine and the UI agreeing on one rule rather
+than the UI hiding something the engine still enforces.
+
+**What survived from the first cut**: `abilityFocusLadder`, which named the ladder as a thing with
+fields so nine functions stopped each re-deriving anchor, growth, floor and length from the record
+on their own. It went in to let the payback test read a tier the ability was not standing on, and
+it is worth keeping without that caller.
+
+### 22. The split moves into the purse, and the Innate's tiers stop being a rung — *built 2026-08-20*
+
+The other half of 21, a day later. The split was on the Innate's card and the dial still carried
+an `+ Innate tiers` rung, so one decision had two controls that could describe different plans.
+
+**The rung is gone.** `AUTO_BUY_MODES` is `off` / `unlocks` / `focus`, and the tiers are bought at
+the top rung under the split's cap. `unlocks` says what it leaves out on its own face —
+*(except Innate)* replaces the price ladder that used to be its caption — because a rung that
+quietly stopped covering something is how a removal reads as a bug. A save carrying the retired
+`tiers` falls back to the default, which is the top rung, so nothing it asked for is lost.
+
+**One consequence, deliberate:** the tiers now ride the same Presence gate Focus does. Between
+buying `auto_buy_abilities` and buying `presence_river_deepens` (5 Presence) the bot buys the kit
+and stops, and the Innate is climbed by hand. The alternative was a rung that buys tiers with no
+split to govern it — which is the control-in-two-places the change exists to remove.
+
+**The split moved to the Energy purse**, in the middle, between the label and the total: it
+divides that number, and the purse is the one line on the page that is about nothing else. It
+renders and patches on its own signature now (`energySplitSignature`) rather than riding the
+ability bar's, which took the last auto-buy reading out of that signature. Its options are named
+*Innate Tier 2* / *Innate Tier 3* — on the card the ability was the heading above them; in the
+purse nothing else says what they are tiers of.
+
+**It disappears at the top of the ladder.** With no tier above the current one there is no split
+to make, so the row is hidden and emptied — `.tier-split[hidden]` is spelled out in the CSS,
+because an author `display: flex` outranks the UA rule that hides `[hidden]` and the row would
+otherwise stay drawn after tier 3 was bought.
 
 ## Idea Inbox
 
@@ -959,6 +1106,11 @@ is not a line down here.
 - check if Wash Away works correctly when a land holds more than 3 invaders
 - give tokens for casting abilities, spendable to upgrade them (or route that through the
   Presence shop instead)
+- Presence row: the opening of every round runs at 20x, up to a share of `bestWaveReached`.
+  Not a skip - `gameSpeed` only multiplies `dt`, so the waves still pay and still blight. Asked
+  as an eight-rung ladder at 1/2/3.. Presence (36 total, 10% cap); flat and cheap is the
+  counter-proposal, because the cap ratchets on its own and the automations already gate it -
+  at 20x nothing can be hand-cast. Watch `CARD_FX_MS`: a card a wave at one real second a wave
 
 ### UI
 
@@ -981,6 +1133,11 @@ is not a line down here.
   priced above an unlock, and it is only defensible because tier 2's investment usually pays it
 - Innate tiers 2 and 3 cut 50/250 -> 40/150; still unmeasured against a played round
 - Wash Away: cooldown cut 35 -> 30 beats; still 20 Energy to unlock, unchanged
+- the auto-buy Focus loop (item 19) is unplayed. Two figures to watch: whether
+  `presence_river_deepens` at 5 lands too close to `presence_current_quickens` — the pair should
+  not arrive on the same Reclaim, and this row is the one to move if they do — and whether
+  `value` order sends so much of every round into one ability's ladder that the per-ability
+  opt-out becomes mandatory rather than optional
 - general balancing pass
 
 ---
