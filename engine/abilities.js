@@ -211,6 +211,15 @@ function normalizeAbilities(state, abilities) {
   return out;
 }
 
+// The round's permanent, shop-bought haste, frozen at setup. Its own function because the Focus
+// pill has to read it too: the pill quotes seconds off the drawn clock, and the drawn clock is
+// this multiplier applied to the ability's own.
+function roundCooldownMult(state) {
+  return Number.isFinite(state.round && state.round.abilityCooldownMult)
+    ? state.round.abilityCooldownMult
+    : 1;
+}
+
 // The round's own cooldown baseline, frozen at setup so a shop purchase cannot shorten a
 // cooldown that is already ticking. Focus is the one exception - see the Focus section below -
 // because it is not a shop purchase against the round's snapshot, it is a live spend against
@@ -218,12 +227,9 @@ function normalizeAbilities(state, abilities) {
 function abilityCooldownSeconds(state, abilityId) {
   const record = abilityRecord(state, abilityId);
   if (!record) return 0;
-  const mult = Number.isFinite(state.round && state.round.abilityCooldownMult)
-    ? state.round.abilityCooldownMult
-    : 1;
   // The Focus ladder is already whole beats, so only `mult` can put a fraction of a second on
   // this, and it is left unrounded so a permanent cut composes exactly. The bar rounds up.
-  return Math.max(1, abilityFocusedCooldownSeconds(state, abilityId) * mult);
+  return Math.max(1, abilityFocusedCooldownSeconds(state, abilityId) * roundCooldownMult(state));
 }
 
 function abilityIsReady(state, abilityId) {
@@ -378,13 +384,21 @@ function abilityFocusedCooldownSeconds(state, abilityId) {
   return Math.max(floor, beats) * TIME_SCALE;
 }
 
-// Kept as a reading of the ladder rather than a rule of its own: the log line quotes a
-// percentage because that is what a player checks a purchase against, but nothing computes a
-// cooldown from it any more.
-function abilityFocusMultiplier(state, abilityId) {
-  const record = abilityRecord(state, abilityId);
-  if (!record || !record.cooldownSeconds) return 1;
-  return abilityFocusedCooldownSeconds(state, abilityId) / record.cooldownSeconds;
+// What the next rung takes off the countdown the player is watching, in the seconds that
+// countdown is drawn in. Not simply `focusStepBeats * TIME_SCALE`: the bar draws the ability's
+// clock *after* the round's permanent haste, so with `abilityCooldownMult` bought a rung that
+// buys one whole beat still shows as less than a whole beat's worth of seconds. Quoting the
+// beats would promise the player a drop they do not see, so this quotes the drop instead - the
+// same two clamped readings the bar itself takes, subtracted.
+//
+// Zero at the floor, where there is no next rung to price.
+function abilityFocusSecondsPerStep(state, abilityId) {
+  if (!abilityRecord(state, abilityId)) return 0;
+  const mult = roundCooldownMult(state);
+  const now = abilityFocusedCooldownSeconds(state, abilityId);
+  const floor = abilityFocusFloorBeats(state, abilityId) * TIME_SCALE;
+  const next = Math.max(floor, now - abilityFocusStepBeats(state, abilityId) * TIME_SCALE);
+  return Math.max(0, Math.max(1, now * mult) - Math.max(1, next * mult));
 }
 
 // What the next rung costs *from here*: the rest of the way up to it, not its sticker price. On
@@ -418,6 +432,12 @@ function purchaseAbilityFocus(state, abilityId) {
     return false;
   }
 
+  // Read before the investment is written, or it prices the rung *after* this one - and at the
+  // last rung it would read zero, on the one purchase that actually lands on the floor. Drawn
+  // through the speed dial like the pill that quoted it, so the line says what the player just
+  // watched happen rather than what the engine holds the clock in.
+  const step = dialSecondsText(state, abilityFocusSecondsPerStep(state, abilityId));
+
   state.resources.energy -= cost;
   if (!state.round.abilityFocusEnergy || typeof state.round.abilityFocusEnergy !== "object") {
     state.round.abilityFocusEnergy = {};
@@ -435,7 +455,8 @@ function purchaseAbilityFocus(state, abilityId) {
   addLog(state, template(t.abilityFocused, {
     ability: abilityName(state, abilityId),
     cost,
-    pct: Math.round((1 - abilityFocusMultiplier(state, abilityId)) * 100)
+    seconds: step,
+    cooldown: dialSecondsText(state, abilityCooldownSeconds(state, abilityId))
   }));
   return true;
 }

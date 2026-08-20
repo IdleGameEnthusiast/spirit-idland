@@ -552,7 +552,7 @@ function purchaseUpgrade(state, upgradeId, count) {
       upgrade: upgradeName(state, upgradeId),
       cost,
       pct: hastePctText(dahanHasteFraction(tier + amount)),
-      seconds: strikeSecondsText(state, dahanAttackIntervalFor(tier + amount))
+      seconds: dialSecondsText(state, dahanAttackIntervalFor(tier + amount))
     }));
   } else {
     addLog(state, template(t.upgradePurchased, {

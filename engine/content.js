@@ -230,9 +230,29 @@ const POWER_CARD_REDRAW_BASE_ENERGY = 10;
 /* The seven cards.
  *
  * Cooldowns are authored in beats times TIME_SCALE, exactly like the kit, so a card cast rate
- * is a cast rate at any speed. `focusBaseCost` is each card cooldown in beats: a card carries
- * no unlockCost for abilityFocusCost to anchor to, and a slow card should cost more to hasten
- * than a fast one.
+ * is a cast rate at any speed.
+ *
+ * Every card names its whole Focus ladder, the same four figures the tuned kit abilities name.
+ * The anchors are not the cooldown in beats they used to be - that read the dial backwards.
+ * Divide each tuned kit anchor by the percentage of clock its first rung buys and one number
+ * falls out, the same one in every case: what a cast is worth.
+ *
+ *     boon 3/8.3% = 0.36    bounty 5/6.7% = 0.75    innate t2 8/6.7% = 1.20
+ *     floods 5/4.0% = 1.25  wash 6/3.3% = 1.80      innate t3 25/4.5% = 5.50
+ *
+ * So `anchor = worth * 100 / cooldownBeats`, and the cooldown enters only as a divisor. That is
+ * why Wash Away, the strongest cast in the kit, opens at 6 while the Innate's tier 3 opens at
+ * 25: a beat off 30 is 3.3% of a clock and a beat off 22 is 4.5%. Anchoring a card on its own
+ * cooldown inverted that - it charged the most for the beat worth the least, putting Tsunami's
+ * opening rung at 50 Energy for a 2% gain, the worst purchase in the game, and running its tail
+ * out to a twenty-one-million-Energy rung no round could ever see. The worths below are stated
+ * per card; the anchors they produce land in a 16-25 band, which is the honest result: every
+ * card is a strong cast on a clock scaled to its strength, so they all price a beat alike.
+ *
+ * Growth follows the kit's length rule - up to ten rungs 1.5, thirteen to sixteen 1.3, twenty
+ * 1.25 - extrapolated one notch for Tsunami's thirty-three. Floors stay a third of the
+ * cooldown, so the invariant every ability holds to holds here too: three times the cast rate
+ * the round started it at, however long the ladder.
  *
  * Where a kit ability carries one `effect` string, a card carries an ordered `effects` list -
  * every one of these is two to four clauses with conditions, and the five kit abilities are
@@ -243,7 +263,12 @@ const POWER_CARDS = {
   pull_beneath: {
     id: "pull_beneath",
     cooldownSeconds: 10 * TIME_SCALE,
-    focusBaseCost: 10,
+    // Worth 2.5: about twice a Flash Floods cast on the damage alone, plus 3 Fear. Six rungs at
+    // 25/38/56/84/127/190, 10 -> 4 beats, 520 all told.
+    focusBaseCost: 25,
+    focusCostGrowth: 1.5,
+    focusStepBeats: 1,
+    focusFloorBeats: 4,
     needsTarget: true,
     target: "invaders",
     effects: [
@@ -260,7 +285,12 @@ const POWER_CARDS = {
   song_of_sanctity: {
     id: "song_of_sanctity",
     cooldownSeconds: 10 * TIME_SCALE,
-    focusBaseCost: 10,
+    // Worth 1.6, the cheapest ladder of the seven: Explorer removal is narrow, and it narrows
+    // further as Builds turn the Explorers into Towns. Six rungs at 16/24/36/54/81/122, 333.
+    focusBaseCost: 16,
+    focusCostGrowth: 1.5,
+    focusStepBeats: 1,
+    focusFloorBeats: 4,
     needsTarget: true,
     target: "explorers_or_blight",
     effects: [
@@ -274,7 +304,12 @@ const POWER_CARDS = {
   uncanny_melting: {
     id: "uncanny_melting",
     cooldownSeconds: 12 * TIME_SCALE,
-    focusBaseCost: 12,
+    // Worth 2.9, the highest of the four short cards: Fear *per invader* scales with the stack,
+    // so a heavy land pays 15-30. Eight rungs at 24/36/54/81/122/182/273/410, 12 -> 4, 1182.
+    focusBaseCost: 24,
+    focusCostGrowth: 1.5,
+    focusStepBeats: 1,
+    focusFloorBeats: 4,
     needsTarget: true,
     target: "invaders_or_terrain_blight",
     blightTerrains: ["desert", "wetlands"],
@@ -287,7 +322,12 @@ const POWER_CARDS = {
   natures_resilience: {
     id: "natures_resilience",
     cooldownSeconds: 12 * TIME_SCALE,
-    focusBaseCost: 12,
+    // Worth 2.4: Defend 6 is prevention and the Blight removal is durable, but neither scales
+    // with the land the way melting's Fear does. Eight rungs at 20/30/45/68/101/152/228/342, 986.
+    focusBaseCost: 20,
+    focusCostGrowth: 1.5,
+    focusStepBeats: 1,
+    focusFloorBeats: 4,
     needsTarget: true,
     target: "any",
     effects: [
@@ -302,7 +342,13 @@ const POWER_CARDS = {
   encompassing_ward: {
     id: "encompassing_ward",
     cooldownSeconds: 20 * TIME_SCALE,
-    focusBaseCost: 20,
+    // Worth 3.4 - island-wide and needs no target, and unused wards bank on quiet lands - which
+    // on a 20-beat clock still anchors under the short cards. Thirteen rungs, growth 1.3 by the
+    // length rule: 17/22/29/37/49/63/82/107/139/180/234/305/396, 20 -> 7 beats, 1660.
+    focusBaseCost: 17,
+    focusCostGrowth: 1.3,
+    focusStepBeats: 1,
+    focusFloorBeats: 7,
     needsTarget: false,
     effects: [
       { kind: "defend", amount: 2, scope: "all" }
@@ -313,7 +359,14 @@ const POWER_CARDS = {
   accelerated_rot: {
     id: "accelerated_rot",
     cooldownSeconds: 30 * TIME_SCALE,
-    focusBaseCost: 30,
+    // Worth 5.4, level with the Innate's tier 3 (5.5) - it pays in all three currencies the
+    // round cares about. Twenty rungs at growth 1.25, the same shape as wash_away's ladder and
+    // three times its price at every rung: 18 -> 1249, 6173 end to end, 30 -> 10 beats. The
+    // dearest ladder in the game bar one, on the best-shaped card of the seven.
+    focusBaseCost: 18,
+    focusCostGrowth: 1.25,
+    focusStepBeats: 1,
+    focusFloorBeats: 10,
     needsTarget: true,
     target: "invaders_or_blight",
     effects: [
@@ -328,7 +381,19 @@ const POWER_CARDS = {
   tsunami: {
     id: "tsunami",
     cooldownSeconds: 50 * TIME_SCALE,
-    focusBaseCost: 50,
+    // Worth 8.5: the biggest cast in the game, discounted about 15% for being dead whenever the
+    // pressure has gone inland. On a 50-beat clock that anchors at 20 - *below* pull_beneath's
+    // 25, which is the whole correction: a beat off 50 is 2% of the clock and a beat off 10 is
+    // 10%, so the slowest card buys the cheapest beat, exactly as wash_away does in the kit.
+    //
+    // Thirty-three rungs, the longest ladder in the game by half again, which is what forces
+    // growth down to 1.12 - the long-ladder rule one notch past wash_away's 1.25. At 1.25 the
+    // last rung would be 34 000 and thirty of the thirty-three would be decoration; at 1.12 it
+    // is 752, and 6847 end to end puts it a shade over accelerated_rot, which is right.
+    focusBaseCost: 20,
+    focusCostGrowth: 1.12,
+    focusStepBeats: 1,
+    focusFloorBeats: 17,
     needsTarget: true,
     target: "coastal_invaders",
     effects: [

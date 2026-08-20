@@ -513,7 +513,8 @@
   });
 
   test("cards: cancel-by-reclick and the cooldown behave like a kit ability's", () => {
-    const { state } = newGame();
+    const ctx = newGame();
+    const { state } = ctx;
     handCards(state, ["pull_beneath"]);
     clearBoard(state);
     setLand(state, "5", { towns: 1 }, 0);
@@ -528,25 +529,11 @@
     engine.resolveAbilityTarget(state, "5");
     assert(!engine.abilityIsReady(state, "pull_beneath"), "a real cast does spend it");
 
-    advance({ state, clock: { advance: () => {} } }, 0);
-    engine.tickCooldowns
-      ? engine.tickCooldowns(state, 20 * engine.TIME_SCALE)
-      : (state.abilities.pull_beneath.cooldownRemaining = 0);
+    // Ten beats is the card's whole clock, run down through the real tick rather than by
+    // writing cooldownRemaining by hand - what is being checked is that a card's cooldown is
+    // on the same clock the kit's is, which is a claim about the tick and about nothing else.
+    advance(ctx, 10 * engine.TIME_SCALE);
     assert(engine.abilityIsReady(state, "pull_beneath"), "and it comes back");
-  });
-
-  test("cards: Focus works on a card, priced off its own cooldown in beats", () => {
-    const { state } = newGame();
-    handCards(state, ["tsunami", "pull_beneath"]);
-    state.presenceUpgrades.purchased.presence_current_quickens = 1;
-    state.resources.energy = 500;
-
-    assertEqual(engine.abilityFocusCost(state, "pull_beneath"), 10, "a 10-beat card costs 10");
-    assertEqual(engine.abilityFocusCost(state, "tsunami"), 50, "and a 50-beat card costs 50");
-
-    const before = engine.abilityCooldownSeconds(state, "tsunami");
-    assert(engine.purchaseAbilityFocus(state, "tsunami"), "the purchase lands");
-    assert(engine.abilityCooldownSeconds(state, "tsunami") < before, "and the cooldown is shorter");
   });
 
   test("cards: no card casts itself, at any price", () => {

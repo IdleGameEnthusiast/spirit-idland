@@ -855,6 +855,12 @@ function abilityBarSignature(state) {
   ].join("~");
   return [
     currentLang(state),
+    // The Focus pill quotes what the next rung takes off the countdown, and that figure is drawn
+    // through the speed dial like the countdown itself - a beat is 2 Sec at 1x and 1 at 2x. The
+    // label is written at rebuild and never patched, so without this a turn of the dial leaves
+    // every pill promising the seconds of the speed before it. Same reason gameSpeed sits in
+    // shopSignature and presenceShopSignature.
+    gameSpeed(state),
     unlockedAbilityIds(state).join(","),
     tiers,
     automations,
@@ -881,9 +887,13 @@ function abilityBarSignature(state) {
 function abilityFocusMarkup(state, abilityId) {
   if (!abilityFocusUnlocked(state)) return "";
   const t = locale(state);
-  const cost = abilityFocusCost(state, abilityId);
-  if (!Number.isFinite(cost)) return "";
-  return `<button type="button" class="ability-focus" data-focus-ability="${abilityId}">${template(t.abilityFocusBtn, { cost })}</button>`;
+  const parts = abilityFocusPillParts(state, abilityId);
+  if (!Number.isFinite(parts.cost)) return "";
+  // The label carries what the rung buys as well as what it costs. A price on its own left the
+  // flat-beat rule to be inferred from a countdown, which is the one thing the ladder cannot
+  // afford to have guessed at: the rungs get dearer and the seconds do not, so a player reading
+  // only the price reads the ladder as getting worse.
+  return `<button type="button" class="ability-focus" data-focus-ability="${abilityId}" title="${template(t.abilityFocusHint, parts)}">${template(t.abilityFocusBtn, parts)}</button>`;
 }
 
 // The card's top line: the name, and hard against the right edge the marks - the Focus price,
@@ -1515,7 +1525,7 @@ function renderCardShop(state) {
     <div class="card-offer${affordable ? " is-affordable" : ""}">
       <div class="card-offer-info">
         <span class="card-offer-name">${abilityName(state, cardId)}</span>
-        <span class="card-offer-cooldown" title="${t.cardOfferCooldownHint}">${template(t.cardOfferCooldownLabel, { seconds: cardOfferCooldownSeconds(state, cardId) })}</span>
+        <span class="card-offer-cooldown" title="${template(t.cardOfferCooldownHint, { seconds: focusStepSecondsText(state) })}">${template(t.cardOfferCooldownLabel, { seconds: cardOfferCooldownSeconds(state, cardId) })}</span>
         <span class="card-offer-text">${abilityText(state, cardId)}</span>
       </div>
       <button type="button" class="upgrade-buy" data-draw-card="${cardId}" ${affordable ? "" : "disabled"}>

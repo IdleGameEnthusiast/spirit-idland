@@ -64,7 +64,8 @@ const I18N = {
     abilityUnlockBtn: "{cost} Energie",
     abilityTierLabel: "Stufe {tier}",
     abilityUpgradeBtn: "Stufe {tier}: {cost} Energie",
-    abilityFocusBtn: "Fokus: {cost} Energie",
+    abilityFocusBtn: "{cost} Energie - Abklingzeit -{seconds} Sek",
+    abilityFocusHint: "Fokus: Jeder Kauf nimmt weitere {seconds} Sek von dieser Abklingzeit - immer gleich viel, zu steigendem Preis. Schluss ist bei {floor} Sek, einem Drittel des Ausgangswerts.",
     abilityNames: {
       innate_power: "Angeborene Kraft",
       boon_of_vigor: "Boon of Vigor",
@@ -169,7 +170,7 @@ const I18N = {
       presence_tide_returns: "Schenkt dir \"Die Flut kehrt wieder\" (500 Furcht) für immer. Runden starten von selbst - in diesem Zyklus und in jedem danach.",
       presence_river_knows: "Schenkt dir \"Der Fluss weiß, was er braucht\" (200 Furcht) für immer. Fähigkeiten kaufen sich von selbst - in diesem Zyklus und in jedem danach.",
       presence_all_unbidden: "Schenkt dir alle fünf Fähigkeits-Automatiken für immer: Segen, Instinkt, Gabe, Sturzflut und Strömung.",
-      presence_current_quickens: "Schaltet Fokus frei: Abklingzeiten von Fähigkeiten lassen sich während der Runde mit Energie verkürzen, bis auf 30% ihrer Ausgangszeit."
+      presence_current_quickens: "Schaltet Fokus frei: Energie während der Runde ausgeben, um {seconds} Sek von der Abklingzeit einer Fähigkeit zu nehmen - immer wieder, immer gleich viel, zu steigendem Preis, bis auf ein Drittel des Ausgangswerts.",
     },
     // Der Trenner für Namenslisten in Logzeilen - siehe die englische Fassung.
     listSeparator: ", ",
@@ -238,7 +239,7 @@ const I18N = {
     // wie oft sie es dürfen. Der Hinweistext trägt sie, weil eine Zahl allein nicht sagt,
     // wovon sie die Wartezeit ist.
     cardOfferCooldownLabel: "{seconds}s Abklingzeit",
-    cardOfferCooldownHint: "Die Wartezeit zwischen zwei Einsätzen, bevor Fokus sie verkürzt. Keine Karte wirkt sich selbst - so oft kannst du sie also von Hand spielen.",
+    cardOfferCooldownHint: "Die Wartezeit zwischen zwei Einsätzen, bevor Fokus sie in Schritten von {seconds} Sek verkürzt. Keine Karte wirkt sich selbst - so oft kannst du sie also von Hand spielen.",
     // Der Preis nennt seine Währung, wie der Kaufknopf darüber: eine nackte Zahl in Klammern
     // liest sich wie "noch 3 Mal", nicht wie ein Preis.
     cardRerollBtn: "Neu mischen: {cost} Präsenz",
@@ -419,7 +420,7 @@ const I18N = {
     abilityUnlockTooExpensive: "{ability} kostet {cost} Energie. Du hast {energy}.",
     abilityUpgraded: "{ability} auf Stufe {tier} gebracht für {cost} Energie.",
     abilityUpgradeTooExpensive: "Stufe {tier} von {ability} kostet {cost} Energie. Du hast {energy}.",
-    abilityFocused: "{ability} fokussiert: Abklingzeit jetzt {pct}% kürzer, für {cost} Energie.",
+    abilityFocused: "{ability} fokussiert: Abklingzeit -{seconds} Sek, jetzt {cooldown} Sek, für {cost} Energie.",
     abilityFocusTooExpensive: "{ability} kostet {cost} Energie für mehr Fokus. Du hast {energy}.",
 
     upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) für {cost} Furcht.",
@@ -478,7 +479,8 @@ const I18N = {
     abilityUnlockBtn: "{cost} Energy",
     abilityTierLabel: "Tier {tier}",
     abilityUpgradeBtn: "Tier {tier}: {cost} Energy",
-    abilityFocusBtn: "Focus: {cost} Energy",
+    abilityFocusBtn: "{cost} Energy - Cooldown -{seconds} Sec",
+    abilityFocusHint: "Focus: each purchase takes another {seconds} Sec off this cooldown - always the same amount, at a rising price. It stops at {floor} Sec, a third of where the ability started.",
     abilityNames: {
       innate_power: "Innate Power",
       boon_of_vigor: "Boon of Vigor",
@@ -576,7 +578,7 @@ const I18N = {
       presence_tide_returns: "Yours for good: \"The Tide Returns\" (500 Fear). Rounds start themselves, this cycle and every cycle after it.",
       presence_river_knows: "Yours for good: \"The River Knows Its Own Need\" (200 Fear). Abilities buy themselves, this cycle and every cycle after it.",
       presence_all_unbidden: "Yours for good: all five ability automations - the Boon, the Instinct, the Bounty, the Flood and the Current.",
-      presence_current_quickens: "Unlocks Focus: ability cooldowns can be shortened mid-round with Energy, down to 30% of where they started."
+      presence_current_quickens: "Unlocks Focus: spend Energy mid-round to take {seconds} Sec off one ability's cooldown, again and again, always the same amount, at a rising price - down to a third of where it started.",
     },
     // Says "for good", because that is the whole of what separates a Presence purchase from a
     // Fear one. {unlocks} is one row for two of the three grants and five for the other, joined
@@ -651,7 +653,7 @@ const I18N = {
     // do it. The label carries the word, not just the number - a bare "24s" beside a price does
     // not say which of the round's several clocks it is.
     cardOfferCooldownLabel: "{seconds}s cooldown",
-    cardOfferCooldownHint: "The wait between casts, before Focus shortens it. No card casts itself, so this is how often you can play it by hand.",
+    cardOfferCooldownHint: "The wait between casts, before Focus shortens it in steps of {seconds} Sec. No card casts itself, so this is how often you can play it by hand.",
     // The price names its currency, like the buy button above it: a bare number in brackets
     // reads as "3 re-rolls left" rather than as what it costs.
     cardRerollBtn: "Re-roll: {cost} Presence",
@@ -832,7 +834,7 @@ const I18N = {
     abilityUnlockTooExpensive: "{ability} costs {cost} Energy. You have {energy}.",
     abilityUpgraded: "{ability} raised to tier {tier} for {cost} Energy.",
     abilityUpgradeTooExpensive: "Tier {tier} of {ability} costs {cost} Energy. You have {energy}.",
-    abilityFocused: "{ability} focused: cooldown now {pct}% shorter, for {cost} Energy.",
+    abilityFocused: "{ability} focused: cooldown -{seconds} Sec, now {cooldown} Sec, for {cost} Energy.",
     abilityFocusTooExpensive: "{ability} costs {cost} Energy for more Focus. You have {energy}.",
 
     upgradePurchased: "Purchased: {upgrade} (tier {tier}) for {cost} Fear.",

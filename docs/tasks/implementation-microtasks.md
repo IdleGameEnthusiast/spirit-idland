@@ -913,15 +913,18 @@ is not a line down here.
 
 ### Balance questions
 
-- Focus, the one thing still on the derived defaults: every power card bought with Presence.
-  Same beat-by-beat shape the four kit abilities and the Innate's three tiers now use - see
-  [04-economy-formulas.md](../spec/04-economy-formulas.md#the-tuned-ladders)
+- the Focus pill reads `25 Energy - Cooldown -2 Sec` at 1x and `-1 Sec` at 2x, because a rung is
+  a *beat* and the countdown beside it is drawn through the speed dial. If a playtest says the
+  moving number confuses more than the matching one helps, the alternative is to quote beats on
+  the pill and leave seconds to the countdown - not to hardcode a figure for one dial position
+- the seven card Focus ladders are tuned but unplayed - see
+  [04-economy-formulas.md](../spec/04-economy-formulas.md#the-seven-card-ladders). The figures to
+  watch are the two past 6 000 (Accelerated Rot, Tsunami): both are priced as round-*length*
+  purchases against an Energy pool nothing has measured, and if a deep round turns out to bank
+  far more than that, the lever is the anchor band rather than the growth
 - the Innate's three Focus ladders (item 18) are a first pass, unmeasured against a played
   round. The figure to watch is tier 3's opening rung at 25: it is the only rung in the game
   priced above an unlock, and it is only defensible because tier 2's investment usually pays it
-- once all of them are tuned: reword the Focus button and log line so they say what is by then
-  true of every ladder - one purchase always takes one beat off the timer, 2 seconds at the 1x
-  speed dial. The percentage the log quotes today is a leftover from the multiplicative curve
 - Innate tiers 2 and 3 cut 50/250 -> 40/150; still unmeasured against a played round
 - Wash Away: cooldown cut 35 -> 30 beats; still 20 Energy to unlock, unchanged
 - general balancing pass

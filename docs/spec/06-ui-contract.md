@@ -414,6 +414,34 @@ from the dev tools, and still is.
 - Buying is allowed during a running round, not only between rounds — see
   [02-core-loop.md](./02-core-loop.md#energy). A bought ability appears in the bar ready, not
   cooling: the purchase was the cost. So does a bought tier.
+- **The Focus pill names what the rung buys as well as what it costs** —
+  `25 Energy - Cooldown -2 Sec`, the price first and then the effect, the reading order every
+  other price on the bar uses. A price on its own left the ladder's one rule to be inferred from
+  a countdown, and a player reading only the price reads the ladder backwards: the rungs get
+  dearer and the seconds never do. The pill sits immediately left of the countdown because that
+  is the number it buys down, and it disappears at the floor rather than quoting an infinite
+  price. The label has no room for the word *Focus*; its tooltip carries that, plus the part one
+  rung cannot show — that every purchase takes the same amount off — and where the ladder stops.
+- **The seconds on it are the seconds the countdown will lose**, which is not a fixed number.
+  Two corrections stand between the beat the ladder buys and the figure on the pill, and both
+  have to be applied or the pill promises a drop the player never watches:
+  - `round.abilityCooldownMult`, the round's permanent haste. A rung buys one whole beat off the
+    ability's *own* clock, and the bar draws that clock after the multiplier.
+    `abilityFocusSecondsPerStep` takes the same two clamped readings the bar takes and subtracts
+    them, rather than returning `focusStepBeats * TIME_SCALE`.
+  - **the speed dial.** Every countdown on the page is drawn `gameSeconds / gameSpeed`, so one
+    beat reads `2 Sec` at 1x, `1 Sec` at 2x and a quarter of one at the playtest speed. The pill
+    goes through `dialSecondsText`, the same division, so the two numbers sitting side by side on
+    the card always agree. This is why no string may hardcode `2s`.
+    Because that division is applied when the pill is **written** and the per-frame patch only
+    touches its price and whether it is dead, `gameSpeed` is part of the ability bar's rebuild
+    signature - the same reason both shop panels carry it. Without it a turn of the dial leaves
+    every pill quoting the seconds of the speed before it, beside a countdown already redrawn at
+    the new one.
+- **The log line is written through the dial the purchase was made at**, matching the pill rather
+  than the engine's authored clock. A line is a record of a moment and the dial can be turned
+  afterwards, so an old line can disagree with the current bar — accepted, because the
+  alternative is a pill reading `-1 Sec` and a log reading `-2 Sec` about the same click.
 - A **tiered** ability's card carries its current tier and the price of the next one. It is
   castable and buyable at once, so it cannot be the single button the others are — a button
   inside a button is not markup. The card becomes a container holding two: the cast surface,

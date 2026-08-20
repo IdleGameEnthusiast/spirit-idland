@@ -172,10 +172,19 @@ function hastePctText(fraction) {
   return String(Number(pct.toFixed(2)));
 }
 
-// The strike interval as the player's own stopwatch would measure it: game seconds divided by
-// the speed dial, exactly like every countdown on the HUD. One decimal, because the first few
-// hundred Fear move it by tenths and a whole-second readout would swallow them.
-function strikeSecondsText(state, gameSeconds) {
+/* Game seconds as the player's own stopwatch measures them: divided by the speed dial, exactly
+ * like every countdown on the HUD (`displaySeconds` in ui.js). A stopped clock has no rate to
+ * divide by and reports the game's own seconds, the same fallback the HUD takes.
+ *
+ * One decimal rather than the HUD's ceiling, because the readouts that use this are differences
+ * and thresholds rather than countdowns: the first few hundred Fear move the strike interval by
+ * tenths, and a Focus rung is 2 seconds at 1x but 1 at 2x and a quarter at the playtest speed.
+ *
+ * This is the one place that division lives outside the HUD. Anything quoting a duration the
+ * player is *watching* goes through here; anything quoting the engine's own authored clock does
+ * not, or the dial would be applied twice.
+ */
+function dialSecondsText(state, gameSeconds) {
   const speed = gameSpeed(state);
   return formatAmount(speed > 0 ? gameSeconds / speed : gameSeconds);
 }
@@ -264,8 +273,47 @@ function presenceUpgradeName(state, presenceId) {
  */
 function presenceUpgradeText(state, presenceId) {
   const t = locale(state);
-  return (t.presenceTexts && t.presenceTexts[presenceId]) || "";
+  const text = (t.presenceTexts && t.presenceTexts[presenceId]) || "";
+  // The one row that carries a number, and it is not a price: `presence_current_quickens` sells
+  // Focus, whose whole rule is that every purchase takes the same amount off a cooldown. The
+  // objection above is to figures that move *because the shop was used* - a price that changes
+  // as it is bought. This one moves with the speed dial and with nothing else, exactly like the
+  // countdown it describes, which is the opposite case: written flat it would be wrong at every
+  // dial position but one.
+  return template(text, { seconds: focusStepSecondsText(state) });
 }
+
+// What one Focus rung is worth on the clock the player is watching, for the two blurbs that
+// describe Focus in general rather than one ability's ladder: the Presence row that sells it and
+// the card offer's cooldown hint. The step by itself, before any ability's own haste - a general
+// sentence about the mechanic cannot answer for a particular round's multiplier, and every
+// ability and card in the catalogue names this same step anyway.
+//
+// A rung is always one *beat*. What that is worth in seconds is not fixed: two at 1x, one at 2x,
+// a quarter at the playtest speed - so the number has to be drawn through the dial like every
+// other duration on screen, or the pill would promise 2s to a player watching a clock that only
+// ever loses 1.
+function focusStepSecondsText(state) {
+  return dialSecondsText(state, FOCUS_STEP_BEATS_DEFAULT * TIME_SCALE);
+}
+
+/* The Focus pill's numbers, in the seconds the countdown beside it is drawn in.
+ *
+ * The pill is where the ladder's one rule has to be learned - every rung takes the same fixed
+ * time off, at a rising price - so it says that time outright rather than leaving it to be
+ * read off a countdown that moves for several other reasons too. Both figures take the same
+ * clamped reading of the round's permanent haste that the bar takes, so the pill and the
+ * countdown beside it cannot disagree.
+ */
+function abilityFocusPillParts(state, abilityId) {
+  const floor = abilityFocusFloorBeats(state, abilityId) * TIME_SCALE * roundCooldownMult(state);
+  return {
+    cost: abilityFocusCost(state, abilityId),
+    seconds: dialSecondsText(state, abilityFocusSecondsPerStep(state, abilityId)),
+    floor: dialSecondsText(state, Math.max(1, floor))
+  };
+}
+
 
 /* ---------- The rows that describe where they stand ----------
  *
@@ -306,8 +354,8 @@ const NEXT_TIER_UPGRADE_TEXT = {
       invested,
       full: DAHAN_HASTE_FEAR_FOR_FULL,
       pct: hastePctText(dahanHasteFraction(invested)),
-      seconds: strikeSecondsText(state, dahanAttackIntervalFor(invested)),
-      base: strikeSecondsText(state, DAHAN_ATTACK_INTERVAL_SECONDS)
+      seconds: dialSecondsText(state, dahanAttackIntervalFor(invested)),
+      base: dialSecondsText(state, DAHAN_ATTACK_INTERVAL_SECONDS)
     };
     if (invested >= upgradeMaxTier("dahan_remember")) {
       return template((t.upgradeMaxedTexts || {}).dahan_remember, parts);

@@ -215,8 +215,10 @@ Cards reuse the ability runtime whole rather than growing a parallel one:
 - **Cooldowns are authored in beats**, `beats * TIME_SCALE`, like every duration in the game
   ([04](./04-economy-formulas.md#beats-and-time_scale)). Nothing scales them a second time.
 - **Focus works on cards**, once `presence_current_quickens` is owned. A card carries no
-  `unlockCost`, so `focusBaseCost(id)` falls through — each card record carries its own
-  `focusBaseCost`, set to its cooldown in beats, so a slow card costs more to hasten.
+  `unlockCost` for the ladder to anchor to, so each card names its whole ladder — anchor,
+  growth, step and floor — exactly as the tuned kit abilities do. The anchor is what the *cast*
+  is worth over the clock it sits on, which puts Tsunami's opening rung **below** Pull Beneath's:
+  see [the seven card ladders](./04-economy-formulas.md#the-seven-card-ladders).
 - **No auto-cast.** The five automations are Fear rows bought against named kit abilities;
   nothing bought a card's cast. Cards are played by hand, and that is the counterweight to their
   strength.

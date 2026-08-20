@@ -714,8 +714,8 @@ unrounded on top of it so a permanent cut composes exactly. The ability bar roun
 display.
 
 `round.abilityCooldownMult` is the permanent, shop-bought half — frozen at round setup, see
-[Round Reset Formula](#round-reset-formula) below. `abilityFocusMultiplier` is the live,
-mid-round half, bought with Energy while the round is running — see
+[Round Reset Formula](#round-reset-formula) below. `abilityFocusedCooldownSeconds` carries the
+live, mid-round half, bought with Energy while the round is running — see
 [Focus](#focus-spending-energy-mid-round-to-shorten-a-cooldown) just below. Nothing today buys
 the first one (`cooldownReductionPct` is a stub read as `0`); the second is fully wired.
 
@@ -780,8 +780,8 @@ reading of what it is worth hastening — and the growth is only the default rat
 overridable per ability, because ladder length varies fourfold across the kit: 1.5 a rung is
 right for the Boon's eight rungs and would put Flash Floods' sixteenth rung at 2 189 Energy and
 Wash Away's twentieth past 9 000, a tail no round reaches, which is the exact failure the
-subtractive rework exists to end. Every power card anchors itself this way (its own cooldown in
-beats), and `innate_power` overrides both, per tier.
+subtractive rework exists to end. Every ladder in the game is tuned now: the four kit abilities
+below, `innate_power`'s three tiers, and the seven cards.
 
 The floor defaults to a third of the ability's own cooldown, so any ability tops out at three
 times the cast rate the round started it at, however long its ladder is. It is read off the
@@ -863,10 +863,139 @@ about twice as much. Wash Away's last rungs are the strongest purchase in the ga
 to say so: a 10-beat Wash removes two units from the island every wave, indefinitely, and
 removal is the one effect that does not decay against the invader health ladder.
 
-What is left on the derived defaults (step 1, floor a third, growth 1.5) is the seven power
-cards, each anchored on its own cooldown in beats and running from that cooldown down to a third
-of it, pending their own pass. See
-[implementation-microtasks.md](../tasks/implementation-microtasks.md#idea-inbox).
+#### What an anchor is, stated
+
+The four ladders above encode a rule the prose never wrote down. Divide each anchor by the
+percentage of clock its first rung buys, and the same number falls out of all six tuned
+ladders — what a **cast** is worth:
+
+```txt
+                anchor   1 beat is   Energy per 1% of clock
+boon_of_vigor      3        8.3%              0.36
+rivers_bounty      5        6.7%              0.75
+innate tier 2      8        6.7%              1.20
+flash_floods       5        4.0%              1.25
+wash_away          6        3.3%              1.80
+innate tier 3     25        4.5%              5.50
+
+anchor = worth * 100 / cooldownBeats
+```
+
+The cooldown enters **only as a divisor**. That is why Wash Away, the strongest cast in the kit,
+opens at 6 while the Innate's tier 3 opens at 25: the ladder prices a *beat*, and a beat off 30
+is worth less than a beat off 22. The rule reads the same way the two long ladders' own note
+above puts it — it is that note generalised.
+
+#### What a Focus rung is worth
+
+The anchor rule above runs in one direction: given what a cast is worth, price its ladder. The
+auto-buy resolver ([05-progression.md](./05-progression.md#which-rung-it-buys-next)) needs it in
+the other — given a board of ladders, which rung is the better buy. `abilityFocusValuePerEnergy`
+is that reading, and it is three factors multiplied:
+
+```txt
+value = worth * (1/nextBeats - 1/nowBeats) / cost
+
+worth = anchor * cooldownBeats / 100      <- the anchor rule, inverted
+```
+
+**The middle term is casts per beat gained, not seconds removed.** Seconds removed is flat by
+construction — every rung takes `focusStepBeats` off — so ranking by it would rank by price
+alone and call the result a rate. Nor is it percent of cooldown, which is the framing the
+subtractive rework threw out: under that reading the tail of every ladder looks worthless, when
+the tail is where a rung buys the most.
+
+**`worth` is recovered from the catalogue, not tabled again.** Inverting `anchor = worth * 100 /
+cooldownBeats` gives back the number the balance pass was working from. That matters more than
+the arithmetic: a separate table of per-ability weights would be a second balance surface, and
+it would drift from the ladders the first time either was retuned. There is one statement of
+what a cast is worth in the game, and both readers of it agree by construction.
+
+The `100` is a scale factor and cancels out of any comparison; it is kept so a value read while
+debugging is in the same units the anchor table above quotes.
+
+A tiered ability answers for the tier it is standing on, since every figure comes through
+`abilityRecord` — so the Innate's worth jumps the moment tier 2 is bought and the bot re-ranks
+it against the rest of the kit on the spot.
+
+**Which ability this puts first is a reading of the tuned ladders, not a designed outcome**, and
+it moves whenever they are retuned. `tests/autobuy.test.js` asserts the property — the pick is
+the argmax over everything affordable — rather than naming a winner, so a balance pass does not
+land as a failing test in a file that is not about balance.
+
+#### The seven card ladders
+
+The cards used to anchor on their **own cooldown in beats** (Tsunami 50, Pull Beneath 10), which
+inverts the rule: it charged the most for the beat worth the least. Tsunami's opening rung was
+50 Energy for a 2% gain — the worst purchase in the game — and its thirty-third rung was 21 571 994,
+with Accelerated Rot's twentieth at 66 505. Two-thirds of both ladders were decoration, which is
+the exact failure the subtractive rework exists to end.
+
+Every card now names its whole ladder. Step stays 1 beat and the floor stays a third of the
+cooldown, so ladder lengths are fixed by the cooldowns; growth follows the length rule already
+set by the kit (up to ten rungs 1.5, thirteen to sixteen 1.3, twenty 1.25), extrapolated one
+notch for Tsunami's thirty-three.
+
+| card | cd | floor | rungs | worth | anchor | growth | last rung | total | casts/wave |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `pull_beneath` | 10 | 4 | 6 | 2.5 | 25 | 1.5 | 190 | 520 | 1.00 → 2.50 |
+| `song_of_sanctity` | 10 | 4 | 6 | 1.6 | 16 | 1.5 | 122 | 333 | 1.00 → 2.50 |
+| `uncanny_melting` | 12 | 4 | 8 | 2.9 | 24 | 1.5 | 410 | 1 182 | 0.83 → 2.50 |
+| `natures_resilience` | 12 | 4 | 8 | 2.4 | 20 | 1.5 | 342 | 986 | 0.83 → 2.50 |
+| `encompassing_ward` | 20 | 7 | 13 | 3.4 | 17 | 1.3 | 396 | 1 660 | 0.50 → 1.43 |
+| `accelerated_rot` | 30 | 10 | 20 | 5.4 | 18 | 1.25 | 1 249 | 6 173 | 0.33 → 1.00 |
+| `tsunami` | 50 | 17 | 33 | 8.5 | 20 | 1.12 | 752 | 6 847 | 0.20 → 0.59 |
+
+```txt
+pull_beneath        25   38   56   84  127  190                                    (520)
+song_of_sanctity    16   24   36   54   81  122                                    (333)
+uncanny_melting     24   36   54   81  122  182  273  410                          (1 182)
+natures_resilience  20   30   45   68  101  152  228  342                          (986)
+encompassing_ward   17   22   29   37   49   63   82  107  139  180  234  305  396 (1 660)
+accelerated_rot     18   23   28   35   44   55   69   86  107  134  168  210
+                   262  327  409  512  639  799  999 1249                          (6 173)
+tsunami             20   22   25   28   31   35   39   44   50   55   62   70
+                    78   87   98  109  123  137  154  172  193  216  242  271
+                   304  340  381  426  478  535  599  671  752                     (6 847)
+```
+
+The anchors collapse into a **16–25 band**, which is the honest result rather than a target: a
+card is a strong cast on a clock scaled to its strength, so every card prices a beat at about the
+same rate. The visible consequence is that Tsunami — by some way the biggest cast in the game —
+opens **below** Pull Beneath, one of the smallest. That is the same statement the kit already
+makes between Wash Away (6) and the Innate's tier 3 (25).
+
+The worths, per card:
+
+- `pull_beneath` **2.5** — roughly twice a Flash Floods cast on damage alone, plus 3 Fear.
+- `song_of_sanctity` **1.6**, the cheapest of the seven — Explorer removal is narrow, and it
+  narrows further through the round as Builds turn the Explorers into Towns.
+- `uncanny_melting` **2.9** — Fear *per invader* scales with the stack; a heavy land pays 15–30.
+- `natures_resilience` **2.4** — Defend 6 is prevention and the Blight removal is durable, but
+  neither scales with the land the way melting's Fear does.
+- `encompassing_ward` **3.4** — island-wide and needs no target, and unused wards bank on quiet
+  lands. On a 20-beat clock that still anchors under the short cards.
+- `accelerated_rot` **5.4**, level with the Innate's tier 3 — it pays in all three currencies the
+  round cares about. Twenty rungs at 1.25, the same shape as Wash Away's ladder and three times
+  its price at every rung, which is what a cast worth about three Wash casts should cost.
+- `tsunami` **8.5** — the biggest cast in the game, discounted about 15% for being dead whenever
+  the pressure has gone inland.
+
+Two things about Tsunami's ladder are deliberate and worth stating, since both are the first of
+their kind:
+
+- **Thirty-three rungs**, half again the longest ladder the kit has. It follows from holding the
+  floor at a third of a 50-beat clock rather than from any choice about the ladder. Raising its
+  floor to 20 beats would shorten it to thirty, and would break the guarantee every other ability
+  keeps — three times the cast rate the round started it at. The guarantee won.
+- **Growth 1.12**, one notch past Wash Away's 1.25 on the long-ladder rule. At 1.25 the last rung
+  would be 34 000 and thirty of the thirty-three would be decoration; at 1.12 it is 752, and
+  6 847 end to end puts the ladder a shade over Accelerated Rot's — the two dearest in the game,
+  on the two strongest casts, exactly as Wash Away and the Innate's tier 3 sit at the top of the
+  kit.
+
+Both card ladders past 6 000 are round-*length* purchases, the way `blight_resilience` is: a card
+cannot be in hand before wave 25, and nothing about the seven is reachable in a shallow round.
 
 #### The Innate's three ladders
 
