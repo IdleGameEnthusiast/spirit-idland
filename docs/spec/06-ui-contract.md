@@ -382,22 +382,31 @@ island board, and the between-round shop.
   `presence_deep_water_comes`.** A one-off carries `is-one-off`, reads *Unlocked* rather than
   *Maxed* when bought, and shows no tier chip — `presenceUpgradeStatusText` returns `""` for it,
   which is the same answer `upgradeStatusText` gives a non-repeatable Fear row. The two ladder
-  rows take the other branch of all three: no `is-one-off`, *Maxed* at the top rung, and a
-  `Tier n/10` or `Tier n/3` chip drawn from the Fear shop's own `shopTierLabelMax` — a Presence
-  ladder is not different enough from a Fear ladder to be worth a second phrasing the player has
-  to learn. `presence_deep_water_comes` is also the only row whose **price moves as it is
-  bought** (3 → 4 → 5, from `costs` rather than `cost`), which the buy button reads live off
-  `presenceUpgradeCost` like every other row
-- A Presence row's text names the Fear rows it grants, and where it quotes a price it does so
-  **in words**, not from `baseCost`. That is a deliberate exception to the live-price rule the
-  Fear ladders follow: a grant is bought once and its worth is "these rows, forever", so there
-  is no number that moves. The row granting all five auto-casts quotes no price at all — five
-  prices summed into one figure is arithmetic the player did not ask for
-- **The ladder row is the exception to that exception**, and takes the live-price rule back:
-  its text quotes what it endows now and what one more rung adds, both filled at render. It is
-  bought ten times and what it grants moves every time, so a sentence written flat would be
-  wrong at nine rungs out of ten. The objection above is to a number re-read every frame on a
-  row bought *once*, which is a different case
+  rows take the other branch of all three: no `is-one-off`, *Maxed* at the top rung, and a tier
+  chip. `presence_fear_remains` draws a plain `Tier n/10` from the Fear shop's own
+  `shopTierLabelMax` — a Presence ladder is not different enough from a Fear ladder to be worth
+  a second phrasing the player has to learn. `presence_deep_water_comes` draws
+  `presenceTierFastForward` once a rung is owned, which counts the same rungs and then says what
+  the rungs owned are granting right now — `Tier n/3 — fast-forwards w waves (s%)`. It is the
+  one row whose grant moves for a reason the player did not click (`meta.bestWaveReached`), so
+  the chip is the only place the shop states it. At `0/3` it falls back to the plain label: a
+  tail reading *0 waves (0%)* is the row's own sentence told backwards. It is also the only
+  row whose **price moves as it is bought** (3 → 4 → 5, from `costs` rather than `cost`),
+  which the buy button reads live off `presenceUpgradeCost` like every other row
+- **A Presence row's text quotes no price.** Not the row's own — that is on the buy button —
+  and not the Fear price of what it grants either: a grant is bought once, its worth is "this,
+  forever", and a player reading the Presence shop is not shopping in the Fear one. A grant row
+  names what it hands over in plain words and stops
+- **A row's text says what the next click buys, not what is already owned.** The ladder rows
+  are what makes that a rule worth stating: `presence_fear_remains` promises its Fear *per
+  rank* and `presence_deep_water_comes` quotes the share of the rung *above* the one owned, at
+  the top rung falling back to the rung owned, which is exactly true there. Where a ladder's
+  standing grant needs saying at all, the **tier chip** says it, not the sentence — one live
+  figure in one place, and the sentence stays the same length at every rung
+- **Every row's text is short enough to read at a glance.** A Presence row is bought once or a
+  handful of times and read every time the shop opens, so the sentence names the mechanic and
+  stops. What a mechanic costs, how far it stacks, and what caps it are the pills', the chip's
+  and the spec's business
 - A bought Presence row sinks into its own sold-out block, folded shut behind a count, exactly
   as a bought one-off does in the Fear shop
 

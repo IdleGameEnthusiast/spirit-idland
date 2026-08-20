@@ -282,29 +282,47 @@
 
   /* --- What the shop says ------------------------------------------------ */
 
-  test("fast-forward: the row quotes the next rung's share and the current wave count", () => {
+  test("fast-forward: the row quotes the share the next rung buys", () => {
     const { state } = newGame();
     state.meta.bestWaveReached = 87;
 
     const unowned = engine.presenceUpgradeText(state, ROW);
     assert(unowned.includes("10%"), `an unowned row offers 10%: ${unowned}`);
-    assert(unowned.includes("0"), "and grants nothing yet");
 
     grantPresence(state, ROW, 1);
     const owned = engine.presenceUpgradeText(state, ROW);
     assert(owned.includes("15%"), `one rung up, the next is 15%: ${owned}`);
-    assert(owned.includes("8"), `and 8 waves are granted now: ${owned}`);
 
     grantPresence(state, ROW, 3);
     const maxed = engine.presenceUpgradeText(state, ROW);
     assert(maxed.includes("20%"), `at the top the row quotes what it has: ${maxed}`);
-    assert(maxed.includes("17"), `and grants 17 waves: ${maxed}`);
   });
 
-  test("fast-forward: the ladder draws a tier chip like the other repeatable row", () => {
+  /* The chip carries what the row's sentence no longer does: the rung owned, and what that
+   * rung is granting at this record. Both figures move - the tier when the row is bought, the
+   * wave count every time the record does - so the chip is the shop's only live answer to
+   * "what is this doing for me right now". */
+  test("fast-forward: the tier chip counts rungs and names the waves they grant", () => {
     const { state } = newGame();
+    state.meta.bestWaveReached = 87;
+
+    const none = engine.presenceUpgradeStatusText(state, ROW);
+    assert(none.includes("0") && none.includes("3"), `an unowned ladder still counts: ${none}`);
+
     grantPresence(state, ROW, 2);
     const chip = engine.presenceUpgradeStatusText(state, ROW);
     assert(chip.includes("2") && chip.includes("3"), `the chip counts rungs: ${chip}`);
+    assert(chip.includes("13"), `and names the 13 waves the rung grants: ${chip}`);
+    assert(chip.includes("15%"), `and the share those waves come from: ${chip}`);
+  });
+
+  test("fast-forward: both locales carry the chip's label", () => {
+    for (const lang of ["de", "en"]) {
+      const label = engine.I18N[lang].presenceTierFastForward;
+      assert(label, `${lang} has the label`);
+      for (const key of ["{tier}", "{max}", "{waves}", "{share}"]) {
+        assert(label.includes(key), `${lang} label carries ${key}`);
+      }
+    }
   });
 })();

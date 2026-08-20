@@ -283,33 +283,25 @@ function presenceUpgradeText(state, presenceId) {
   // dial position but one.
   return template(text, {
     seconds: focusStepSecondsText(state),
-    // The ladder's two figures: what it grants at the rung already bought, and what one more
-    // rung adds. Live, and deliberately so - the objection above is to a *price* re-read every
-    // render on a row bought once, which buys nothing the sentence does not say. This row is
-    // bought ten times and what it grants moves every time, so a flat sentence would be wrong
-    // at nine rungs out of ten. It is the Fear shop's own rule (see NEXT_TIER_UPGRADE_TEXT)
-    // arriving in this catalogue with the first row that needs it.
-    fear: formatFear(ascensionStartFear(state)),
+    // What one rung of the Fear ladder puts in the bank. Flat, and the only figure of that
+    // that row's sentence needs: how much is already banked is what the ascension log answers,
+    // and the row's own promise is per-rank anyway.
     step: formatFear(ASCENSION_START_FEAR_PER_TIER),
-    /* The fast-forward's three figures, live for the same reason the two above it are: the row
-     * is bought three times and what it grants moves at every rung *and* every time the record
-     * does, so a flat sentence would be wrong nearly always.
-     *
-     * `share` deliberately quotes the rung *above* the one owned - what the next click buys,
-     * which is the question a row still on the shelf is being asked - while `waves` quotes what
-     * is granted right now. At the top rung there is no rung above, so `share` falls back to
-     * the one owned and the two figures describe the same thing, which is exactly true then.
+    /* The fast-forward's share, live because the row is bought three times and every rung
+     * moves it. It quotes the rung *above* the one owned - what the next click buys, which is
+     * the question a row still on the shelf is being asked. At the top rung there is none
+     * above, so it falls back to the one owned, which is exactly true then. What the owned
+     * rung grants right now is the chip's job - see `presenceUpgradeStatusText`.
      */
     share: fastForwardSharePct(Math.min(
       presenceUpgradeTier(state, "presence_deep_water_comes") + 1,
       FAST_FORWARD_MAX_TIER
     )),
-    waves: fastForwardWaves(state),
     speed: FAST_FORWARD_SPEED
   });
 }
 
-/* The tier chip beside a Presence row, for the one row that has rungs to report.
+/* The tier chip beside a Presence row, for the rows that have rungs to report.
  *
  * A one-off answers "" and draws no chip, which is every other row in the catalogue - the same
  * answer `upgradeStatusText` gives a non-repeatable Fear row, and the reason this reads off
@@ -320,10 +312,25 @@ function presenceUpgradeText(state, presenceId) {
 function presenceUpgradeStatusText(state, presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record || !record.repeatable) return "";
-  return template(locale(state).shopTierLabelMax, {
-    tier: presenceUpgradeTier(state, presenceId),
-    max: presenceUpgradeMaxTier(presenceId)
-  });
+  const tier = presenceUpgradeTier(state, presenceId);
+  const max = presenceUpgradeMaxTier(presenceId);
+  // The fast-forward's chip counts rungs and then says what the rungs bought so far are worth,
+  // in the waves the player watches go by. Its row's text sells the *next* rung, so without
+  // this the shop would never state what the owned one is doing - and a share alone does not
+  // answer it either, because the wave count moves with the record as well as with the tier.
+  //
+  // Only once a rung is owned. At 0/3 the tail would read "0 waves (0%)", which is the row's
+  // own text told backwards, and the plain chip the other ladder draws says the same thing in
+  // fewer words.
+  if (presenceId === "presence_deep_water_comes" && tier > 0) {
+    return template(locale(state).presenceTierFastForward, {
+      tier,
+      max,
+      waves: fastForwardWaves(state),
+      share: fastForwardSharePct(tier)
+    });
+  }
+  return template(locale(state).shopTierLabelMax, { tier, max });
 }
 
 // What one Focus rung is worth on the clock the player is watching, for the two blurbs that

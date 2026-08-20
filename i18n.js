@@ -217,19 +217,23 @@ const I18N = {
       presence_deep_water_comes: "Tiefes Wasser kommt früher"
     },
     presenceTexts: {
-      presence_tide_returns: "Schenkt dir \"Die Flut kehrt wieder\" (500 Furcht) für immer. Runden starten von selbst - in diesem Zyklus und in jedem danach.",
-      presence_river_knows: "Schenkt dir \"Der Fluss weiß, was er braucht\" (200 Furcht) für immer. Fähigkeiten kaufen sich von selbst - in diesem Zyklus und in jedem danach.",
-      presence_all_unbidden: "Schenkt dir alle fünf Fähigkeits-Automatiken für immer: Segen, Instinkt, Gabe, Sturzflut und Strömung.",
-      presence_current_quickens: "Schaltet Fokus frei: Energie während der Runde ausgeben, um {seconds} Sek von der Abklingzeit einer Fähigkeit zu nehmen - immer wieder, immer gleich viel, zu steigendem Preis, bis auf ein Drittel des Ausgangswerts.",
-      presence_river_deepens: "Der Auto-Kauf gibt auch die übrige Energie aus - in Fokus, immer weiter, die ganze Runde lang. Nichts bleibt bis zum Rundenende liegen. Unter \"Anpassen\" stellst du ein, wofür.",
-      presence_fear_remains: "Jede Stufe legt {step} Furcht in die Bank der nächsten Aszension - geschenkt, nicht verdient, und selbst keine Präsenz wert. Bisher: {fear}.",
-      presence_deep_water_comes: "Jede Stufe lässt mehr vom Rundenanfang im Zeitraffer laufen: die ersten {share}% deiner höchsten Welle mit {speed}x, ohne Kartenaufdeckung. Die Wellen zählen und zahlen dabei ganz normal. Zurzeit: {waves} Wellen."
+      presence_tide_returns: "Neue Wellen starten von jetzt an von selbst.",
+      presence_river_knows: "Fähigkeiten schalten sich von selbst für Energie frei.",
+      presence_all_unbidden: "Schaltet die fünf Fähigkeits-Automatiken für immer frei - Segen, Instinkt, Gabe, Sturzflut und Strömung.",
+      presence_current_quickens: "Schaltet Fokus frei: Energie während der Runde ausgeben und je Einsatz {seconds} Sek von der Abklingzeit einer Fähigkeit nehmen.",
+      presence_river_deepens: "Der Auto-Kauf setzt auch Fokus ein und senkt die Abklingzeiten von selbst. Unter \"Anpassen\" legst du fest, was zuerst gekauft wird.",
+      presence_fear_remains: "Beginne jede Aszension mit {step} Furcht in der Bank je Stufe. Zählt nicht gegen den Präsenzgewinn.",
+      presence_deep_water_comes: "Jede Stufe schickt mehr vom Rundenanfang in den Zeitraffer: die ersten {share}% deiner höchsten Welle mit {speed}x."
     },
     // Der Trenner für Namenslisten in Logzeilen - siehe die englische Fassung.
     listSeparator: ", ",
     presenceGranted: "{upgrade} für {cost} Präsenz. {unlocks} gehört jetzt für immer dir.",
     presencePurchasedDirect: "{upgrade} für {cost} Präsenz.",
     presenceTierPurchased: "{upgrade}, Stufe {tier}/{max}, für {cost} Präsenz.",
+    // Die Stufenanzeige der Zeitrafferzeile: Der Zeilentext sagt, was die nächste Stufe
+    // kauft, die Anzeige darunter, was die gekaufte gerade gewährt - in Wellen, denn das ist
+    // die Zahl, die der Spieler am Rundenanfang tatsächlich vorbeiziehen sieht.
+    presenceTierFastForward: "Stufe {tier}/{max} - Zeitraffer für {waves} Wellen ({share}%)",
     fastForwardStarted: "Tiefes Wasser kommt früher: die ersten {waves} Wellen laufen mit {speed}x.",
     fastForwardEnded: "Welle {wave} - der Zeitraffer endet, das Tempo gehört wieder dir.",
     waveFastForwardValue: "Zeitraffer",
@@ -673,13 +677,13 @@ const I18N = {
       presence_deep_water_comes: "Deep Water Comes Sooner"
     },
     presenceTexts: {
-      presence_tide_returns: "Yours for good: \"The Tide Returns\" (500 Fear). Rounds start themselves, this cycle and every cycle after it.",
-      presence_river_knows: "Yours for good: \"The River Knows Its Own Need\" (200 Fear). Abilities buy themselves, this cycle and every cycle after it.",
-      presence_all_unbidden: "Yours for good: all five ability automations - the Boon, the Instinct, the Bounty, the Flood and the Current.",
-      presence_current_quickens: "Unlocks Focus: spend Energy mid-round to take {seconds} Sec off one ability's cooldown, again and again, always the same amount, at a rising price - down to a third of where it started.",
-      presence_river_deepens: "Auto-buy spends what is left over too - on Focus, again and again, all round long. Nothing is still in the purse when the round ends. \"Customize\" is where you say what it spends it on.",
-      presence_fear_remains: "Each tier puts {step} Fear in the next ascension's bank - granted, not earned, and worth no Presence of its own. So far: {fear}.",
-      presence_deep_water_comes: "Each tier fast-forwards more of the opening: the first {share}% of your highest wave at {speed}x, with no card reveals. Those waves still count and still pay, in full. Right now: {waves} waves."
+      presence_tide_returns: "New waves start themselves from now on.",
+      presence_river_knows: "Abilities unlock themselves for Energy, automatically.",
+      presence_all_unbidden: "Permanently unlocks the five ability automations - the Boon, the Instinct, the Bounty, the Flood and the Current.",
+      presence_current_quickens: "Unlocks Focus: spend Energy mid-round to take {seconds} Sec off one ability's cooldown each cast.",
+      presence_river_deepens: "Auto-buy casts Focus too, cutting ability cooldowns on its own. \"Customize\" is where you say what it buys first.",
+      presence_fear_remains: "Start every ascension with {step} Fear in the bank per rank. Does not count against the Presence gain.",
+      presence_deep_water_comes: "Each tier fast-forwards more of the opening: the first {share}% of your highest wave at {speed}x."
     },
     // Says "for good", because that is the whole of what separates a Presence purchase from a
     // Fear one. {unlocks} is one row for two of the three grants and five for the other, joined
@@ -692,6 +696,10 @@ const I18N = {
     // The ladder's line: ten identical purchase lines would report no progress, so the rung is
     // named. Only `presence_fear_remains` ever reaches this.
     presenceTierPurchased: "{upgrade}, tier {tier}/{max}, for {cost} Presence.",
+    // The fast-forward row's chip. The row's text sells the next rung; the chip below it says
+    // what the rung already owned grants right now - in waves, because that is the figure the
+    // player actually watches go by at the start of a round.
+    presenceTierFastForward: "Tier {tier}/{max} - fast-forwards {waves} waves ({share}%)",
     // The fast-forward says where it starts and where it stops, because between the two the
     // log is the only thing moving slowly enough to read.
     fastForwardStarted: "Deep Water Comes Sooner: the first {waves} waves run at {speed}x.",
