@@ -377,14 +377,6 @@
     assertEqual(Object.keys(engine.PRESENCE_GRANT_BY_UPGRADE).length, Object.keys(seen).length, "the reverse map has no strays");
   });
 
-  test("ascension: the row that grants nothing still buys its capability", () => {
-    const { state } = newGame();
-    assertEqual(engine.PRESENCE_UPGRADES.presence_current_quickens.grants, undefined, "no Fear row for Focus");
-    assert(!engine.abilityFocusUnlocked(state), "unbought, Focus reads as locked");
-    grantPresence(state, "presence_current_quickens");
-    assert(engine.abilityFocusUnlocked(state), "and bought, it reads as open");
-  });
-
   /* ---------- What a save carrying the deleted rows gets back ---------- */
 
   /* The seven discount rows are gone from the registry, so the loader drops them like any other
@@ -528,17 +520,140 @@
     }
   });
 
-  // Every Presence row must do one of the two things the catalogue knows how to do, or it is a
+  /* A capability row is named here by the reader that gates on it, rather than by its id alone.
+   * The pair below has to hold: false on a fresh game, true once the row is owned. A row whose
+   * gate was never wired to anything fails that second half, where a list of ids would have let
+   * it pass for having been added to the list. */
+  const CAPABILITY_GATES = {
+    presence_current_quickens: (state) => engine.abilityFocusUnlocked(state)
+  };
+
+  /* The third kind of row, and the newest: one that neither grants a Fear row nor opens a
+   * capability, but moves a number `ascend` reads. Named by its reader for the same reason the
+   * gates above are - a row wired to nothing must fail this, and an id list would let it pass
+   * for having been listed. The pair is 0 on a fresh game, more than 0 once a rung is owned. */
+  const ENDOWMENT_READERS = {
+    presence_fear_remains: (state) => engine.ascensionStartFear(state)
+  };
+
+  // Every Presence row must do one of the three things the catalogue knows how to do, or it is a
   // purchase nothing in the game reacts to. Granting is checked above ("every grant names a real
-  // one-off Fear row"); this is the check that no row does neither.
-  test("ascension: every Presence row either grants Fear rows or gates a capability", () => {
+  // one-off Fear row"); this is the check that no row does none of them.
+  test("ascension: every Presence row grants Fear rows, gates a capability, or endows a cycle", () => {
     for (const id of engine.PRESENCE_UPGRADE_IDS) {
       const grants = engine.PRESENCE_UPGRADES[id].grants;
       if (grants) {
         assert(grants.length > 0, `${id} carries an empty grant list`);
         continue;
       }
-      assertEqual(id, "presence_current_quickens", `${id} grants nothing and gates nothing`);
+
+      const gate = CAPABILITY_GATES[id];
+      const endowment = ENDOWMENT_READERS[id];
+      assert(gate || endowment, `${id} grants nothing, gates nothing and endows nothing`);
+
+      const { state } = newGame();
+      if (gate) {
+        assert(!gate(state), `${id} reads as owned on a fresh game`);
+        grantPresence(state, id);
+        assert(gate(state), `${id} is owned, but the capability it gates did not open`);
+      } else {
+        assertEqual(endowment(state), 0, `${id} endows a fresh game before it is bought`);
+        grantPresence(state, id);
+        assert(endowment(state) > 0, `${id} is owned, but the number it endows did not move`);
+      }
     }
+  });
+
+  /* ---------- The one repeatable row: what a new cycle starts with ---------- */
+
+  /* Ten rungs at a flat 1 Presence, granting a flat 50 Fear each - see
+   * ASCENSION_START_FEAR_PER_TIER for why the price is flat and what that costs the row late.
+   * The checks here are about the machinery, not the balance: the ladder is the first repeatable
+   * row this catalogue has ever had, and every one-rung assumption it used to be allowed to make
+   * is checked below instead. */
+
+  test("ascension: the endowment ladder is ten rungs at a flat 1 Presence", () => {
+    const { state } = newGame();
+    const max = engine.presenceUpgradeMaxTier("presence_fear_remains");
+    assertEqual(max, engine.ASCENSION_START_FEAR_MAX_TIER, "ten rungs");
+    state.meta.presence = max + 5;
+
+    for (let rung = 1; rung <= max; rung += 1) {
+      assertEqual(engine.presenceUpgradeCost(state, "presence_fear_remains"), 1,
+        `rung ${rung} costs 1 - the price never grows`);
+      assert(engine.purchasePresenceUpgrade(state, "presence_fear_remains"), `rung ${rung} lands`);
+      assertEqual(engine.presenceUpgradeTier(state, "presence_fear_remains"), rung, `now at rung ${rung}`);
+    }
+
+    assert(engine.presenceUpgradeMaxed(state, "presence_fear_remains"), "the top is the top");
+    assert(!engine.purchasePresenceUpgrade(state, "presence_fear_remains"), "an eleventh is refused");
+    assertEqual(state.meta.presence, 5, "and ten rungs cost exactly ten");
+    assertEqual(engine.presenceUpgradeCost(state, "presence_fear_remains"), Infinity,
+      "a maxed row has no next price");
+  });
+
+  test("ascension: a one-off Presence row is still one rung", () => {
+    for (const id of engine.PRESENCE_UPGRADE_IDS) {
+      if (engine.PRESENCE_UPGRADES[id].repeatable) continue;
+      assertEqual(engine.presenceUpgradeMaxTier(id), 1, `${id} is a one-off`);
+    }
+  });
+
+  test("ascension: the endowment is 50 Fear a rung", () => {
+    const { state } = newGame();
+    assertEqual(engine.ascensionStartFear(state), 0, "nothing owned, nothing endowed");
+
+    for (let rung = 1; rung <= engine.ASCENSION_START_FEAR_MAX_TIER; rung += 1) {
+      state.presenceUpgrades.purchased.presence_fear_remains = rung;
+      assertEqual(engine.ascensionStartFear(state), rung * engine.ASCENSION_START_FEAR_PER_TIER,
+        `rung ${rung} endows ${rung} times the step`);
+    }
+    assertEqual(engine.ascensionStartFear(state), 500, "and the full ladder is 500 Fear");
+  });
+
+  test("ascension: reclaiming opens the new cycle with the endowment banked", () => {
+    const state = readyToAscend(UNLOCK_FEAR);
+    state.meta.fear = 900;
+    state.presenceUpgrades.purchased.presence_fear_remains = 4;
+
+    assert(engine.ascend(state), "the Reclaim lands");
+
+    assertEqual(state.meta.fear, 200, "the bank opens at four rungs' worth, not at zero");
+    assertEqual(state.meta.cycleFearGranted, 200, "counted as granted");
+    assertEqual(state.meta.cycleFearGenerated, 0, "and never as generated");
+    // The identity the playtest tally checks, holding across the wipe.
+    const totals = engine.cycleFearTotals(state);
+    assertEqual(totals.generated + totals.granted - totals.spent, totals.banked,
+      "generated + granted - spent = bank, on the first tick of the new cycle");
+  });
+
+  // The property the whole "granted, not earned" split exists for: a head start cannot pay for
+  // itself. Sitting on the endowment and Reclaiming again must pay nothing.
+  test("ascension: the endowment mints no Presence of its own", () => {
+    const state = readyToAscend(UNLOCK_FEAR);
+    state.presenceUpgrades.purchased.presence_fear_remains = 10;
+
+    assert(engine.ascend(state), "the first Reclaim lands");
+    assertEqual(state.meta.fear, 500, "500 Fear in hand");
+
+    state.round.status = "ended";
+    assertEqual(engine.ascensionPayout(state), 0, "a bank full of endowment is worth nothing");
+    assert(!engine.ascensionUnlocked(state), "so it does not reach the unlock");
+    assert(!engine.ascend(state), "and the second Reclaim is refused");
+  });
+
+  test("ascension: a save carries the ladder's rung, clamped to its top", () => {
+    const loaded = engine.normalizeState({
+      presenceUpgrades: { purchased: { presence_fear_remains: 7 } }
+    });
+    assertEqual(loaded.presenceUpgrades.purchased.presence_fear_remains, 7, "seven survives");
+
+    // The clamp the one-rung rows never exercised: it reads the row's own top rather than
+    // assuming 1, which is what lets a ladder exist in this catalogue at all.
+    const clamped = engine.normalizeState({
+      presenceUpgrades: { purchased: { presence_fear_remains: 400 } }
+    });
+    assertEqual(clamped.presenceUpgrades.purchased.presence_fear_remains,
+      engine.ASCENSION_START_FEAR_MAX_TIER, "and rung 400 is clamped to the ten that exist");
   });
 })();

@@ -261,8 +261,9 @@ function presenceUpgradeName(state, presenceId) {
  * and what a grant does reads the same sentence before and after it is bought, so `presenceTexts`
  * can simply say it.
  *
- * Deleted with them: presenceNextTexts, presenceMaxedTexts, and presenceUpgradeStatusText - the
- * tier chip beside a Presence row, which had no rung left to report once every row was one rung.
+ * Deleted with them: presenceNextTexts and presenceMaxedTexts. `presenceUpgradeStatusText` went
+ * the same way and has come back below, because `presence_fear_remains` is a rung again and
+ * a ladder with no chip cannot say how far up it the player is.
  *
  * A grant row's text names the Fear rows it hands over, and where it quotes a price at all it
  * does so in words rather than from `baseCost`. That is a deliberate step back from the
@@ -280,7 +281,34 @@ function presenceUpgradeText(state, presenceId) {
   // as it is bought. This one moves with the speed dial and with nothing else, exactly like the
   // countdown it describes, which is the opposite case: written flat it would be wrong at every
   // dial position but one.
-  return template(text, { seconds: focusStepSecondsText(state) });
+  return template(text, {
+    seconds: focusStepSecondsText(state),
+    // The ladder's two figures: what it grants at the rung already bought, and what one more
+    // rung adds. Live, and deliberately so - the objection above is to a *price* re-read every
+    // render on a row bought once, which buys nothing the sentence does not say. This row is
+    // bought ten times and what it grants moves every time, so a flat sentence would be wrong
+    // at nine rungs out of ten. It is the Fear shop's own rule (see NEXT_TIER_UPGRADE_TEXT)
+    // arriving in this catalogue with the first row that needs it.
+    fear: formatFear(ascensionStartFear(state)),
+    step: formatFear(ASCENSION_START_FEAR_PER_TIER)
+  });
+}
+
+/* The tier chip beside a Presence row, for the one row that has rungs to report.
+ *
+ * A one-off answers "" and draws no chip, which is every other row in the catalogue - the same
+ * answer `upgradeStatusText` gives a non-repeatable Fear row, and the reason this reads off
+ * `repeatable` rather than off the tier. It borrows the Fear shop's own label so the two shops
+ * count rungs in the same words; a Presence ladder is not different enough from a Fear ladder
+ * to be worth a second phrasing the player has to learn.
+ */
+function presenceUpgradeStatusText(state, presenceId) {
+  const record = PRESENCE_UPGRADES[presenceId];
+  if (!record || !record.repeatable) return "";
+  return template(locale(state).shopTierLabelMax, {
+    tier: presenceUpgradeTier(state, presenceId),
+    max: presenceUpgradeMaxTier(presenceId)
+  });
 }
 
 // What one Focus rung is worth on the clock the player is watching, for the two blurbs that
@@ -313,7 +341,6 @@ function abilityFocusPillParts(state, abilityId) {
     floor: dialSecondsText(state, Math.max(1, floor))
   };
 }
-
 
 /* ---------- The rows that describe where they stand ----------
  *

@@ -380,8 +380,9 @@ Bought with `meta.presence`, which only `ascend()` pays out, and never lost to a
 
 **Presence never touches the board.** It buys no Dahan, shortens no clock, adds no damage. That
 is the rule the whole two-currency design rests on — see
-[05-progression.md](./05-progression.md#the-two-layers). What a row buys instead is one of two
-things: a Fear row handed over permanently, or a capability directly.
+[05-progression.md](./05-progression.md#the-two-layers). What a row buys instead is one of three
+things: a Fear row handed over permanently, a capability directly, or the Fear the next cycle
+opens its bank with.
 
 ### The rows that grant an automation
 
@@ -408,8 +409,9 @@ a decision worth nobody's second Reclaim. Their Fear rows keep their prices and 
 (25 / 100 / 200 / 300 / 400), because the first cycle still shops from them and `auto_boon` at
 25 is plausibly the first purchase a new player ever makes.
 
-`presenceUpgradeMaxTier` answers 1 for every row here — see
-[The rows that used to lower a price](#the-rows-that-used-to-lower-a-price).
+`presenceUpgradeMaxTier` answers 1 for every row here: none of them carries `repeatable`, and a
+row without it is a one-off whatever else the record says — see
+[The row that endows a cycle](#the-row-that-endows-a-cycle) for the one row that does.
 
 ### The row that grants nothing
 
@@ -429,6 +431,39 @@ point where the catalogue starts asking questions. See
 [05-progression.md](./05-progression.md#the-presence-catalogue) for the note on why that
 ordering may be worth retuning to 5 / 8 / 15.
 
+### The row that endows a cycle
+
+| id | does | cost | rungs |
+| --- | --- | --- | --- |
+| `presence_fear_remains` — *Die Furcht bleibt* / The Fear Remains | the next Reclaim opens its bank with `tier × 50` Fear — `ascend` reads it through `ascensionStartFear` | 1 a rung | 10 |
+
+**The only repeatable row in the catalogue**, and the only one for which
+`presenceUpgradeMaxTier` answers anything but 1. It is named for what survives the Reclaim
+rather than for water like the rest of the catalogue — the spirit withdraws, the invaders' fear
+of it does not. It is deliberately **not** called *The Island Remembers*: that name belongs to
+`power_card_interval` in the Fear shop, and the two rails are on screen at the same time.
+
+The Fear it hands over is paid into `meta.cycleFearGranted`, never `cycleFearGenerated` — the
+same column the playtest button's grant lands in, and for the same reason: **a head start must
+not mint Presence of its own.** `ascensionPayout` reads only the generated column, so sitting
+on a full 500-Fear endowment and Reclaiming again pays nothing. What it does still do is
+*indirect*: the Fear buys shop rows at wave 0 that multiply everything the cycle generates
+afterwards, and that multiplied Fear is generated like any other. The exclusion is about the
+grant never being counted twice, not a claim that a head start is worth no Presence.
+
+It skips no waves. Rounds always start at wave 0 and the difficulty ladder is keyed per round
+(see [09-island-board.md](./09-island-board.md)), so what a full ladder shortens is the
+*shopping* prologue of a cycle — 500 Fear is about eight rungs of `rising_dread`
+(6 × 1.6ⁿ sums to 420), which is the first few rounds of a fresh catalogue bought before they
+have to be played.
+
+**The price is flat and the grant is flat, and both are deliberate.** See
+[04-economy-formulas.md](./04-economy-formulas.md#the-endowment-and-what-it-is-worth-against-holding)
+for what that costs the row late: every rung shares one break-even, so the whole ladder is
+worth taking below a ~5,000-Fear cycle and none of it above. That makes it an accepted
+late-game sink rather than a competitive buy, and the lever if it is ever revisited is the 50
+rather than the 1.
+
 ### The rows that used to lower a price
 
 Seven repeatable rows lived here — `presence_boon_remembered` and its family — each carrying a
@@ -446,8 +481,9 @@ Deleted alongside: `AUTOMATION_PRICE_LADDERS`, `PRESENCE_DISCOUNT_COSTS`, `autom
 chip `presenceUpgradeStatusText` drew beside a Presence row. `upgradeBaseCost` survives as a
 pass-through to `baseCost` — the one seam a future price modifier would land on.
 
-With them went the last repeatable Presence row, so **every row in this catalogue is flat and
-one-off**, and `presenceUpgradeMaxTier` answers 1 for all of them. A repeatable row added later
+With them went the last repeatable Presence row of that era. **Every price in this catalogue is
+still flat**, the ten-rung ladder above included — `presenceUpgradeCost` has no growth curve and
+is not meant to grow one. A repeatable row added later
 wants a hand-written table or growth nearer 1.3–1.5: Presence income is root-shaped, and the
 Fear catalogue's 1.6 curve would kill a Presence ladder inside three tiers.
 

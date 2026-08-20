@@ -185,6 +185,32 @@ const PRESENCE_FEAR_BONUS_PER_POINT = 0.01;
 // Ten tiers, +10% each, +100% at the top - see the note above the three ladders in UPGRADES.
 const FEAR_LADDER_MAX_TIER = 10;
 
+/* ---------- What a new cycle starts with ----------
+ *
+ * `presence_fear_remains` is the one repeatable row in the Presence catalogue, and these
+ * two numbers are the whole of it: every rung hands the next ascension 50 more Fear, up to ten
+ * rungs and 500. It is paid into `meta.cycleFearGranted`, never `cycleFearGenerated`, so the
+ * head start mints no Presence of its own (see the note above the meta.cycleFear* fields, and
+ * `grantPlaytestFear`, which lands in the same column for the same reason).
+ *
+ * What it buys is the shopping prologue of a cycle rather than any wave: rounds always start at
+ * wave 0 and the ladder below is keyed per-round, so nothing here skips a wave. 500 Fear at the
+ * top of a cycle is about eight rungs of `rising_dread` (6 * 1.6^n sums to 420), which is the
+ * first few rounds of a fresh catalogue bought before they have to be played.
+ *
+ * The flat 50 is the number asked for, and it is worth writing down what it does and does not
+ * do, because the row ages in a direction the rest of the catalogue does not. Holding one
+ * Presence is +1% Fear generated forever (PRESENCE_FEAR_BONUS_PER_POINT), so a 1-Presence rung
+ * granting 50 Fear beats holding while a cycle generates under 5,000 - and every rung shares
+ * that break-even exactly, because the cost is flat. Under 5,000 all ten rungs are worth
+ * taking; well above it none of them are, and the row is a deliberate late-game sink rather
+ * than a competitive buy. That is the accepted shape, not an oversight: the alternative
+ * considered was a grant scaling with the cycle just finished, which would hold its value at
+ * any depth and was set aside for this. The lever if it ever wants revisiting is the 50.
+ */
+const ASCENSION_START_FEAR_PER_TIER = 50;
+const ASCENSION_START_FEAR_MAX_TIER = 10;
+
 /* ---------- The difficulty ladder ----------
  *
  * A round that survives its opening used to be flat: the Dahan out-kill the track and nothing

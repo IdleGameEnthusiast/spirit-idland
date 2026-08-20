@@ -367,6 +367,14 @@ capability directly, with no Fear row behind it.
 | `presence_river_knows` | `auto_buy_abilities` | 200 a cycle | 3 |
 | `presence_all_unbidden` | all five ability auto-casts | 1,025 a cycle | 5 |
 | `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | — | 5 |
+| `presence_fear_remains` | 50 Fear in the next cycle's bank, per rung — **ten rungs**, see [04-economy-formulas.md](./04-economy-formulas.md#the-endowment-and-what-it-is-worth-against-holding) | — | 1 a rung |
+
+`presence_fear_remains` is the catalogue's **only repeatable row**, and the only one whose
+worth *falls* as the run goes on. Its 50 a rung is flat while cycles grow, so all ten rungs beat
+holding the Presence under a ~5,000-Fear cycle and none of them do above it. That is an accepted
+late-game sink rather than an oversight — the row exists to compress the shopping prologue of a
+cycle, which is a job that stops mattering once cycles are long. It skips no waves: rounds
+always start at wave 0. The lever if it is ever revisited is the 50, not the 1.
 
 **Ten Presence buys every automation in the game, for the rest of the run.** A granted row is
 owned on the far side of a Reclaim: `ascend` empties `upgrades.purchased`, and `upgradeTier`

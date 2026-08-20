@@ -888,6 +888,60 @@ The carry is exactly what makes that no longer true — a beat bought at tier 1 
 tier 2's ladder — so the gate went with the change that killed its reason. Every unlocked
 ability now shows a Focus pill on the same rule.
 
+### 20. A Presence ladder that endows the next cycle with Fear — *built 2026-08-20*
+
+`presence_fear_remains` — *Die Furcht bleibt* / The Fear Remains. Ten rungs at a
+flat **1 Presence**, each putting **50 Fear** in the bank at the next Reclaim, 500 at the top.
+The catalogue's first repeatable row.
+
+**What it is for:** the shopping prologue of a cycle. A fresh catalogue means the first rounds
+of an ascension die early because nothing has been bought yet, and 500 Fear at wave 0 is about
+eight rungs of `rising_dread` (6 × 1.6ⁿ sums to 420) — those rounds bought instead of played.
+**It skips no waves**: rounds always start at wave 0 and the difficulty ladder is per-round.
+
+**Where the Fear lands.** `ascend` writes `ascensionStartFear(state)` into `meta.fear` *and*
+`meta.cycleFearGranted`, leaving `cycleFearGenerated` at 0 — the column the playtest grant
+already uses, for the same reason: a head start must not mint Presence of its own. The tally's
+identity survives the wipe as `0 + n - 0 = n`. The indirect path is left open and documented:
+the Fear buys ladders that multiply everything the cycle generates afterwards, and that is
+generated Fear like any other.
+
+**The balance argument, and what was accepted.** Holding 1 Presence is +1% Fear generated
+forever, so a 1-Presence rung granting 50 Fear beats holding while a cycle generates under
+5,000 — and because the price is flat, **every rung shares that one break-even**. Under 5,000
+all ten are worth taking; above it none are. The row is therefore a deliberate late-game sink
+with a single threshold rather than a curve, and its worth decays with every ascension because
+50 is flat while cycles grow.
+
+That was the design fork, and it was taken knowingly. The alternative costed was a grant reading
+a **percentage of the cycle just finished**: with a grant of `p` percent the cycle size cancels
+from both sides and a rung costing `C` beats holding exactly when `p > C` percent — which holds
+at any depth, giving a row that never ages, at the price of a new meta field surviving the wipe
+and a mild head-start feedback loop. Set aside in favour of the flat table as specified. **The
+lever if it is ever revisited is the 50, or that change of shape — not the 1**, which is already
+as low as a price goes.
+
+**The name went through a collision.** The first draft was *Die Insel erinnert sich* / The
+Island Remembers, which is already `power_card_interval`'s name in the Fear shop — two rows a
+rail apart with the same name, and the Presence catalogue's whole naming rule is that a shared
+name means a shared idea. Renamed to what the row actually does: the spirit withdraws, the
+invaders' fear of it does not.
+
+**What it cost the machinery.** Less than expected, which is why it was the right first
+repeatable row: `presenceUpgradeMaxTier` reads `maxTier` instead of answering 1,
+`presenceUpgradeCost` stays flat (no growth curve, and none wanted — even 1.35 puts the tenth
+rung at 15 Presence, three whole rows of this catalogue for one rung of one row),
+`presenceUpgradeStatusText` comes back for the tier chip, and the shop's row render grows the
+same repeatable branch the Fear shop has always had. The structural test that every Presence row
+grants or gates gained a third arm — rows that *endow* — still checked through the reader rather
+than an id list.
+
+Covered by six new blocks in `tests/ascension.test.js`. **Not yet played.** The 5,000 threshold
+is arithmetic, not a measurement; what a played cycle would say is whether the prologue it
+compresses is worth compressing at all.
+
+---
+
 ---
 
 ## Idea Inbox

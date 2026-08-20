@@ -1569,22 +1569,32 @@ function renderPresenceShop(state) {
   dom.presenceList.appendChild(renderCardShop(state));
 
   function renderRow(presenceId, soldOutRow, parent) {
-    // Every Presence row is a one-off now, so the tier chip and the "Maxed" button label both
-    // went with the discount ladders (see presenceUpgradeText): there is no rung to report and
-    // "owned" is the only way a row can be finished.
+    // The same three-way the Fear shop's renderRow makes, and for the same reason: one row in
+    // this catalogue is a ladder now (`presence_fear_remains`), so the tier chip and the
+    // "Maxed" button label are back for it. A one-off still draws no chip and still reads
+    // "Unlocked" rather than "Maxed" - `presenceUpgradeStatusText` returns "" for it, and
+    // `is-one-off` keeps the layout it already had.
+    const repeatable = Boolean((PRESENCE_UPGRADES[presenceId] || {}).repeatable);
     const maxed = presenceUpgradeMaxed(state, presenceId);
     const cost = presenceUpgradeCost(state, presenceId);
     const affordable = !maxed && state.meta.presence >= cost;
 
+    const statusText = presenceUpgradeStatusText(state, presenceId);
+    const status = statusText ? `<span class="upgrade-tier">${statusText}</span>` : "";
+    const buyLabel = maxed
+      ? (repeatable ? t.shopMaxedBtn : t.presenceOwnedBtn)
+      : template(t.presenceCostLabel, { cost });
+
     const row = document.createElement("div");
-    row.className = `upgrade is-presence is-one-off${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
+    row.className = `upgrade is-presence${repeatable ? "" : " is-one-off"}${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${presenceUpgradeName(state, presenceId)}</span>
         <span class="upgrade-text">${presenceUpgradeText(state, presenceId)}</span>
+        ${status}
       </div>
       <button type="button" class="upgrade-buy" data-presence="${presenceId}" ${maxed || !affordable ? "disabled" : ""}>
-        ${maxed ? t.presenceOwnedBtn : template(t.presenceCostLabel, { cost })}
+        ${buyLabel}
       </button>
     `;
     (parent || dom.presenceList).appendChild(row);

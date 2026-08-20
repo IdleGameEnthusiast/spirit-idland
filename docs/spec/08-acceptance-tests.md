@@ -388,7 +388,8 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    payout at the boundary — generating exactly the gap pays one more Presence, one Fear less
    pays no more — and it reads generated rather than the bank, like the payout beside it.
 3. **What is cleared.** After `ascend()`: `meta.fear` is 0, `upgrades.purchased` is empty, all
-   four `cycle*` fields are 0, and `round.number` is 1. The round is running again from
+   four `cycle*` fields are 0, and `round.number` is 1. (`meta.fear` and `cycleFearGranted` open
+   at `ascensionStartFear` instead when `presence_fear_remains` has rungs on it — see 14.) The round is running again from
    `startRound`, on the baseline of an empty catalogue — six Dahan, threshold 10, empty purse.
 4. **What survives.** `meta.bestWaveReached` is unchanged, `meta.presence` has grown by exactly
    the payout, `meta.ascensionCount` by exactly one, `presenceUpgrades.purchased` is untouched,
@@ -413,10 +414,14 @@ The kill-first rule, shared by every ability and by the Dahan strike.
    `upgradeGrantedForever` is false, so the next Reclaim still takes back what Fear bought. (The
    loader used to hand out the matching Presence row; there is no lock left to grandfather
    around.)
-9. **One Presence row grants nothing and gates a capability instead.**
-   `presence_current_quickens` carries no `grants` field; buying it flips `abilityFocusUnlocked`
-   straight on rather than handing over a Fear row. It is the only row allowed to do neither —
-   see [Focus Checks](#focus-checks).
+9. **Every Presence row grants Fear rows, gates a capability, or endows a cycle — never none
+   of them.** Walked over `PRESENCE_UPGRADE_IDS`: a row with `grants` carries a non-empty list,
+   and a row without one is named in the test's own gate or endowment table and checked through
+   the **reader**, not the id — false/0 on a fresh game, true/positive once the row is owned.
+   Two rows are on that side today: `presence_current_quickens` opens `abilityFocusUnlocked`,
+   and `presence_fear_remains` moves `ascensionStartFear`. Naming the reader rather than the id
+   is what stops a row that was never wired to anything passing for having been added to a
+   list — see [Focus Checks](#focus-checks).
 10. **A grant hands over every automation it names, for no Fear at all.** 5 Presence buys
     `presence_all_unbidden`, deducting exactly 5, after which all five rows it names read tier 1
     with `upgrades.purchased` still empty and `cycleFearSpent` still 0.
@@ -434,6 +439,21 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     is returned to `meta.presence`. The refund is paid on the load that drops the rows and never
     again; a save that never held one is untouched. A save claiming a rung no row has any more
     clamps to 1, the same rule the Fear tiers follow.
+14. **The endowment ladder.** `presence_fear_remains` is ten rungs at a flat 1 Presence:
+    every rung prices at exactly 1 however many are owned, ten of them cost exactly 10, the
+    eleventh is refused and `presenceUpgradeCost` reads `Infinity` at the top. Every other row
+    in the catalogue still answers 1 to `presenceUpgradeMaxTier`. `ascensionStartFear` is
+    `tier × 50` — 0 unowned, 500 at the top.
+15. **The endowment is banked as granted, never as generated.** Reclaiming with four rungs
+    owned opens the new cycle with `meta.fear` 200 and `cycleFearGranted` 200 while
+    `cycleFearGenerated` stays 0, and `cycleFearTotals` still satisfies
+    `generated + granted - spent = banked` on that first tick. With all ten rungs owned, the
+    500 in the bank pays a payout of 0 and does not reach the unlock — so a head start can
+    never pay for itself, which is the whole reason the ledger splits the two columns.
+16. **A save carries the ladder's rung, clamped to its top.** Rung 7 loads as 7; a save
+    claiming rung 400 loads clamped to the ten that exist. The clamp reads the row's own
+    `presenceUpgradeMaxTier` rather than assuming 1, which is what lets a ladder live in this
+    catalogue at all.
 
 ## Focus Checks
 

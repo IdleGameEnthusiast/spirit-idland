@@ -705,10 +705,13 @@ const UPGRADES = {
  * currencies from needing an exchange rate - a Presence row can make a Fear row free, but it
  * can never do a Fear row's *job* at a different price.
  *
- * Every row is flat and one-off. There are no repeatable Presence rows any more (see the note
- * below on the discount ladders that were), and a repeatable row added later wants something
- * nearer 1.3-1.5 growth, or none at all: Presence income is root-shaped and grows slowly, so
- * the Fear catalogue's 1.6 curve would kill a Presence ladder inside three tiers.
+ * Every row is flat, and every row but one is a one-off. `presence_fear_remains` is that
+ * one - the ladder the note below on the discount rows said would want "something nearer
+ * 1.3-1.5 growth, or none at all", and it took the "none at all" branch: ten rungs at a flat 1
+ * Presence each. Presence income is root-shaped and grows slowly, so the Fear catalogue's 1.6
+ * curve would kill a Presence ladder inside three tiers, and even 1.35 puts the tenth rung at
+ * 15 Presence - three whole rows of this catalogue for one rung of one row. A flat price is
+ * what lets a ten-rung Presence ladder exist at all.
  *
  * The names are the ones the Fear rows already carried, kept rather than invented. The
  * Presence row and the Fear row it grants are the same idea at two prices, and separate names
@@ -807,6 +810,31 @@ const PRESENCE_UPGRADES = {
   presence_current_quickens: {
     id: "presence_current_quickens",
     cost: 5
+  },
+
+  /* ---------- The one repeatable row: a cycle that does not start from nothing ----------
+   *
+   * Ten rungs, 1 Presence each, and every rung puts 50 more Fear in the bank at the moment of
+   * the next Reclaim - 500 at the top. See ASCENSION_START_FEAR_PER_TIER for what that is
+   * worth against simply holding the Presence, and for why the flat 50 makes this a late-game
+   * sink rather than a competitive buy. The short version: under a 5,000-Fear cycle every rung
+   * beats holding, above it none do, and the cost being flat is what makes that one threshold
+   * instead of ten.
+   *
+   * It grants no Fear row and touches no board, which puts it with `presence_current_quickens`
+   * rather than with the three automation grants - but unlike that row it unlocks nothing
+   * either. `ascend` reads its tier directly through
+   * `ascensionStartFear`, which is the whole of the wiring.
+   *
+   * Flat cost is also why `presenceUpgradeCost` needs no growth curve: it answers `cost` for
+   * every rung and Infinity once `maxTier` is reached. The first repeatable row in this
+   * catalogue is deliberately the one that asks least of the machinery around it.
+   */
+  presence_fear_remains: {
+    id: "presence_fear_remains",
+    repeatable: true,
+    maxTier: ASCENSION_START_FEAR_MAX_TIER,
+    cost: 1
   }
 };
 

@@ -320,6 +320,45 @@ A run reaching wave `10m` collects `tier * m(m+1)/2` in milestones against `10m`
 Fear — **quadratic in depth against linear**. At tier 5 a run to wave 100 collects 275 from
 milestones and 100 from waves.
 
+### The endowment, and what it is worth against holding
+
+```txt
+ascensionStartFear = tier(presence_fear_remains) * ASCENSION_START_FEAR_PER_TIER
+
+ASCENSION_START_FEAR_PER_TIER = 50
+ASCENSION_START_FEAR_MAX_TIER = 10      -> 500 Fear at the top of the ladder
+```
+
+`ascend()` writes that figure into **both** `meta.fear` and `meta.cycleFearGranted`, and leaves
+`meta.cycleFearGenerated` at 0. The playtest tally's identity therefore still holds on the first
+tick of a new cycle: `generated + granted - spent = bank`, at `0 + 500 - 0 = 500`. See
+[07-content-registry.md](./07-content-registry.md#the-row-that-endows-a-cycle) for the row
+itself and for why the grant mints no Presence directly but does raise the payout indirectly.
+
+**The break-even against simply holding the Presence.** This is the same test that deleted the
+seven discount rows ([below](#these-rows-do-not-out-earn-holding-presence-and-are-not-meant-to)),
+and the row is priced knowing it fails the test late:
+
+```txt
+buying a rung  = ASCENSION_START_FEAR_PER_TIER            = 50 Fear, once per cycle
+holding a rung = 0.01 * cost * G                          = 1% of the cycle's generated Fear
+
+buy wins  <=>  50 > 0.01 * 1 * G  <=>  G < 5000
+```
+
+Because the cost is **flat**, every rung shares that one break-even. Under a 5,000-Fear cycle
+all ten rungs beat holding; well above it none of them do. There is no dominated tail and no
+competitive tail either — the row is one threshold rather than a curve, and past that threshold
+it is an accepted late-game sink.
+
+That is a known consequence of the flat 50, not an oversight. The grant does not scale with
+cycle size while `presenceMult` does, so the row's worth decays with every ascension. The
+alternative considered and set aside was a grant reading a percentage of the cycle just
+finished: with a grant of `p` percent, `G` cancels out of both sides and a rung costing `C`
+beats holding exactly when `p > C` percent — which holds at any depth, giving a row that never
+ages. **The lever if this is ever revisited is the 50**, or that change of shape; it is not the
+price, which flat-1 already puts as low as a price can go.
+
 ### Presence multiplies too, and does not cap
 
 ```txt
@@ -350,6 +389,8 @@ compounds into Presence earned faster. The payout's square root keeps that compo
 sub-linear (doubling generated Fear only ever pays 1.41× the Presence), the same way it already
 tempers the three ladders' own compounding; it does not undo it. A repeatable Presence sink is
 what turns "unspent Presence" back into a choice instead of a number that only ever grows.
+`presence_fear_remains` is the first of those — ten rungs at a flat 1 Presence — though the
+next section is about how little of that floor a *flat* grant can actually build.
 
 ### Where the rounding happens
 
@@ -1324,6 +1365,13 @@ in the formulas compensates for it today.
 would outrun it inside three tiers and every rung past the third would be dead. A new repeatable
 row wants a hand-written table or something nearer 1.3–1.5 growth, and — per the rule above —
 it has to pay in a multiplier or a permanence if it is meant to be worth buying at all.
+
+`presence_fear_remains` is the first repeatable row since, and it took neither branch: a
+**flat** 1 Presence a rung, ten rungs. Even 1.35 growth would put its tenth rung at 15 Presence,
+which is three whole rows of this catalogue for one rung of one row — so a flat price is what
+lets a ten-rung Presence ladder exist at all. The cost of that choice is paid on the other side
+of the record, in a grant that does not scale: see
+[The endowment, and what it is worth against holding](#the-endowment-and-what-it-is-worth-against-holding).
 
 ## Offline Handling
 

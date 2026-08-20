@@ -66,15 +66,18 @@ function presenceUpgradeOwned(state, presenceId) {
   return presenceUpgradeTier(state, presenceId) > 0;
 }
 
-/* How many rungs a row has, which is one for every row in the catalogue: the discount ladders
- * that made this a real question are gone (see the note above PRESENCE_UPGRADES).
+/* How many rungs a row has: one for all but `presence_fear_remains`, which is the
+ * repeatable row this signature was kept waiting for (see the note above PRESENCE_UPGRADES).
  *
- * Kept as a function rather than folded away because it is the shape the Fear side has, and
- * the next repeatable Presence row - if there is one - wants exactly this signature back. An
- * unknown id answers 0, so `presenceUpgradeMaxed` is true for it and nothing tries to buy it.
+ * A row without `maxTier` is a one-off and answers 1, so the catalogue says nothing it does not
+ * mean - only the ladder carries the field. An unknown id answers 0, so `presenceUpgradeMaxed`
+ * is true for it and nothing tries to buy it.
  */
 function presenceUpgradeMaxTier(presenceId) {
-  return PRESENCE_UPGRADES[presenceId] ? 1 : 0;
+  const record = PRESENCE_UPGRADES[presenceId];
+  if (!record) return 0;
+  if (!record.repeatable) return 1;
+  return Number.isFinite(record.maxTier) ? record.maxTier : Infinity;
 }
 
 function presenceUpgradeMaxed(state, presenceId) {
@@ -82,8 +85,10 @@ function presenceUpgradeMaxed(state, presenceId) {
 }
 
 // Cost of the *next* rung, mirroring upgradeCost on the Fear side - which is why this takes a
-// state where it used to take an id alone. Every row is one rung, so it answers with its price
-// until it is owned and Infinity after.
+// state where it used to take an id alone. There is no growth curve here and there is not meant
+// to be one: every Presence price in the catalogue is flat, the ten-rung ladder included (see
+// the note above PRESENCE_UPGRADES for why a Presence ladder cannot afford one). So this
+// answers the row's price until its last rung is taken and Infinity after.
 function presenceUpgradeCost(state, presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return Infinity;
@@ -96,8 +101,8 @@ function purchasePresenceUpgrade(state, presenceId) {
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return false;
 
-  // "Owned" and "maxed" are the same sentence now that every row is one rung, so there is one
-  // check here and one line for it.
+  // "Owned" and "maxed" are the same sentence for a one-off, and for the ladder they are the
+  // same sentence at the top rung, so one check and one line still cover both.
   if (presenceUpgradeMaxed(state, presenceId)) {
     addLog(state, template(t.presenceOwned, {
       upgrade: presenceUpgradeName(state, presenceId)
@@ -124,16 +129,28 @@ function purchasePresenceUpgrade(state, presenceId) {
   // than one line each - it is one purchase and it reads as one sentence. A row that grants
   // nothing has nothing to name and gets the plainer line instead.
   const granted = record.grants || [];
-  addLog(state, granted.length
-    ? template(t.presenceGranted, {
-        upgrade: presenceUpgradeName(state, presenceId),
-        unlocks: granted.map((id) => upgradeName(state, id)).join(t.listSeparator),
-        cost
-      })
-    : template(t.presencePurchasedDirect, {
-        upgrade: presenceUpgradeName(state, presenceId),
-        cost
-      }));
+  if (granted.length) {
+    addLog(state, template(t.presenceGranted, {
+      upgrade: presenceUpgradeName(state, presenceId),
+      unlocks: granted.map((id) => upgradeName(state, id)).join(t.listSeparator),
+      cost
+    }));
+  } else if (record.repeatable) {
+    // The ladder says which rung it just took. Ten identical lines reading "The Fear Remains
+    // for 1 Presence" would report a purchase without reporting any progress, and the rung is
+    // the only thing that separates the tenth click from the first.
+    addLog(state, template(t.presenceTierPurchased, {
+      upgrade: presenceUpgradeName(state, presenceId),
+      tier: presenceUpgradeTier(state, presenceId),
+      max: presenceUpgradeMaxTier(presenceId),
+      cost
+    }));
+  } else {
+    addLog(state, template(t.presencePurchasedDirect, {
+      upgrade: presenceUpgradeName(state, presenceId),
+      cost
+    }));
+  }
   return true;
 }
 
@@ -182,6 +199,18 @@ function ascensionPayout(state) {
  * two figures agreeing: a round in progress has generated nothing yet as far as either is
  * concerned, so this number never counts Fear the payout above it is ignoring.
  */
+/* What the next cycle opens its bank with, bought a rung at a time by
+ * `presence_fear_remains`. Zero for a player who owns none of it, which is every player
+ * until they choose otherwise - so the default Reclaim is the one this function did not exist
+ * for, emptying the bank exactly as it always did.
+ *
+ * Read at the moment of the Reclaim rather than stored, so a rung bought between two ascensions
+ * counts on the very next one. Nothing else reads it: this is a starting balance, not an income.
+ */
+function ascensionStartFear(state) {
+  return presenceUpgradeTier(state, "presence_fear_remains") * ASCENSION_START_FEAR_PER_TIER;
+}
+
 function fearToNextPresence(state) {
   const generated = Math.max(0, Math.floor(Number(state.meta.cycleFearGenerated) || 0));
   const next = ascensionPayout(state) + 1;
@@ -220,9 +249,24 @@ function ascend(state) {
   state.meta.presence += payout;
   state.meta.ascensionCount += 1;
 
-  state.meta.fear = 0;
+  /* The wipe, and the one thing that survives it into the bank rather than around it.
+   *
+   * `ascensionStartFear` is Fear the player did not earn, so it lands in the granted column
+   * beside the playtest button's and never in `cycleFearGenerated` - which is what keeps the
+   * head start from minting Presence of its own next Reclaim. The identity the playtest tally
+   * checks (generated + granted - spent = bank) holds across this line: both sides start the
+   * cycle at the same figure.
+   *
+   * Worth naming because a later reader will find it: the grant does still raise next cycle's
+   * payout, just not directly. It buys shop rows at wave 0 that multiply everything the cycle
+   * generates afterwards, and that multiplied Fear is generated Fear like any other. Excluding
+   * it here is about the Fear itself never being counted twice, not a claim that a head start
+   * is worth no Presence.
+   */
+  const startFear = ascensionStartFear(state);
+  state.meta.fear = startFear;
   state.meta.cycleFearGenerated = 0;
-  state.meta.cycleFearGranted = 0;
+  state.meta.cycleFearGranted = startFear;
   state.meta.cycleFearSpent = 0;
   state.meta.cycleBestWave = 0;
   state.upgrades.purchased = {};
@@ -238,6 +282,13 @@ function ascend(state) {
     presence: payout,
     total: state.meta.presence
   }));
+
+  // A second line rather than a clause in the first: the sentence above is about what the cycle
+  // was worth, and this one is about what the next cycle opens with. A player owning none of
+  // the ladder never sees it, so the Reclaim reads exactly as it did before the row existed.
+  if (startFear > 0) {
+    addLog(state, template(t.ascendedStartFear, { fear: formatFear(startFear) }));
+  }
 
   startRound(state);
   // The same closing move startNextRound makes, for the same reason: the button the player

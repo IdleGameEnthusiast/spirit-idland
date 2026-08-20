@@ -158,24 +158,28 @@ const I18N = {
     ascensionRoundHint: "Erst zwischen den Runden.",
     ascensionShopLabel: "Was Präsenz freischaltet",
     ascended: "Aszension {count}. {generated} Furcht dieses Zyklus wurden zu {presence} Präsenz - {total} insgesamt. Die Insel beginnt von vorn.",
+    ascendedStartFear: "Die Furcht bleibt: {fear} Furcht liegen schon bereit.",
     ascendRefused: "Noch nicht. Aufsteigen geht erst zwischen den Runden, und erst wenn der Zyklus es wert ist.",
     presenceNames: {
       presence_tide_returns: "Die Flut kehrt wieder",
       presence_river_knows: "Der Fluss weiß, was er braucht",
       // Nimmt sich, was die fünf Furchtzeilen im Namen teilen - siehe die englische Fassung.
       presence_all_unbidden: "Alles von selbst",
-      presence_current_quickens: "Die Strömung eilt"
+      presence_current_quickens: "Die Strömung eilt",
+      presence_fear_remains: "Die Furcht bleibt"
     },
     presenceTexts: {
       presence_tide_returns: "Schenkt dir \"Die Flut kehrt wieder\" (500 Furcht) für immer. Runden starten von selbst - in diesem Zyklus und in jedem danach.",
       presence_river_knows: "Schenkt dir \"Der Fluss weiß, was er braucht\" (200 Furcht) für immer. Fähigkeiten kaufen sich von selbst - in diesem Zyklus und in jedem danach.",
       presence_all_unbidden: "Schenkt dir alle fünf Fähigkeits-Automatiken für immer: Segen, Instinkt, Gabe, Sturzflut und Strömung.",
       presence_current_quickens: "Schaltet Fokus frei: Energie während der Runde ausgeben, um {seconds} Sek von der Abklingzeit einer Fähigkeit zu nehmen - immer wieder, immer gleich viel, zu steigendem Preis, bis auf ein Drittel des Ausgangswerts.",
+      presence_fear_remains: "Jede Stufe legt {step} Furcht in die Bank der nächsten Aszension - geschenkt, nicht verdient, und selbst keine Präsenz wert. Bisher: {fear}."
     },
     // Der Trenner für Namenslisten in Logzeilen - siehe die englische Fassung.
     listSeparator: ", ",
     presenceGranted: "{upgrade} für {cost} Präsenz. {unlocks} gehört jetzt für immer dir.",
     presencePurchasedDirect: "{upgrade} für {cost} Präsenz.",
+    presenceTierPurchased: "{upgrade}, Stufe {tier}/{max}, für {cost} Präsenz.",
     presenceOwned: "{upgrade} gehört dir bereits.",
     presenceTooExpensive: "{upgrade} kostet {cost} Präsenz, du hast {presence}.",
     presenceCostLabel: "{cost} Präsenz",
@@ -564,6 +568,7 @@ const I18N = {
     ascensionRoundHint: "Between rounds only.",
     ascensionShopLabel: "What Presence unlocks",
     ascended: "Ascension {count}. {generated} Fear this cycle became {presence} Presence - {total} in all. The island begins again.",
+    ascendedStartFear: "The fear remains: {fear} Fear is already waiting.",
     ascendRefused: "Not yet. Ascending waits for the end of a round, and for a cycle worth giving back.",
     presenceNames: {
       presence_tide_returns: "The Tide Returns",
@@ -572,13 +577,15 @@ const I18N = {
       // "Unbidden" and the German half of all five is "von selbst" - so the player reads the
       // pairing off the two shops rather than learning a mapping.
       presence_all_unbidden: "Everything Unbidden",
-      presence_current_quickens: "The Current Quickens"
+      presence_current_quickens: "The Current Quickens",
+      presence_fear_remains: "The Fear Remains"
     },
     presenceTexts: {
       presence_tide_returns: "Yours for good: \"The Tide Returns\" (500 Fear). Rounds start themselves, this cycle and every cycle after it.",
       presence_river_knows: "Yours for good: \"The River Knows Its Own Need\" (200 Fear). Abilities buy themselves, this cycle and every cycle after it.",
       presence_all_unbidden: "Yours for good: all five ability automations - the Boon, the Instinct, the Bounty, the Flood and the Current.",
       presence_current_quickens: "Unlocks Focus: spend Energy mid-round to take {seconds} Sec off one ability's cooldown, again and again, always the same amount, at a rising price - down to a third of where it started.",
+      presence_fear_remains: "Each tier puts {step} Fear in the next ascension's bank - granted, not earned, and worth no Presence of its own. So far: {fear}."
     },
     // Says "for good", because that is the whole of what separates a Presence purchase from a
     // Fear one. {unlocks} is one row for two of the three grants and five for the other, joined
@@ -588,6 +595,7 @@ const I18N = {
     listSeparator: ", ",
     presenceGranted: "{upgrade} for {cost} Presence. {unlocks} is yours for good.",
     presencePurchasedDirect: "{upgrade} for {cost} Presence.",
+    presenceTierPurchased: "{upgrade}, tier {tier}/{max}, for {cost} Presence.",
     presenceOwned: "{upgrade} is already yours.",
     presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",
     presenceCostLabel: "{cost} Presence",
