@@ -287,88 +287,140 @@ function abilityFocusEnergy(state, abilityId) {
   return Math.max(0, Math.floor(Number(raw) || 0));
 }
 
-// Every figure below reads the ability's *current* record, so a tiered ability answers for the
-// tier it is standing at: the Innate's floor moves with its cooldown when tier 2 is bought
-// rather than staying at whatever tier 1 would have allowed.
+// Every figure below reads a record rather than the raw catalogue entry, so a tiered ability
+// answers for the tier it is standing at: the Innate's floor moves with its cooldown when tier 2
+// is bought rather than staying at whatever tier 1 would have allowed.
 function abilityCooldownBeats(record) {
   return record.cooldownSeconds / TIME_SCALE;
 }
 
-function abilityFocusStepBeats(state, abilityId) {
-  const record = abilityRecord(state, abilityId);
-  const step = record ? Number(record.focusStepBeats) : NaN;
-  return Number.isFinite(step) && step > 0 ? step : FOCUS_STEP_BEATS_DEFAULT;
-}
+/* ---------- One ladder, named ----------
+ *
+ * Every figure below is a reading of one record's ladder: where it starts, how fast it climbs,
+ * how long it is, and where its floor sits. They used to be eight functions each re-deriving
+ * those four from the record on their own. Naming the ladder once and reading it out is the
+ * same rule stated in one place instead of nine - and it is what lets a tiered ability answer
+ * for the tier it is standing on without any of them knowing that tiers exist.
+ */
+function abilityFocusLadder(state, abilityId) {
+  const rec = abilityRecord(state, abilityId);
+  if (!rec) return null;
 
-function abilityFocusFloorBeats(state, abilityId) {
-  const record = abilityRecord(state, abilityId);
-  if (!record) return 0;
-  const floor = Number(record.focusFloorBeats);
-  if (Number.isFinite(floor) && floor > 0) return floor;
+  const cdBeats = abilityCooldownBeats(rec);
+
+  const namedStep = Number(rec.focusStepBeats);
+  const stepBeats = Number.isFinite(namedStep) && namedStep > 0 ? namedStep : FOCUS_STEP_BEATS_DEFAULT;
+
   // Rounded up, so a derived floor is never a fraction of a beat. The whole point of the
   // subtractive ladder is that every rung is a beat a player can count.
-  return Math.ceil(abilityCooldownBeats(record) * FOCUS_FLOOR_FRACTION);
+  const namedFloor = Number(rec.focusFloorBeats);
+  const floorBeats = Number.isFinite(namedFloor) && namedFloor > 0
+    ? namedFloor
+    : Math.ceil(cdBeats * FOCUS_FLOOR_FRACTION);
+
+  // Where a ladder starts. The unlock price is the default anchor - what an ability costs to
+  // have is a fair reading of what it is worth hastening - but it is only a default, and every
+  // ability in the game has had its own balance pass and names one with `focusBaseCost`.
+  //
+  // What that anchor is, read off the tuned ladders: what the *cast* is worth, over the clock
+  // it sits on - `worth * 100 / cooldownBeats`, so the cooldown enters only as a divisor. It is
+  // why wash_away opens at 6 and the Innate's tier 3 at 25 despite the Wash being the bigger
+  // cast: the ladder prices a beat, and a beat off 30 is worth less than a beat off 22. Cards
+  // carry no unlockCost at all - the Presence was the cost - and follow the same rule.
+  const namedAnchor = Number(rec.focusBaseCost);
+  const anchor = Number.isFinite(namedAnchor) && namedAnchor > 0
+    ? namedAnchor
+    : (isPowerCard(abilityId) ? 0 : abilityUnlockCost(state, abilityId)) || FOCUS_BASE_COST_FALLBACK;
+
+  // And how fast it climbs. Per ability - and per tier, since a tier names its own record -
+  // because ladder lengths are: 1.5 a rung is right for the Boon's eight, and would put the
+  // Floods' sixteenth rung at 2189 Energy and the Wash's twentieth past 9000, a tail no round
+  // ever reaches, which is the failure the whole subtractive rework was meant to end.
+  const namedGrowth = Number(rec.focusCostGrowth);
+  const growth = Number.isFinite(namedGrowth) && namedGrowth > 1 ? namedGrowth : FOCUS_COST_GROWTH_DEFAULT;
+
+  return {
+    record: rec,
+    cdBeats,
+    stepBeats,
+    floorBeats,
+    anchor,
+    growth,
+    // How long the ladder is, which is the same question as "when does the bar stop quoting
+    // a price" - see abilityFocusCost below.
+    maxRungs: Math.max(0, Math.floor((cdBeats - floorBeats) / stepBeats))
+  };
 }
 
-// How long the ladder is, which is the same question as "when does the bar stop quoting a
-// price" - see abilityFocusCost below.
-function abilityFocusMaxPurchases(state, abilityId) {
-  const record = abilityRecord(state, abilityId);
-  if (!record) return 0;
-  const room = abilityCooldownBeats(record) - abilityFocusFloorBeats(state, abilityId);
-  return Math.max(0, Math.floor(room / abilityFocusStepBeats(state, abilityId)));
-}
-
-// Where a ladder starts. The unlock price is the default anchor - what an ability costs to
-// have is a fair reading of what it is worth hastening - but it is only a default, and an
-// ability whose own balance pass wanted a different opening rung says so with `focusBaseCost`.
-// A card carries no unlockCost at all, the Presence was the cost, so it always names its own:
-// its cooldown in beats, which makes a slow card dearer to hasten than a fast one.
-//
-// Read off abilityRecord, not the raw catalogue entry, so a *tier* may name its own anchor and
-// be answered for - which is the whole of what "a ladder per tier" asks of this page.
-function abilityFocusBaseCost(state, abilityId) {
-  const record = abilityRecord(state, abilityId);
-  const named = record && Number(record.focusBaseCost);
-  if (Number.isFinite(named) && named > 0) return named;
-  const unlock = isPowerCard(abilityId) ? 0 : abilityUnlockCost(state, abilityId);
-  return unlock || FOCUS_BASE_COST_FALLBACK;
-}
-
-// And how fast it climbs. Per ability - and per tier, by the same route as the anchor above -
-// because ladder lengths are: 1.5 a rung is right for the Boon's eight, and would put the
-// Floods' sixteenth rung at 2189 Energy and the Wash's twentieth past 9000 - a tail no round
-// ever reaches, which is the failure the whole subtractive rework was meant to end.
-function abilityFocusCostGrowth(state, abilityId) {
-  const record = abilityRecord(state, abilityId);
-  const growth = record && Number(record.focusCostGrowth);
-  return Number.isFinite(growth) && growth > 1 ? growth : FOCUS_COST_GROWTH_DEFAULT;
-}
-
-// What standing at `rungs` rungs of the current ladder costs, all told. The sum of the rounded
-// rung prices rather than a closed form over the unrounded ones, because these are the prices
-// the bar actually quoted: pay each in turn and the running total lands here exactly, which is
+// What standing at `rungs` rungs of a ladder costs, all told. The sum of the rounded rung
+// prices rather than a closed form over the unrounded ones, because these are the prices the
+// bar actually quoted: pay each in turn and the running total lands here exactly, which is
 // what keeps "Energy invested" and "rungs bought" two readings of one number rather than two
 // numbers that can drift apart.
-function abilityFocusLadderTotal(state, abilityId, rungs) {
-  const base = abilityFocusBaseCost(state, abilityId);
-  const growth = abilityFocusCostGrowth(state, abilityId);
+function focusLadderTotal(ladder, rungs) {
   let total = 0;
-  for (let n = 0; n < rungs; n += 1) total += Math.round(base * Math.pow(growth, n));
+  for (let n = 0; n < rungs; n += 1) total += Math.round(ladder.anchor * Math.pow(ladder.growth, n));
   return total;
 }
 
-// The rung the round's investment has climbed to on the ladder standing in front of it now.
-// Capped at that ladder's length, so Energy carried in from a cheaper tier - or an absurd
-// figure in a doctored save - rests on the floor instead of driving the cooldown under it.
-function abilityFocusPurchases(state, abilityId) {
-  const invested = abilityFocusEnergy(state, abilityId);
-  const max = abilityFocusMaxPurchases(state, abilityId);
+// The rung an investment has climbed to on a ladder. Capped at that ladder's length, so Energy
+// carried in from a cheaper tier - or an absurd figure in a doctored save - rests on the floor
+// instead of driving the cooldown under it.
+function focusLadderRungs(ladder, invested) {
   let bought = 0;
-  while (bought < max && abilityFocusLadderTotal(state, abilityId, bought + 1) <= invested) {
-    bought += 1;
-  }
+  while (bought < ladder.maxRungs && focusLadderTotal(ladder, bought + 1) <= invested) bought += 1;
   return bought;
+}
+
+// And where that leaves the clock, in beats. This is the line the tier payback test reads
+// against a ladder its ability is not standing on.
+function focusLadderBeats(ladder, invested) {
+  return Math.max(ladder.floorBeats, ladder.cdBeats - focusLadderRungs(ladder, invested) * ladder.stepBeats);
+}
+
+function abilityFocusStepBeats(state, abilityId) {
+  const ladder = abilityFocusLadder(state, abilityId);
+  return ladder ? ladder.stepBeats : FOCUS_STEP_BEATS_DEFAULT;
+}
+
+function abilityFocusFloorBeats(state, abilityId) {
+  const ladder = abilityFocusLadder(state, abilityId);
+  return ladder ? ladder.floorBeats : 0;
+}
+
+function abilityFocusMaxPurchases(state, abilityId) {
+  const ladder = abilityFocusLadder(state, abilityId);
+  return ladder ? ladder.maxRungs : 0;
+}
+
+// Read through the ladder, not the raw catalogue entry, so a *tier* may name its own anchor
+// and be answered for - which is the whole of what "a ladder per tier" asks of this page.
+function abilityFocusBaseCost(state, abilityId) {
+  const ladder = abilityFocusLadder(state, abilityId);
+  if (ladder) return ladder.anchor;
+  return (isPowerCard(abilityId) ? 0 : abilityUnlockCost(state, abilityId)) || FOCUS_BASE_COST_FALLBACK;
+}
+
+function abilityFocusCostGrowth(state, abilityId) {
+  const ladder = abilityFocusLadder(state, abilityId);
+  return ladder ? ladder.growth : FOCUS_COST_GROWTH_DEFAULT;
+}
+
+function abilityFocusLadderTotal(state, abilityId, rungs) {
+  const ladder = abilityFocusLadder(state, abilityId);
+  if (ladder) return focusLadderTotal(ladder, rungs);
+  // No record at all: the anchor and the growth still answer off their fallbacks, so the sum
+  // is the same one this gave before the ladder was named.
+  return focusLadderTotal({
+    anchor: abilityFocusBaseCost(state, abilityId),
+    growth: abilityFocusCostGrowth(state, abilityId)
+  }, rungs);
+}
+
+// The rung the round's investment has climbed to on the ladder standing in front of it now.
+function abilityFocusPurchases(state, abilityId) {
+  const ladder = abilityFocusLadder(state, abilityId);
+  return ladder ? focusLadderRungs(ladder, abilityFocusEnergy(state, abilityId)) : 0;
 }
 
 // Replayed from the invested Energy rather than stored as its own field, so the cooldown and
@@ -376,12 +428,9 @@ function abilityFocusPurchases(state, abilityId) {
 // wavesResolved live instead of caching a rung. Seconds, and before `abilityCooldownMult`:
 // this is the ability's own clock, not the round's.
 function abilityFocusedCooldownSeconds(state, abilityId) {
-  const record = abilityRecord(state, abilityId);
-  if (!record) return 0;
-  const floor = abilityFocusFloorBeats(state, abilityId);
-  const beats = abilityCooldownBeats(record)
-    - abilityFocusPurchases(state, abilityId) * abilityFocusStepBeats(state, abilityId);
-  return Math.max(floor, beats) * TIME_SCALE;
+  const ladder = abilityFocusLadder(state, abilityId);
+  if (!ladder) return 0;
+  return focusLadderBeats(ladder, abilityFocusEnergy(state, abilityId)) * TIME_SCALE;
 }
 
 // What the next rung takes off the countdown the player is watching, in the seconds that
