@@ -408,7 +408,7 @@ const NEXT_TIER_UPGRADE_TEXT = {
   headwaters(state, t) {
     const tier = upgradeTier(state, "headwaters");
     const current = startingEnergyForTier(tier);
-    if (tier >= upgradeMaxTier("headwaters")) {
+    if (tier >= upgradeMaxTier(state, "headwaters")) {
       return template((t.upgradeMaxedTexts || {}).headwaters, { energy: current });
     }
     const next = startingEnergyForTier(tier + 1);
@@ -421,14 +421,25 @@ const NEXT_TIER_UPGRADE_TEXT = {
   // between the two the row says what a Fear buys and what the Fear already spent bought.
   dahan_remember(state, t) {
     const invested = upgradeTier(state, "dahan_remember");
+    const full = dahanHasteFearForFull(state);
     const parts = {
       invested,
-      full: DAHAN_HASTE_FEAR_FOR_FULL,
-      pct: hastePctText(dahanHasteFraction(invested)),
-      seconds: dialSecondsText(state, dahanAttackIntervalFor(invested)),
-      base: dialSecondsText(state, DAHAN_ATTACK_INTERVAL_SECONDS)
+      full,
+      pct: hastePctText(dahanHasteFraction(invested, full)),
+      seconds: dialSecondsText(state, dahanAttackIntervalFor(invested, full)),
+      base: dialSecondsText(state, DAHAN_ATTACK_INTERVAL_SECONDS),
+      damage: dahanAttackDamage(state),
+      strength: DAHAN_STRENGTH_DAMAGE,
+      next: DAHAN_STRENGTH_FEAR_FOR_FULL
     };
-    if (invested >= upgradeMaxTier("dahan_remember")) {
+    // Three answers where every other row has two, and the middle one is the point of the
+    // whole feature: a full first pool is not finished, it is *ready*. Saying "maxed" there
+    // would be the row lying about itself at the one moment it has something new to offer -
+    // see upgradeIsSoldOut, which keeps it out of the sold-out half for the same reason.
+    if (dahanStrengthPending(state)) {
+      return template((t.upgradeReadyTexts || {}).dahan_remember, parts);
+    }
+    if (invested >= upgradeMaxTier(state, "dahan_remember")) {
       return template((t.upgradeMaxedTexts || {}).dahan_remember, parts);
     }
     return template((t.upgradeNextTexts || {}).dahan_remember, parts);
@@ -443,7 +454,7 @@ const NEXT_TIER_UPGRADE_TEXT = {
     const tier = upgradeTier(state, "power_card_interval");
     const current = POWER_CARD_DRAW_INTERVAL_BASE - tier;
     const parts = { first: POWER_CARD_FIRST_DRAW_WAVE, current, next: current - 1 };
-    if (tier >= upgradeMaxTier("power_card_interval")) {
+    if (tier >= upgradeMaxTier(state, "power_card_interval")) {
       return template((t.upgradeMaxedTexts || {}).power_card_interval, parts);
     }
     return template((t.upgradeNextTexts || {}).power_card_interval, parts);
@@ -493,11 +504,11 @@ function upgradeStatusText(state, upgradeId) {
   if (!record || !record.repeatable) return "";
   if (upgradeIsPool(upgradeId)) {
     return template(t.shopHasteLabel, {
-      pct: hastePctText(dahanHasteFraction(upgradeTier(state, upgradeId)))
+      pct: hastePctText(dahanHasteFraction(upgradeTier(state, upgradeId), dahanHasteFearForFull(state)))
     });
   }
   const tier = upgradeTier(state, upgradeId);
-  const max = upgradeMaxTier(upgradeId);
+  const max = upgradeMaxTier(state, upgradeId);
   return Number.isFinite(max)
     ? template(t.shopTierLabelMax, { tier, max })
     : template(t.shopTierLabel, { tier });

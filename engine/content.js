@@ -435,30 +435,28 @@ function isPowerCard(abilityId) {
 // buys about 11% more income, so the price pulls away from the payoff instead of chasing it.
 const UPGRADE_COST_GROWTH = 1.6;
 
-// Repeatable tiers first, then the one-off unlocks. The shop renders them in this order and
-// draws the line between the two halves where `repeatable` stops.
+/* ---------- Four groups, in this order ----------
+ *
+ * The shop draws a divider wherever `group` changes, so the order below *is* the order on the
+ * shelf and a row's group is the only thing that decides which heading it lands under. Keep
+ * each group's rows contiguous - a row that sorted away from its own kind would draw its
+ * group's heading a second time (`tests/shop.test.js` checks this).
+ *
+ *   waves      - what buys a longer round: the Energy it opens with, the Blight it survives,
+ *                how soon the island hands over the next card
+ *   fear       - what buys a richer round: the three Fear ladders
+ *   dahan      - what buys the Dahan: more of them, and a faster strike
+ *   automation - the one-offs, and every one of them is an automation
+ *
+ * Repeatable tiers still come before the one-off unlocks, because `automation` is last and is
+ * where every one-off lives.
+ */
 const UPGRADES = {
-  dahan_reinforcement: {
-    id: "dahan_reinforcement",
-    repeatable: true,
-    effect: "dahan_bonus_per_tier",
-    baseCost: 10,
-    // Past eight the island runs out of room to spread them and the tiers stop paying.
-    maxTier: 8
-  },
-  blight_resilience: {
-    id: "blight_resilience",
-    repeatable: true,
-    effect: "blight_threshold_per_tier",
-    // Cheap and capped on purpose. Invader power grows faster than linearly, so Blight
-    // accrues faster than the threshold can be raised: ten tiers measured at +6% round
-    // length. It is a small comfort for an early round, priced like one, and it is not the
-    // shop's growth lever - reinforcement and the one-offs are.
-    baseCost: 3,
-    maxTier: 5
-  },
+
+  /* ---------- Wave progression: the rows that buy a deeper round ---------- */
   headwaters: {
     id: "headwaters",
+    group: "waves",
     repeatable: true,
     effect: "starting_energy_per_tier",
     // The gain per tier is not flat, so it lives in STARTING_ENERGY_BY_TIER rather than here -
@@ -474,63 +472,17 @@ const UPGRADES = {
     baseCost: 8,
     maxTier: STARTING_ENERGY_BY_TIER.length - 1
   },
-
-  /* ---------- The three Fear ladders ----------
-   *
-   * One shape read three times: ten tiers, +10% a tier, +100% at the top, on the 1.6 curve
-   * every other repeatable uses. At 1.6 a tier costs 60% more than the one under it while
-   * paying the same flat +10%, so the price pulls away from the payoff on its own: tier 1 pays
-   * for itself in about two rounds, tier 10 in over a hundred.
-   *
-   * They used to carry no `maxTier` at all - soft-capped, stopped by the curve rather than by
-   * a number - and the reason was structural rather than numeric. The Fear shop was the game's
-   * only progression axis, so it had to keep absorbing income forever or the game ran out of
-   * progression. Ascension is that axis now, and a catalogue whose size Presence grows does not
-   * need a row with no top. Ten tiers is the whole matched set: +100% each, finishable, and
-   * able to reach the shop's sold-out half like every other row.
-   *
-   * Tier 12 alone cost more than the whole ten-tier ladder, so the cap removes rungs nobody was
-   * going to buy and turns "this never ends" into a number a player can plan against.
-   */
-  rising_dread: {
-    id: "rising_dread",
+  blight_resilience: {
+    id: "blight_resilience",
+    group: "waves",
     repeatable: true,
-    maxTier: FEAR_LADDER_MAX_TIER,
-    effect: "fear_kill_bonus_per_tier",
-    // The cheapest ladder in the shop and deliberately the strongest early buy: at 6 Fear it
-    // pays back inside two rounds. It is priced under dahan_reinforcement (10) without being
-    // strictly better than it - the Dahan tier buys survival as well as income, and this buys
-    // only income - so the opening move becomes a choice rather than a script.
-    baseCost: 6
-  },
-  mounting_terror: {
-    id: "mounting_terror",
-    repeatable: true,
-    maxTier: FEAR_LADDER_MAX_TIER,
-    effect: "fear_wave_bonus_per_tier",
-    // Same price as rising_dread on purpose, even though wave Fear is the smaller half of the
-    // income and falls further behind at every damage rung of the ladder. What squares the two
-    // is high_water_mark below: it multiplies the milestone payout too, which is the half of
-    // wave income that grows with depth. Bought alone this is the weaker ladder; bought
-    // alongside the Mark it is the multiplier on the fastest-growing number in the game.
-    baseCost: 6
-  },
-  high_water_mark: {
-    id: "high_water_mark",
-    repeatable: true,
-    maxTier: FEAR_LADDER_MAX_TIER,
-    effect: "fear_wave_milestone_per_tier",
-    // Every tenth wave pays a bonus of `tier * 10%` of its own number. Wave 50 at tier 3 pays
-    // 15. That makes the total quadratic in depth - a run to wave 10m collects
-    // `tier * m(m+1)/2` - against the flat 1-per-wave the baseline pays, which is the one
-    // thing in the shop whose worth grows faster than the invaders do.
-    //
-    // Twice the base of the other two because each tier is worth roughly 3-5x as much at
-    // depth (about 55 Fear a run at wave 100 against a multiplier tier's 10-20). It is still
-    // the weakest of the three for a player dying at wave 30, where a tier is worth about 6 a
-    // run - which is the point: this is the ladder that pays for pushing rather than for
-    // playing, and it should not be the obvious first buy.
-    baseCost: 12
+    effect: "blight_threshold_per_tier",
+    // Cheap and capped on purpose. Invader power grows faster than linearly, so Blight
+    // accrues faster than the threshold can be raised: ten tiers measured at +6% round
+    // length. It is a small comfort for an early round, priced like one, and it is not the
+    // shop's growth lever - reinforcement and the one-offs are.
+    baseCost: 3,
+    maxTier: 5
   },
 
   /* ---------- The row that shortens the drip ----------
@@ -557,11 +509,84 @@ const UPGRADES = {
    */
   power_card_interval: {
     id: "power_card_interval",
+    group: "waves",
     repeatable: true,
     maxTier: POWER_CARD_INTERVAL_MAX_TIER,
     effect: "power_card_interval_per_tier",
     revealedBy: "power_card_owned",
     baseCost: 30
+  },
+
+  /* ---------- Fear generators: the three Fear ladders ----------
+   *
+   * One shape read three times: ten tiers, +10% a tier, +100% at the top, on the 1.6 curve
+   * every other repeatable uses. At 1.6 a tier costs 60% more than the one under it while
+   * paying the same flat +10%, so the price pulls away from the payoff on its own: tier 1 pays
+   * for itself in about two rounds, tier 10 in over a hundred.
+   *
+   * They used to carry no `maxTier` at all - soft-capped, stopped by the curve rather than by
+   * a number - and the reason was structural rather than numeric. The Fear shop was the game's
+   * only progression axis, so it had to keep absorbing income forever or the game ran out of
+   * progression. Ascension is that axis now, and a catalogue whose size Presence grows does not
+   * need a row with no top. Ten tiers is the whole matched set: +100% each, finishable, and
+   * able to reach the shop's sold-out half like every other row.
+   *
+   * Tier 12 alone cost more than the whole ten-tier ladder, so the cap removes rungs nobody was
+   * going to buy and turns "this never ends" into a number a player can plan against.
+   */
+  rising_dread: {
+    id: "rising_dread",
+    group: "fear",
+    repeatable: true,
+    maxTier: FEAR_LADDER_MAX_TIER,
+    effect: "fear_kill_bonus_per_tier",
+    // The cheapest ladder in the shop and deliberately the strongest early buy: at 6 Fear it
+    // pays back inside two rounds. It is priced under dahan_reinforcement (10) without being
+    // strictly better than it - the Dahan tier buys survival as well as income, and this buys
+    // only income - so the opening move becomes a choice rather than a script.
+    baseCost: 6
+  },
+  mounting_terror: {
+    id: "mounting_terror",
+    group: "fear",
+    repeatable: true,
+    maxTier: FEAR_LADDER_MAX_TIER,
+    effect: "fear_wave_bonus_per_tier",
+    // Same price as rising_dread on purpose, even though wave Fear is the smaller half of the
+    // income and falls further behind at every damage rung of the ladder. What squares the two
+    // is high_water_mark below: it multiplies the milestone payout too, which is the half of
+    // wave income that grows with depth. Bought alone this is the weaker ladder; bought
+    // alongside the Mark it is the multiplier on the fastest-growing number in the game.
+    baseCost: 6
+  },
+  high_water_mark: {
+    id: "high_water_mark",
+    group: "fear",
+    repeatable: true,
+    maxTier: FEAR_LADDER_MAX_TIER,
+    effect: "fear_wave_milestone_per_tier",
+    // Every tenth wave pays a bonus of `tier * 10%` of its own number. Wave 50 at tier 3 pays
+    // 15. That makes the total quadratic in depth - a run to wave 10m collects
+    // `tier * m(m+1)/2` - against the flat 1-per-wave the baseline pays, which is the one
+    // thing in the shop whose worth grows faster than the invaders do.
+    //
+    // Twice the base of the other two because each tier is worth roughly 3-5x as much at
+    // depth (about 55 Fear a run at wave 100 against a multiplier tier's 10-20). It is still
+    // the weakest of the three for a player dying at wave 30, where a tier is worth about 6 a
+    // run - which is the point: this is the ladder that pays for pushing rather than for
+    // playing, and it should not be the obvious first buy.
+    baseCost: 12
+  },
+
+  /* ---------- The Dahan: the two rows that buy the island's own defenders ---------- */
+  dahan_reinforcement: {
+    id: "dahan_reinforcement",
+    group: "dahan",
+    repeatable: true,
+    effect: "dahan_bonus_per_tier",
+    baseCost: 10,
+    // Past eight the island runs out of room to spread them and the tiers stop paying.
+    maxTier: 8
   },
 
   /* ---------- The Dahan Remember: a pool, not a ladder ----------
@@ -585,6 +610,7 @@ const UPGRADES = {
    */
   dahan_remember: {
     id: "dahan_remember",
+    group: "dahan",
     repeatable: true,
     effect: "dahan_attack_haste",
     // One Fear, one hundredth of a percent, and the cap is the whole pool - see
@@ -598,8 +624,10 @@ const UPGRADES = {
     bulkAmounts: [1, 10, 100, 1000]
   },
 
+  /* ---------- Automation: the one-off half of the shelf ---------- */
   auto_boon: {
     id: "auto_boon",
+    group: "automation",
     repeatable: false,
     effect: "auto_cast_boon",
     // Priced as comfort, not as power. Measured against a player who was already clicking the
@@ -610,6 +638,7 @@ const UPGRADES = {
   },
   auto_innate: {
     id: "auto_innate",
+    group: "automation",
     repeatable: false,
     effect: "auto_cast_innate",
     // Priced well above auto_boon (25): the Innate fires more often at every tier (8/15/22
@@ -623,6 +652,7 @@ const UPGRADES = {
   // and the sea removes. Each rung up is a stronger claim on the round than the one under it.
   auto_bounty: {
     id: "auto_bounty",
+    group: "automation",
     repeatable: false,
     effect: "auto_cast_bounty",
     // The cheapest of the three, because it is the only one whose ability picks its own land -
@@ -635,6 +665,7 @@ const UPGRADES = {
   },
   auto_flash_floods: {
     id: "auto_flash_floods",
+    group: "automation",
     repeatable: false,
     effect: "auto_cast_flash_floods",
     // Dearer than the Bounty because it kills, and a defeat pays Fear and Energy at once
@@ -645,6 +676,7 @@ const UPGRADES = {
   },
   auto_wash_away: {
     id: "auto_wash_away",
+    group: "automation",
     repeatable: false,
     effect: "auto_cast_wash_away",
     // The dearest of the three, and the only automation whose worth *grows* with the round.
@@ -676,6 +708,7 @@ const UPGRADES = {
    */
   auto_buy_abilities: {
     id: "auto_buy_abilities",
+    group: "automation",
     repeatable: false,
     effect: "auto_buy_abilities",
     // Under the three ability automations it sits beside, because what it sells is less: it
@@ -685,6 +718,7 @@ const UPGRADES = {
   },
   auto_start_round: {
     id: "auto_start_round",
+    group: "automation",
     repeatable: false,
     effect: "auto_start_round",
     // The most expensive one-off in the shop, and the only one that changes the shape of the
@@ -839,6 +873,44 @@ const PRESENCE_UPGRADES = {
     cost: 5
   },
 
+  /* The Dahan Find Their Strength: what a full `dahan_remember` is allowed to become.
+   *
+   * No `grants`, like the two rows above it - `dahanStrengthUnlocked` reads it straight off
+   * `presenceUpgradeOwned`, and what it opens is a claim on an existing row rather than a new
+   * one. That makes it the third Presence row to touch the board, and the first to do it by
+   * changing a number the invaders are measured against: Dahan damage 1 -> 2, permanently for
+   * the cycle, in exchange for the pool starting over at twice the depth.
+   *
+   * This is also the row that brings back something the catalogue deleted. `presenceUnlock`
+   * died because a Presence row that gated an *automation* asked for the Fear again every
+   * cycle and the grant beat it outright (see the long note above). That argument does not
+   * reach here: re-earning power every cycle is the Fear shop's entire job, and a grant would
+   * have nothing to hand over - there is no row to own, only a claim to be allowed to make.
+   * The rule the two cases sit either side of, written down so the next one is not decided by
+   * whichever note gets read first: **Presence grants automations and gates board power.** A
+   * row that saves clicks is handed over for good; a row that changes what the Dahan do is
+   * unlocked and then paid for in Fear, every cycle, like everything else on the board.
+   *
+   * 8 rather than the 5 the two rows above it cost. It sits above them because it is the only
+   * Presence row that makes the player stronger *in the fight* rather than opening a place to
+   * spend - and 8 puts it past the first three Reclaims, which is where a 30 000-Fear sink
+   * wants to arrive anyway. It is a first pass and unplayed, like every figure in this
+   * catalogue; the note above `presence_river_deepens` is the one to read before moving it.
+   *
+   * `locked` holds the row shut for now: the price above is unplayed and the claim it opens
+   * is the only Presence buy that changes a number the invaders are measured against, so the
+   * row stays visible and stays unsellable until the cycle it belongs to has been played. The
+   * flag is read by `presenceUpgradeLocked`, which `purchasePresenceUpgrade` refuses on and
+   * the shop draws as a dead button - the row is not deleted, because everything it wires up
+   * still works and re-opening it is meant to cost one line. Nothing else in the catalogue
+   * uses the flag; it is not a tier gate and must not grow into one - that was `presenceUnlock`.
+   */
+  presence_dahan_endure: {
+    id: "presence_dahan_endure",
+    cost: 8,
+    locked: true
+  },
+
   /* ---------- The one repeatable row: a cycle that does not start from nothing ----------
    *
    * Ten rungs, 1 Presence each, and every rung puts 50 more Fear in the bank at the moment of
@@ -912,4 +984,20 @@ for (const id of PRESENCE_UPGRADE_IDS) {
 }
 
 const UPGRADE_IDS = Object.keys(UPGRADES);
+
+/* The group headings, in shelf order - see the note above UPGRADES for what each one holds.
+ *
+ * The list exists so the shop can draw its dividers without knowing the catalogue: it walks
+ * the rows in catalogue order and heads each run with the group it names, which is why the
+ * rows of a group have to stay contiguous above. The order here is the order the groups
+ * appear in, and it is only a check on that - a group missing from this list would still be
+ * drawn, headless.
+ */
+const UPGRADE_GROUP_IDS = ["waves", "fear", "dahan", "automation"];
+
+// Which group a row belongs to. Defaulted rather than required: a row added without one lands
+// in `automation`, which is where the one-offs are and where a new row is least likely to lie.
+function upgradeGroup(upgradeId) {
+  return (UPGRADES[upgradeId] || {}).group || "automation";
+}
 

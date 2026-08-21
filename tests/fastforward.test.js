@@ -16,10 +16,17 @@
    *
    * The margin is not sloppiness, it is the only honest way to ask this question: `advance`
    * accumulates its steps, so a run of exactly N intervals lands a float's hair short of the
-   * Nth boundary about as often as it lands on it. One frame at 20x is a third of a game
-   * second against a twenty-second interval, so it can never buy a wave that was not due. */
+   * Nth boundary about as often as it lands on it. A sixtieth of a *game* second against a
+   * twenty-second interval can never buy a wave that was not due.
+   *
+   * The margin is added before the division and not after, so it is a sixtieth of a game
+   * second at every speed. Added after, it would be a frame of *real* time and so worth
+   * `speed` game seconds - at 50x nearly a full second, which is long enough for a cooldown
+   * to come round and hand the hurried game a defeat the unhurried one never got. That is
+   * exactly the comparison the identity test below is trying to make, so the margin has to
+   * be the same length of game for both of them. */
   function realSecondsFor(waves, speed) {
-    return (engine.WAVE_INTERVAL_SECONDS * waves) / speed + 1 / 60;
+    return (engine.WAVE_INTERVAL_SECONDS * waves + 1 / 60) / speed;
   }
 
   const FF = () => engine.FAST_FORWARD_SPEED;
@@ -105,16 +112,16 @@
 
   /* --- The speed it applies ------------------------------------------- */
 
-  test("fast-forward: the opening runs at 20x and hands the dial back after it", () => {
+  test("fast-forward: the opening runs at 50x and hands the dial back after it", () => {
     const ctx = hurriedGame(1, 30);
     assertEqual(engine.fastForwardWaves(ctx.state), 3, "10% of 30");
-    assertEqual(engine.effectiveGameSpeed(ctx.state), engine.FAST_FORWARD_SPEED, "20x at wave 0");
+    assertEqual(engine.effectiveGameSpeed(ctx.state), engine.FAST_FORWARD_SPEED, "50x at wave 0");
 
-    // Three waves is 60 game seconds, which is 3 real seconds at 20x. Advanced in the tick
+    // Three waves is 60 game seconds, which is 1.2 real seconds at 50x. Advanced in the tick
     // sizes a browser actually hands out rather than one long step, because MAX_TICK_SECONDS
-    // is what makes a long step lossy - and at 20x it bites twenty times sooner.
+    // is what makes a long step lossy - and at 50x it bites fifty times sooner.
     advance(ctx, realSecondsFor(3, FF()), 1 / 60);
-    assertEqual(ctx.state.round.wavesResolved, 3, "three waves in three real seconds");
+    assertEqual(ctx.state.round.wavesResolved, 3, "three waves in a second and a bit");
     assertEqual(engine.fastForwardActive(ctx.state), false, "and the fast-forward is behind us");
     assertEqual(engine.effectiveGameSpeed(ctx.state), 1, "the dial has the round back");
   });
@@ -147,10 +154,10 @@
   test("fast-forward: it replaces the dial rather than multiplying it", () => {
     const ctx = hurriedGame(1, 30);
     engine.setGameSpeed(ctx.state, 2);
-    assertEqual(engine.effectiveGameSpeed(ctx.state), engine.FAST_FORWARD_SPEED, "20x, not 40x");
+    assertEqual(engine.effectiveGameSpeed(ctx.state), engine.FAST_FORWARD_SPEED, "50x, not 100x");
 
     advance(ctx, realSecondsFor(3, FF()), 1 / 60);
-    assertEqual(ctx.state.round.wavesResolved, 3, "three waves, the same three real seconds");
+    assertEqual(ctx.state.round.wavesResolved, 3, "three waves, the same second and a bit");
     assertEqual(engine.effectiveGameSpeed(ctx.state), 2, "and 2x comes back, not 1x");
   });
 
@@ -164,7 +171,18 @@
       // 4 waves at 10% of 40. Run both games the same number of *waves*, at whatever real
       // seconds each one takes, so the comparison is wave-for-wave rather than clock-for-clock.
       const speed = tier > 0 ? engine.FAST_FORWARD_SPEED : 1;
-      advance(ctx, realSecondsFor(4, speed), 1 / 60);
+      // ...and the same number of *game* seconds per tick, which is the whole subject here.
+      // What this test pins is that the speed reaches no rule: it is one multiplication on dt,
+      // so a wave resolved inside a fast-forward costs and pays exactly what it always did.
+      //
+      // Stepping both games at a real frame would ask a second question underneath that one
+      // and get it confused with the first. A tick is atomic, and `tickCooldowns` drops the
+      // overshoot when a cooldown lands mid-tick (`Math.max(0, ...)`), so an ability comes up
+      // late by whatever a tick is worth in *game* seconds - a sixtieth of one at 1x, but
+      // five sixths of one at 50x. That is a property of tick granularity and of every speed
+      // on the dial, not of this row, and it does not belong in the row's identity claim.
+      // See the note in docs/spec/02-core-loop.md on what a coarse tick costs.
+      advance(ctx, realSecondsFor(4, speed), (1 / 60) / speed);
       return ctx.state;
     };
 
@@ -178,9 +196,9 @@
     assertEqual(fast.round.cards.drawsTaken, slow.round.cards.drawsTaken, "and the same cards drawn");
   });
 
-  test("fast-forward: no tick may resolve two waves, even at 20x", () => {
+  test("fast-forward: no tick may resolve two waves, even at 50x", () => {
     // MAX_TICK_SECONDS is half a wave interval, so the cap that stops a machine waking from
-    // sleep bursting through waves has to keep holding twenty times further along the dial. A
+    // sleep bursting through waves has to keep holding fifty times further along the dial. A
     // dropped frame during the fast-forward must run the round *slow*, never skip it forward.
     const ctx = hurriedGame(3, 200);
     let last = 0;
@@ -224,7 +242,7 @@
   /* The drip's first draw is POWER_CARD_FIRST_DRAW_WAVE deep, far past any opening this row
    * fast-forwards on a modest record. So both tests below move `nextDrawWave` rather than
    * playing to it: when the draw is due is tests/cards.test.js's subject, and what happens to
-   * its announcement at 20x is this one's. */
+   * its announcement at 50x is this one's. */
 
   test("fast-forward: cards arrive but are not revealed while it runs", () => {
     const ctx = hurriedGame(1, 30);
@@ -277,7 +295,7 @@
     assert(engine.fastForwardActive(ctx.state), "running, and hurrying");
     engine.endRound(ctx.state);
     assertEqual(engine.fastForwardActive(ctx.state), false, "ended, and not");
-    assertEqual(engine.effectiveGameSpeed(ctx.state), 1, "the shop is not run at 20x");
+    assertEqual(engine.effectiveGameSpeed(ctx.state), 1, "the shop is not run at 50x");
   });
 
   /* --- What the shop says ------------------------------------------------ */

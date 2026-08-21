@@ -189,7 +189,7 @@
     engine.endRound(state);
     state.meta.fear = 1e9;
 
-    const max = engine.upgradeMaxTier("blight_resilience");
+    const max = engine.upgradeMaxTier(state, "blight_resilience");
     for (let i = 0; i < max + 3; i += 1) engine.purchaseUpgrade(state, "blight_resilience");
 
     assertEqual(engine.upgradeTier(state, "blight_resilience"), max, "tier caps");
@@ -200,7 +200,7 @@
     engine.endRound(state);
     state.meta.fear = 1e9;
 
-    assertEqual(engine.upgradeMaxTier("auto_boon"), 1, "a one-off has a single tier");
+    assertEqual(engine.upgradeMaxTier(state, "auto_boon"), 1, "a one-off has a single tier");
     assert(engine.purchaseUpgrade(state, "auto_boon"), "the first buy lands");
     assertEqual(engine.upgradeTier(state, "auto_boon"), 1, "owned");
 
@@ -218,7 +218,7 @@
       engine.upgradeCost(state, "auto_innate") > engine.upgradeCost(state, "auto_boon"),
       "it automates more, so it costs more"
     );
-    assertEqual(engine.upgradeMaxTier("auto_innate"), 1, "a one-off has a single tier");
+    assertEqual(engine.upgradeMaxTier(state, "auto_innate"), 1, "a one-off has a single tier");
 
     assert(engine.purchaseUpgrade(state, "auto_innate"), "the first buy lands");
     assertEqual(engine.upgradeTier(state, "auto_innate"), 1, "owned");
@@ -237,25 +237,27 @@
 
     // dahan_reinforcement is maxed out, auto_boon is bought (also maxed, being a one-off).
     // blight_resilience and auto_innate are left untouched.
-    const max = engine.upgradeMaxTier("dahan_reinforcement");
+    const max = engine.upgradeMaxTier(state, "dahan_reinforcement");
     for (let i = 0; i < max; i += 1) engine.purchaseUpgrade(state, "dahan_reinforcement");
     engine.purchaseUpgrade(state, "auto_boon");
 
     assertDeepEqual(
       engine.orderedUpgradeIds(state),
       [
-        "blight_resilience",
+        // The wave group, in catalogue order: the Energy a round opens with, the Blight it
+        // survives, and the ladder that shortens the wait for the next card. Ten tiers deep,
+        // so the card row stays buyable here like the rest of them.
         "headwaters",
-        // The soft-capped ladders never sink, because they can never sell out. They hold their
-        // place in the buyable half however deep the player has taken them.
+        "blight_resilience",
+        "power_card_interval",
+        // The Fear generators. The three ladders never sink here - ten tiers each, and this
+        // state has bought none of them.
         "rising_dread",
         "mounting_terror",
         "high_water_mark",
-        // The power cards' own ladder, in catalogue order right after the three Fear ones and
-        // ahead of the pool. Ten tiers deep, so it stays buyable here like the rest of them.
-        "power_card_interval",
-        // The pool sits with the repeatables and only sinks once it is full - 10000 Fear,
-        // which this state has but has not spent.
+        // The Dahan group is two rows and the ladder half of it is maxed below, so only the
+        // pool is left in the buyable half. It sinks only once it is full - 10000 Fear, which
+        // this state has but has not spent.
         "dahan_remember",
         "auto_innate",
         "auto_bounty",
@@ -263,6 +265,9 @@
         "auto_wash_away",
         "auto_buy_abilities",
         "auto_start_round",
+        // The sold-out half, in catalogue order like the buyable one - a maxed ladder from the
+        // Dahan group, then a bought automation. The fold is not grouped, so the two sit
+        // together under one heading whatever groups they came from.
         "dahan_reinforcement",
         "auto_boon"
       ],
@@ -325,12 +330,13 @@
   // The ladder is a table, not a step, so the shape is the thing worth asserting: it climbs
   // with the price rather than staying flat, and it ends exactly on the unlock kit.
   test("shop: the headwaters table climbs and stops at the whole unlock kit", () => {
+    const { state } = newGame();
     assertDeepEqual(
       engine.STARTING_ENERGY_BY_TIER,
       [0, 1, 2, 3, 5, 8, 13, 19, 26, 35],
       "the published ladder"
     );
-    assertEqual(engine.upgradeMaxTier("headwaters"), 9, "nine tiers, one per entry past zero");
+    assertEqual(engine.upgradeMaxTier(state, "headwaters"), 9, "nine tiers, one per entry past zero");
 
     // 5 + 10 + 20: River's Bounty, Flash Floods and Wash Away, and nothing spare.
     const kit = ["rivers_bounty", "flash_floods", "wash_away"]
@@ -456,6 +462,62 @@
     text = rowText(state, "high_water_mark", "en");
     assert(/(^|\D)150(\D|$)/.test(text), `a run already past the record looks at 150: ${text}`);
     assert(new RegExp(`(^|\\D)${quotes(150)}(\\D|$)`).test(text), `and quotes its 75: ${text}`);
+  });
+
+  /* ------------------------------------------------------------------ *
+   * The shelf, in four groups                                            *
+   *                                                                      *
+   * The shop heads each run of rows with the group they share and draws nothing else, so the
+   * grouping is entirely a property of the catalogue's order. A row that drifted away from
+   * its own kind would put its heading on the shelf twice, which is the thing these checks
+   * are here to catch - the UI cannot notice it and a player would just see two.
+   * ------------------------------------------------------------------ */
+
+  test("shop: every row names a group the shelf knows", () => {
+    for (const upgradeId of engine.UPGRADE_IDS) {
+      const group = engine.upgradeGroup(upgradeId);
+      assert(
+        engine.UPGRADE_GROUP_IDS.includes(group),
+        `${upgradeId} is in ${group}, which is not one of the shelf's groups`
+      );
+    }
+  });
+
+  test("shop: each group's rows are contiguous, and the groups run in shelf order", () => {
+    const runs = [];
+    for (const upgradeId of engine.UPGRADE_IDS) {
+      const group = engine.upgradeGroup(upgradeId);
+      if (runs[runs.length - 1] !== group) runs.push(group);
+    }
+    assertEqual(
+      runs.join(","),
+      engine.UPGRADE_GROUP_IDS.join(","),
+      "one run per group, in the order UPGRADE_GROUP_IDS names"
+    );
+  });
+
+  // The one-off half is the last group and nothing else, which is what lets the "Automation"
+  // heading replace the "One-off" divider that used to split the shelf.
+  test("shop: the automation group holds every one-off and only one-offs", () => {
+    for (const upgradeId of engine.UPGRADE_IDS) {
+      const oneOff = !engine.UPGRADES[upgradeId].repeatable;
+      assertEqual(
+        engine.upgradeGroup(upgradeId) === "automation",
+        oneOff,
+        `${upgradeId}: a one-off is an automation and an automation is a one-off`
+      );
+    }
+  });
+
+  test("i18n: every group is headed in both locales", () => {
+    for (const lang of ["de", "en"]) {
+      for (const group of engine.UPGRADE_GROUP_IDS) {
+        assert(
+          engine.I18N[lang].shopGroupLabels[group],
+          `${lang} is missing a heading for ${group}`
+        );
+      }
+    }
   });
 
   /* ------------------------------------------------------------------ *

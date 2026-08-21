@@ -487,7 +487,7 @@ function resolveDahanAttack(state) {
     const dahan = Math.max(0, state.dahan[land] || 0);
     if (dahan <= 0 || invaderCountInLand(state.invaders[land]) <= 0) continue;
 
-    const result = spendDahanAttack(state, land, dahan * DAHAN_ATTACK_DAMAGE);
+    const result = spendDahanAttack(state, land, dahan * dahanAttackDamage(state));
     landsThatStruck += 1;
     addLog(state, template(t.dahanAttackResolved, {
       land: landName(state, land),

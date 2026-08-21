@@ -51,9 +51,10 @@
   // only progression axis and had to absorb income forever. Ascension is that axis now, so all
   // three are finishable, and the matched set is the point: one number, three rows.
   test("fear: the three ladders stop at ten tiers", () => {
+    const { state } = newGame();
     for (const id of FEAR_LADDERS) {
-      assertEqual(engine.upgradeMaxTier(id), 10, `${id} should stop at ten`);
-      assertEqual(engine.upgradeMaxTier(id), engine.FEAR_LADDER_MAX_TIER, `${id} reads the shared constant`);
+      assertEqual(engine.upgradeMaxTier(state, id), 10, `${id} should stop at ten`);
+      assertEqual(engine.upgradeMaxTier(state, id), engine.FEAR_LADDER_MAX_TIER, `${id} reads the shared constant`);
     }
   });
 
@@ -61,8 +62,9 @@
   // now has a top, so every row can reach the shop's sold-out half. A row with no maxTier would
   // sit in the buyable list showing a price forever.
   test("fear: every row in the catalogue is finishable", () => {
+    const { state } = newGame();
     for (const id of engine.UPGRADE_IDS) {
-      assert(Number.isFinite(engine.upgradeMaxTier(id)), `${id} has no top tier`);
+      assert(Number.isFinite(engine.upgradeMaxTier(state, id)), `${id} has no top tier`);
     }
   });
 

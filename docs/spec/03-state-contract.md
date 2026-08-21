@@ -37,7 +37,8 @@ Define the canonical save shape for the round-based redesign.
     "unlockedSpiritIds": ["core_spirit_01"]
   },
   "upgrades": {
-    "purchased": {}
+    "purchased": {},
+    "dahanStrength": false
   },
   "presenceUpgrades": {
     "purchased": {}
@@ -369,9 +370,26 @@ Fields the first draft of this contract did not have. Each earns its place:
   rebuild-from-the-registry rule.
 
   It is a **separate object** rather than more keys in `upgrades.purchased`, and that is the
-  single decision that keeps ascension simple: the wipe is `upgrades.purchased = {}` whole,
-  with no filter and no exception list. Two objects with one rule each beats one object with a
-  rule and an exception, and the exception is what a later reader would get wrong.
+  single decision that keeps ascension simple: the wipe empties `upgrades` and leaves
+  `presenceUpgrades` alone, with no filter and no exception list. Two objects with one rule
+  each beats one object with a rule and an exception, and the exception is what a later reader
+  would get wrong.
+- **`upgrades.dahanStrength`** — whether *The Dahan Find Their Strength* has been claimed this
+  cycle. A boolean beside `purchased` and deliberately **not a key inside it**: it is not a
+  catalogue row, and a row is orderable, priceable and buyable by any path that skips the shop
+  render. It gates two numbers — `dahanAttackDamage` and the pool's `maxTier` — and is set only
+  by `claimDahanStrength`, which refuses unless `presence_dahan_endure` is owned, the pool is
+  full, and `round.status` is `"ended"`. See
+  [04-economy-formulas.md](./04-economy-formulas.md#the-claim-the-dahan-find-their-strength).
+
+  It is board power rather than an automation, so **`ascend` clears it** — the one line the
+  paragraph above had to grow a second clause for. What survives a Reclaim is the Presence row
+  that permits the claim, never the claim itself.
+
+  `normalizeState` coerces it to a boolean **before** it clamps `upgrades.purchased`, and the
+  order is load-bearing: the clamp measures every owned tier against `upgradeMaxTier`, the
+  pool's ceiling is the one that moves, and normalizing the flag afterwards would silently
+  delete every Fear a claimed save had poured in past 10000, on every single load.
 - **`meta.cycleBestWave`** — the best wave since the last ascension, against
   `meta.bestWaveReached`'s all-time figure. Both are written in `endRound` from the same
   `round.wavesResolved`; `ascend()` clears one and never touches the other. Two scores because

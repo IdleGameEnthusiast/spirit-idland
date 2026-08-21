@@ -153,18 +153,23 @@ were named first and set the convention; `cycleBestWave` joins them.
 First-draft shop entries, for internal consistency while the loop is being built. Costs and
 magnitudes are not balanced yet.
 
-| Upgrade id | Effect | Repeatable | Base cost |
-| --- | --- | --- | --- |
-| `dahan_reinforcement` | +1 starting Dahan | Yes, max tier 8 | 10 |
-| `blight_resilience` | +1 Blight threshold | Yes, max tier 5 | 3 |
-| `headwaters` | Every round opens with Energy in hand, 1 up to 35 by tier | Yes, max tier 9 | 8 |
-| `rising_dread` | +10% Fear from defeated invaders | Yes, max tier 10 | 6 |
-| `mounting_terror` | +10% Fear from surviving waves | Yes, max tier 10 | 6 |
-| `high_water_mark` | Every 10th wave pays 10% of its own number as Fear | Yes, max tier 10 | 12 |
-| `dahan_remember` | Fear invested shortens the Dahan strike clock, to half at 10000 | Yes, a pool: max tier 10000 | 1 (flat) |
-| `unlock_<ability_id>` | Unlocks a new ability for the ability bar | No, one-time | — |
-| `auto_buy_abilities` | Energy spends itself on the bar | No, one-time | 200 |
-| `auto_start_round` | An ended round starts the next one | No, one-time | 500 |
+In shelf order, which is also the order the shop draws them in — the `Group` column is the
+heading each row lands under, and the groups run `waves`, `fear`, `dahan`, `automation`. See
+[07-content-registry.md](./07-content-registry.md#the-four-groups).
+
+| Upgrade id | Group | Effect | Repeatable | Base cost |
+| --- | --- | --- | --- | --- |
+| `headwaters` | `waves` | Every round opens with Energy in hand, 1 up to 35 by tier | Yes, max tier 9 | 8 |
+| `blight_resilience` | `waves` | +1 Blight threshold | Yes, max tier 5 | 3 |
+| `power_card_interval` | `waves` | -1 wave between power-card draws, 20 down to 10 | Yes, max tier 10 | 30 |
+| `rising_dread` | `fear` | +10% Fear from defeated invaders | Yes, max tier 10 | 6 |
+| `mounting_terror` | `fear` | +10% Fear from surviving waves | Yes, max tier 10 | 6 |
+| `high_water_mark` | `fear` | Every 10th wave pays 10% of its own number as Fear | Yes, max tier 10 | 12 |
+| `dahan_reinforcement` | `dahan` | +1 starting Dahan | Yes, max tier 8 | 10 |
+| `dahan_remember` | `dahan` | Fear invested shortens the Dahan strike clock, to half at the pool's ceiling | Yes, a pool: max tier 10000, or 20000 once the strength is claimed | 1 (flat) |
+| `unlock_<ability_id>` | — | Unlocks a new ability for the ability bar | No, one-time | — |
+| `auto_buy_abilities` | `automation` | Energy spends itself on the bar | No, one-time | 200 |
+| `auto_start_round` | `automation` | An ended round starts the next one | No, one-time | 500 |
 
 **No row here is locked.** The last two shed a completion gate and then a Presence unlock, and
 both are gone: a first cycle that saves 700 Fear can buy them and idle itself without ever
@@ -499,7 +504,58 @@ it opens its bank on; and one changes the **pace** of a round without changing a
 | `presence_current_quickens` | Focus, directly — see [04-economy-formulas.md](./04-economy-formulas.md#focus-spending-energy-mid-round-to-shorten-a-cooldown) | — | 5 |
 | `presence_river_deepens` | auto-buy's top rung, directly — see [Auto-buy](#auto-buy) | — | 5 |
 | `presence_fear_remains` | 50 Fear in the next cycle's bank, per rung — **ten rungs**, see [04-economy-formulas.md](./04-economy-formulas.md#the-endowment-and-what-it-is-worth-against-holding) | — | 1 a rung |
-| `presence_deep_water_comes` | the opening of every round at 20x, as far as 10 / 15 / 20% of `meta.bestWaveReached` — **three rungs**, see [02-core-loop.md](./02-core-loop.md#pacing) | — | 3 / 4 / 5 |
+| `presence_deep_water_comes` | the opening of every round at 50x, as far as 10 / 15 / 20% of `meta.bestWaveReached` — **three rungs**, see [02-core-loop.md](./02-core-loop.md#pacing) | — | 3 / 4 / 5 |
+| `presence_dahan_endure` | the right to restart a full `dahan_remember` for +1 Dahan damage, once a cycle — see [04-economy-formulas.md](./04-economy-formulas.md#the-claim-the-dahan-find-their-strength) | — | 8 — **locked, see below** |
+
+### What Presence grants, and what it gates
+
+`presence_dahan_endure` brings back something this catalogue deleted, so the rule it comes with
+matters more than the row does.
+
+`presenceUnlock` was removed because a Presence row that gated an **automation** asked for the
+Fear again every cycle, and an outright grant beat it by more than an order of magnitude (see
+[the discount-ladder note](#what-a-presence-row-does-to-the-fear-catalogue) and the long comment
+above `PRESENCE_UPGRADES`). That argument does not reach a row that changes what the Dahan do:
+re-earning power every cycle is the Fear shop's entire job, and there is no row here to hand
+over — only a claim to be permitted.
+
+So the line the two cases sit either side of, written down once:
+
+> **Presence grants automations and gates board power.**
+
+A row that saves clicks is handed over for good and never priced again. A row that changes a
+number the invaders are measured against is unlocked once, then paid for in Fear every cycle
+like everything else on the board. `presence_dahan_endure` is the first row on the second side
+of that line, and `ascend` wiping `upgrades.dahanStrength` is what enforces it.
+
+Its 8 Presence puts it above the two 5-Presence rows it sits with, because it is the only row
+in the catalogue that makes the player stronger *in the fight* rather than opening somewhere to
+spend — and 8 lands it past the first three Reclaims, which is where a 30,000-Fear sink wants to
+arrive anyway. Unplayed, like every figure here.
+
+### The row is currently locked
+
+`presence_dahan_endure` carries `locked: true` in `PRESENCE_UPGRADES` and **cannot be bought**.
+It is the only row in either catalogue that does, and the flag means one thing and nothing more:
+the row is drawn in the Presence shop, and it does not sell.
+
+The reason is the paragraph above — 8 Presence for the one row that changes a number the
+invaders are measured against is a first pass at a price nobody has played. The row stays
+visible rather than being deleted, because a deleted row takes its wiring with it and this one's
+wiring is fine: the claim, the doubled pool, the doubled damage and the wipe on Reclaim are all
+built and all tested. Re-opening the row is deleting the flag.
+
+What the lock does **not** do, and must not grow into:
+
+- It is not a tier gate and takes no `state`. `presenceUpgradeLocked(presenceId)` answers from
+  the catalogue alone — a locked row is locked for every save at every Presence total. The
+  moment it reads state it becomes `presenceUnlock` again, which is the shape this catalogue
+  deleted.
+- It does not take anything back. A save that already owns the row keeps it, keeps the claim,
+  and keeps the damage; `presenceUpgradeOwned` answers off the tier as it always did. Locking
+  closes the till, it does not repossess.
+- It is not a second way to say "maxed". `purchasePresenceUpgrade` refuses on the lock **before**
+  it asks about tiers or price, because a locked row has neither.
 
 `presence_fear_remains` is the catalogue's **only repeatable row**, and the only one whose
 worth *falls* as the run goes on. Its 50 a rung is flat while cycles grow, so all ten rungs beat
@@ -525,14 +581,14 @@ Two things keep it honest, and both are worth defending if it is ever retuned:
   the waves worth handing back are the ones before the round becomes a question, and a row that
   hurried through the part of a round that can be *lost* would be playing it.
 - **Its gate is its depth, like `presence_river_deepens` below it.** Nothing can be hand-cast at
-  20x — cooldowns tick in game seconds, so the whole kit fires twenty times faster than a hand
+  50x — cooldowns tick in game seconds, so the whole kit fires fifty times faster than a hand
   can answer. The row is only free to a player who already owns `presence_river_knows` and
   `presence_all_unbidden`, which is 8 Presence before its own 3 is asked for. The price is not
   asked to be a second gate.
 
 **If it is ever made stronger, the lever is the share and never the speed.** A larger share
 hands back more of an opening the player has already proven; a faster speed only coarsens the
-tick that is already resolving those waves, and buys less real time per step past 20x than the
+tick that is already resolving those waves, and buys less real time per step past 50x than the
 step before it.
 
 `presence_river_deepens` is **not** the comfort layer the row it extends is, and the two must

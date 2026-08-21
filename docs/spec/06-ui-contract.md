@@ -24,14 +24,14 @@ island board, and the between-round shop.
   the gate named first because it is the one with a button waiting to be pressed.
 - **A clock running at a speed the dial does not show must say so too.** The fast-forwarded
   opening (`presence_deep_water_comes`) is a third answer for the wave tile: the countdown is
-  running, just twenty times too fast to read, so the tile says `waveFastForwardValue` instead
+  running, just fifty times too fast to read, so the tile says `waveFastForwardValue` instead
   of a blur. Ordered after the pause and the gate, both of which are the more specific answer to
   "why is nothing moving" — and `0x` beats it in the engine too, so the tile must not claim
   motion the tick is not producing. `body.is-fast-forward` carries it to the stylesheet, which
   drops the wave meter's easing (two readings a frame apart would smear) and tints the tile in
   the **Presence** accent, because a Presence row is what is doing this and nothing else on the
   strip is.
-- **The speed dial keeps drawing the player's own choice throughout a fast-forward.** 20x is on
+- **The speed dial keeps drawing the player's own choice throughout a fast-forward.** 50x is on
   no button and `ui.gameSpeed` never holds it, so lighting one — or lighting none — would turn a
   readout of a *setting* into a readout of an instant. The group takes `is-fast-forward` instead
   and stays fully interactive: `0x` is the brake on a running fast-forward and has to remain
@@ -305,7 +305,18 @@ island board, and the between-round shop.
   panel's job is the part still being shopped. The heading is the handle and carries the count,
   so shut it still answers "how much have I bought" in one line; clicking it unfolds. It starts
   shut on every load: the fold is a view preference, not game state, and never enters the save.
-  Within each half the catalogue order stands, repeatables before one-offs
+  Within each half the catalogue order stands
+- **The buyable half is drawn in four groups, each under its own heading**: *Wave progression*,
+  *Fear generators*, *The Dahan*, *Automation* (`UPGRADE_GROUP_IDS`, headed from
+  `shopGroupLabels`). The shop knows no more than that: it walks the rows in catalogue order and
+  heads each run of rows that share a `group`, so the grouping lives entirely in the catalogue —
+  see [07-content-registry.md](./07-content-registry.md#the-four-groups) for the two rules that
+  keep it honest. This replaced a single "One-off" divider, which split the shelf by *how* a row
+  was bought rather than by what it buys; the one-off half is the last group and every row in it
+  is an automation, so the heading says the same thing in the player's terms
+- **The sold-out fold is not grouped.** It is a record of what has been bought rather than a
+  thing being shopped, and four headings over a closed list would be four headings answering a
+  question nobody is asking there. The rows inside it keep catalogue order like everything else
 - **A row whose per-tier gain is not constant describes its next rung, not its whole shape.**
   That is `headwaters`, `high_water_mark` and `dahan_remember`: everywhere else "+1 Dahan, per
   tier" already answers what the next price buys, while a table of nine numbers and a percentage
@@ -317,6 +328,19 @@ island board, and the between-round shop.
   all, so it describes where it stands: Fear invested against the full pool, and the strike
   interval that buys — quoted in the same real seconds every countdown on the page uses, so it
   moves with the speed dial
+- **A full pool with a claim pending shows the claim, not "Maxed".** Once
+  `presence_dahan_endure` is owned and `dahan_remember` is full, its button strip is replaced by
+  a single **Start over, +1 damage**. The row stays in the *buyable* half while that is pending —
+  `upgradeIsSoldOut` answers the sort's question ("anything left here?") rather than the buy
+  button's ("a rung to buy?"), so the one moment the row has something new to say is not the
+  moment it drops to the bottom of the shop. Its text says so too: a third state beside filling
+  and finished, which must state that the trade costs nothing, because giving up a full pool of
+  haste looks like a loss and the reason it is not one does not fit on a button
+- **The claim is drawn disabled mid-round, not hidden.** It is legal only between rounds (see
+  [04-economy-formulas.md](./04-economy-formulas.md#the-claim-the-dahan-find-their-strength)),
+  and hiding it would make a button appear out of nowhere at the end of a round nobody was
+  watching the shop during. Disabled with the reason in its tooltip is how a row explains a rule
+  it cannot bend
 - **The pool row is bought in denominations, not one rung at a time.** `dahan_remember` ends in
   a strip of buttons — one per `bulkAmounts` entry, then a **Max** that takes everything the
   purse can pay for — instead of a single Buy. Each button's tooltip names the Fear it will
@@ -393,6 +417,18 @@ island board, and the between-round shop.
   tail reading *0 waves (0%)* is the row's own sentence told backwards. It is also the only
   row whose **price moves as it is bought** (3 → 4 → 5, from `costs` rather than `cost`),
   which the buy button reads live off `presenceUpgradeCost` like every other row
+- **A locked Presence row is drawn dead, not hidden.** `presence_dahan_endure` carries
+  `locked: true` in the catalogue and cannot be bought (see
+  [05-progression.md](./05-progression.md#the-row-is-currently-locked)). It keeps its place in
+  the buyable half — it is not maxed and must not sink into the sold-out fold, which would say
+  the player owns it — and it keeps its name and its text, because the row is being shown
+  early on purpose. What changes is the button: **disabled, and reading *Noch nicht* / *Not
+  yet* instead of a price**, because a locked row has no price to quote and an 8-Presence label
+  above a dead button reads as "you cannot afford it" rather than "this is not selling". The
+  row carries `is-locked`, which dims it a little less than a sold-out row and gives it no
+  accent border: it is neither a reward nor an offer. The disabled button is the *shop's*
+  telling of the rule and not the rule — `purchasePresenceUpgrade` refuses the same buy on the
+  same flag, so no path that skips this render can buy the row either
 - **A Presence row's text quotes no price.** Not the row's own — that is on the buy button —
   and not the Fear price of what it grants either: a grant is bought once, its worth is "this,
   forever", and a player reading the Presence shop is not shopping in the Fear one. A grant row
@@ -471,7 +507,7 @@ from the dev tools, and still is.
     `displaySeconds` divides by `effectiveGameSpeed` — the speed actually being applied — because
     a countdown the player is watching move must say how long it really has. `dialSecondsText`
     keeps dividing by the **dial**, because it prices a *purchase* against the round the player
-    chose to play, and a pill flickering to a twentieth of its figure and back would be
+    chose to play, and a pill flickering to a fiftieth of its figure and back would be
     describing an instant rather than the round. This is the one place the two readings are
     allowed to disagree, and the fast-forward is the only thing that makes them.
     Because that division is applied when the pill is **written** and the per-frame patch only

@@ -154,7 +154,7 @@ timer refills. With it off:
 **The fast-forwarded opening** is the third, and the only one the player holds no control for:
 it is bought once in the Presence shop and then applies itself at the start of every round.
 `presence_deep_water_comes` runs the first `floor(meta.bestWaveReached * share)` waves of a
-round at `FAST_FORWARD_SPEED` (20x), where `share` is 10 / 15 / 20% at its three rungs. Always
+round at `FAST_FORWARD_SPEED` (50x), where `share` is 10 / 15 / 20% at its three rungs. Always
 floored: an all-time record of 87 fast-forwards 8 waves at the first rung, not 9.
 
 - **It is a fast-forward and not a skip**, and everything else in this section is why that
@@ -162,25 +162,37 @@ floored: an all-time record of 87 fast-forwards 8 waves at the first rung, not 9
   every hurried wave builds, explores, blights and pays its Fear exactly as it would at 1x.
   The row buys real seconds and nothing else — no round is worth more Fear for having been
   hurried through.
-- **It replaces the dial, it does not multiply it.** 20x on a 2x dial is 20x, not 40x. The dial
+- **It replaces the dial, it does not multiply it.** 50x on a 2x dial is 50x, not 100x. The dial
   keeps drawing the player's own choice throughout, and gets the round back untouched after.
 - **`0x` still wins.** The player saying that nothing moves outranks a purchase, which is also
   what leaves a brake on a fast-forward already running.
 - **The wave gate is released for those waves and closes again after them.** A row that ran the
-  opening at 20x and then stopped at every wave for a click would have fast-forwarded nothing.
+  opening at 50x and then stopped at every wave for a click would have fast-forwarded nothing.
   `ui.autoProceed` is not read or written by any of this — the toggle keeps saying what the
   player set, and a manual round gets its gate back at exactly the wave the shop promised.
 - **No card is revealed while it runs.** `CARD_FX_MS` is 2600 *real* milliseconds against a
-  wave that now arrives every real second, so each reveal would be overwritten before it could
+  wave that now arrives every four-tenths of a real second, so each reveal would be overwritten before it could
   be read. The cards themselves are unaffected: the hand, the log and the drip's schedule are
   what they would be at 1x, and only the announcement is held back. See `markCardFx` in
   `engine/state.js`.
-- **The tick cap holds at 20x as it does at 1x.** `MAX_TICK_SECONDS` is half a wave interval,
+- **The tick cap holds at 50x as it does at 1x.** `MAX_TICK_SECONDS` is half a wave interval,
   so no tick can resolve two waves however fast the round is running — a frame the browser
   dropped mid-fast-forward makes the round run *slow*, never skip ahead.
+- **A tick is atomic, so a coarse tick costs a little cast rate.** Speed reaches no rule, but it
+  does change what one tick is worth in game seconds: a sixtieth of one at 1x, five sixths of
+  one at 50x. `tickCooldowns` floors at zero, so a cooldown that comes up mid-tick is not cast
+  until the tick ends and the overshoot is dropped — an ability effectively waits its cooldown
+  *rounded up to a whole tick*. The wave timer and the Dahan attack both carry their overshoot
+  (`+=` an interval) and are exact at any speed; only the ability kit rounds. Measured against a
+  hurried opening this is lumpy rather than steady — usually nothing, occasionally one cast in
+  ten waves, depending on how a cooldown divides into the tick. It is a property of tick
+  granularity at **every** speed on the dial and not of `presence_deep_water_comes`, which is
+  why the row's identity test in `tests/fastforward.test.js` holds the game-seconds-per-tick
+  equal on both sides. **If it ever needs to be exact, the fix is for a cast to carry its
+  overshoot the way the wave timer does, not to lower the speed.**
 
 Why the row can be priced as comfort rather than as power: a cooldown ticks in game seconds, so
-at 20x the whole ability kit fires twenty times faster than a hand can answer. It is only free
+at 50x the whole ability kit fires fifty times faster than a hand can answer. It is only free
 to a player who already owns the automations, which puts 8 Presence underneath it before its
 own 3 is asked for. See [05-progression.md](./05-progression.md#the-presence-catalogue).
 
@@ -283,7 +295,8 @@ in [10-power-cards.md](./10-power-cards.md#defense).
 ### Dahan strike back
 
 On `DAHAN_ATTACK_INTERVAL_SECONDS`, every land holding both Dahan and invaders strikes at
-once: `DAHAN_ATTACK_DAMAGE` per Dahan, spent on the highest-tier invader type present first
+once: `dahanAttackDamage(state)` per Dahan — `DAHAN_ATTACK_DAMAGE`, or `DAHAN_STRENGTH_DAMAGE`
+once *The Dahan Find Their Strength* is claimed — spent on the highest-tier invader type first
 (cities, then towns, then explorers), 1 damage at a time, until the pool or the invaders run
 out. Defeated invaders award Fear through the normal defeat path.
 
@@ -295,6 +308,10 @@ The interval is read through `roundDahanAttackInterval` rather than off the cons
 `dahan_remember` divides it by `1 + haste`, up to twice as fast at a full pool. The tier comes
 from the round's upgrade snapshot, so filling the pool mid-round speeds up the *next* round —
 see [04-economy-formulas.md](./04-economy-formulas.md#the-interval-and-the-one-thing-that-shortens-it).
+
+A full pool can be **started over** once a cycle for `+1` Dahan damage, which is throughput-
+neutral in the moment it is taken and doubles the pool's ceiling. See
+[The claim](./04-economy-formulas.md#the-claim-the-dahan-find-their-strength).
 
 ## Blight
 

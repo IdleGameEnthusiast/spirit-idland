@@ -1567,13 +1567,19 @@ button.reset {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.35rem;
+  /* Four headings now instead of one, so each needs to read as the top of what follows rather
+     than as a line between two rows: the gap above is wider than the list's own 0.45rem. */
+  margin-top: 0.55rem;
   font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-1);
 }
+
+/* The first group heading opens the list, so it has no row above it to be pushed away from.
+   Every other one keeps the gap that separates it from the group it ends. */
+.upgrade-list > .upgrade-divider:first-child { margin-top: 0; }
 
 .upgrade-divider::after {
   content: "";
@@ -1660,9 +1666,25 @@ button.reset {
   opacity: 0.85;
 }
 
-/* A row still waiting on its Presence unlock has no styling here because it has no row: the
-   shop leaves it out entirely rather than drawing a dead one (renderShop). Gone with it,
-   `.upgrade.is-locked` and `.upgrade-locked`. */
+/* Two different "locked" and only one of them has a row.
+
+   A Fear row still waiting on its Presence unlock is not drawn at all - the shop leaves it out
+   rather than drawing a dead one (renderShop), which is why nothing here styles it.
+
+   A Presence row carrying `locked` in the catalogue is the other case: it is drawn, kept
+   readable, and simply does not sell (renderPresenceShop). It is dimmed a little less than a
+   sold-out row and given no accent border, because it is neither a reward nor an offer - it is
+   a row the player is being shown early. The dead button below carries the rest of the message.
+*/
+.upgrade.is-locked {
+  border-color: rgba(255, 255, 255, 0.06);
+  opacity: 0.8;
+}
+
+.upgrade.is-locked .upgrade-buy {
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
 
 .upgrade-buy {
   margin: 0;
@@ -1698,6 +1720,26 @@ button.reset {
   min-width: 3rem;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+/* The claim: the one button in the shop that spends no Fear, so it must not look like the
+   buys it replaces. It takes the whole width the denominations had - there is nothing left to
+   sit beside it - and carries the accent the rest of the row does not, because it appears once
+   per cycle and is the only thing the row has left to say. Disabled mid-round, where it keeps
+   its shape and loses its pull. */
+.upgrade-pool-buys .is-pool-claim {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-color: var(--dahan-ink);
+  color: var(--dahan-ink);
+}
+
+.upgrade-pool-buys .is-pool-claim:not(:disabled):hover {
+  background: var(--dahan-ink);
+  color: var(--bg-0);
 }
 
 /* The pool's own row: taller than a ladder's, because its text carries the state a tier chip

@@ -23,7 +23,7 @@ DAHAN_LOSS_PER_DAMAGE_SECOND = 0.05 / TIME_SCALE  = 0.025  (under playtest)
 BLIGHT_FLOOR_FRACTION = 0.25             (anti-stacking, under playtest)
 DAHAN_CONCENTRATION_CAP = 2              (anti-stacking, under playtest)
 DAHAN_ATTACK_INTERVAL_SECONDS = 10 * TIME_SCALE  = 20  (placeholder)
-DAHAN_ATTACK_DAMAGE = 1                (placeholder)
+DAHAN_ATTACK_DAMAGE = 1                (placeholder; 2 once the strength is claimed)
 DAHAN_PER_ROUND_START_BASE = 6
 DAHAN_MAX_SPREAD = 2
 DEFEAT_FX_MS = 1200
@@ -178,7 +178,7 @@ fastForwardWaves   = floor(meta.bestWaveReached * FAST_FORWARD_SHARE_PER_TIER[ti
                      0 when tier(presence_deep_water_comes) is 0
 
 FAST_FORWARD_SHARE_PER_TIER = [0.10, 0.15, 0.20]        -> 3 / 4 / 5 Presence a rung
-FAST_FORWARD_SPEED          = 20
+FAST_FORWARD_SPEED          = 50
 
 fastForwardActive  = round.status == "running" and round.wavesResolved < fastForwardWaves
 
@@ -199,7 +199,7 @@ bestWaveReached` only moves in `endRound`, so the cap cannot change under a roun
 running and the figure is read live rather than frozen into the round snapshot.
 
 The `max` in `effectiveGameSpeed` rather than a bare assignment is for the playtest dial alone:
-8x is already below 20x, but a playtest speed raised past it later must not be quietly slowed
+8x is already below 50x, but a playtest speed raised past it later must not be quietly slowed
 down by a comfort purchase. `0x` is checked first and unconditionally — the player saying that
 nothing moves outranks the purchase.
 
@@ -298,7 +298,7 @@ worth casting. At `gross = 6`:
 dahanAttackRemaining -= dt, each tick
 when dahanAttackRemaining <= 0:
     for each land holding both Dahan and invaders:
-        pool = dahanCount * DAHAN_ATTACK_DAMAGE
+        pool = dahanCount * dahanAttackDamage(state)
         spend the pool 1 damage at a time on the highest tier present
         (cities, then towns, then explorers) until the pool or the invaders run out
     dahanAttackRemaining = roundDahanAttackInterval(state)
@@ -318,12 +318,73 @@ strikeInterval   = DAHAN_ATTACK_INTERVAL_SECONDS / (1 + haste)
 (see [The Fear pool](#the-fear-pool)). 10000 Fear fills it, 100 Fear buys 1%, and the cap is
 100%: `20s → 10s` at the 1x speed dial, twice as many strikes in the same round.
 
+`poolCeiling` is `DAHAN_HASTE_FEAR_FOR_FULL` until *The Dahan Find Their Strength* is claimed
+and `DAHAN_STRENGTH_FEAR_FOR_FULL` after — see [The claim](#the-claim-the-dahan-find-their-strength)
+below. The percentage divides by the ceiling **in play**, so a full second pool reads 100% and
+not 200%, and `DAHAN_HASTE_MAX` keeps meaning what it says. This is the one row in the
+catalogue whose `maxTier` moves, which is why `upgradeMaxTier` takes a state.
+
 Haste **divides** rather than subtracting, for two reasons that are not arithmetic taste. The
 percentage then means what it says — 100% haste is 100% more strikes, not "100% off" a
 cooldown that would then be zero — and division composes. A second cooldown source multiplies
 its divisor in beside this one without either knowing the other exists, and no combination of
 them can reach zero. A subtractive rule would need a floor bolted on the moment a second
 source arrived, and the floor would be the real rule while the percentages were decoration.
+
+### The claim: The Dahan Find Their Strength
+
+A full pool is the end of what Fear can buy on the strike clock. This is the one thing on the
+other side of it, gated by the Presence row `presence_dahan_endure`, and claimable **once per
+cycle**.
+
+> **The gate is currently shut.** `presence_dahan_endure` carries `locked: true` and cannot be
+> bought, so nothing below is reachable in normal play — see
+> [05-progression.md](./05-progression.md#the-row-is-currently-locked). Every rule here is
+> built, wired and tested; the row simply does not sell yet. The formulas stay in this document
+> unchanged because re-opening the row is deleting one flag, not rebuilding a mechanic.
+
+```txt
+canClaim         = presenceOwned(presence_dahan_endure)
+                   and not claimed
+                   and round.status == "ended"
+                   and tier(dahan_remember) >= DAHAN_HASTE_FEAR_FOR_FULL
+
+on claim:        upgrades.dahanStrength = true
+                 tier(dahan_remember)   = 0
+                 poolCeiling            = DAHAN_STRENGTH_FEAR_FOR_FULL   (20000)
+                 dahanAttackDamage      = DAHAN_STRENGTH_DAMAGE          (2)
+```
+
+**The arithmetic is the design.** Throughput per Dahan is
+
+```txt
+damagePerSecond = damage * (1 + haste) / DAHAN_ATTACK_INTERVAL_SECONDS
+```
+
+because haste divides the interval and damage multiplies what each strike spends. So the claim
+trades a full pool's `1 × (1 + 1) = 2` for an empty pool's `2 × (1 + 0) = 2`: **the moment of
+the claim is free**, and every Fear poured into the second pool is profit the first pool had no
+room left to sell. `tests/haste.test.js` asserts that identity directly.
+
+**That identity holds at one claim and nowhere else.** A second would trade `2 × 2 = 4` for
+`3 × 1 = 3` — twenty thousand Fear spent to lose a quarter of the strike — because `+1` damage
+is a doubling only while damage is 1. A third loses a third. If a follow-up is ever wanted, the
+claim has to start **doubling** damage (2, 4, 8) rather than incrementing it, and the two
+changes must land together. The one-claim cap is what stops the question being asked by
+accident.
+
+Three further consequences worth writing down:
+
+- **Between rounds only.** The claim empties a row the running round has already snapshotted
+  into `round.upgradeTiers` and doubles a divisor that round is still dividing by, so claiming
+  mid-round would hand over double damage and take back half the haste in the same instant.
+  `round.status == "ended"` removes the question rather than answering it — the same rule
+  `canAscend` follows. The claim clears the finished round's snapshot entry with the pool.
+- **The second pool is 20000 units at 1 Fear**, not 10000 at 2. A Fear stays a unit and the row
+  stays the flat 1:1 sink its design rests on; what pays for that is the moving `maxTier`.
+- **It is board power, so it is wiped by Reclaim.** `ascend` clears `upgrades.dahanStrength`
+  beside `upgrades.purchased`. What survives is the Presence row that permits the claim. See
+  [05-progression.md](./05-progression.md#what-presence-grants-and-what-it-gates).
 
 The interval is read through `roundDahanAttackInterval`, which takes the tier from the round's
 **upgrade snapshot** rather than from what is owned. Fear poured into the pool at 9/10 Blight
@@ -1205,7 +1266,8 @@ headwaters           baseCost 8     8, 13, 20, 33, 52, ...    (max tier 9)
 rising_dread         baseCost 6     6, 10, 15, 25, 39, ...    (max tier 10, 1089 total)
 mounting_terror      baseCost 6     6, 10, 15, 25, 39, ...    (max tier 10, 1089 total)
 high_water_mark      baseCost 12   12, 19, 31, 49, 79, ...    (max tier 10, 2179 total)
-dahan_remember       baseCost 1     1,  1,  1,  1,  1, ...    (growth 1, max tier 10000)
+dahan_remember       baseCost 1     1,  1,  1,  1,  1, ...    (growth 1, max tier 10000,
+                                                             20000 once the strength is claimed)
 auto_boon            baseCost 25   one-off
 auto_innate          baseCost 100  one-off
 auto_bounty          baseCost 200  one-off

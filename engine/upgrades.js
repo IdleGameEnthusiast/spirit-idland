@@ -84,6 +84,21 @@ function presenceUpgradeMaxed(state, presenceId) {
   return presenceUpgradeTier(state, presenceId) >= presenceUpgradeMaxTier(presenceId);
 }
 
+/* Whether a row is held shut - `locked` in the catalogue, and nothing else.
+ *
+ * Deliberately not a function of state: a locked row is locked for every save, at every
+ * Presence total, in every cycle. It is the catalogue saying "not yet", not the game saying
+ * "not for you", and the moment it takes a `state` somebody will make it a tier gate - which
+ * is the shape `presenceUnlock` died in (see the note above PRESENCE_UPGRADES).
+ *
+ * An owned row answers by its flag like any other, so a row locked *after* it was already
+ * bought keeps what it granted and simply stops selling further rungs. That is the safe way
+ * round: locking a row must never take power back from a save that paid for it.
+ */
+function presenceUpgradeLocked(presenceId) {
+  return Boolean((PRESENCE_UPGRADES[presenceId] || {}).locked);
+}
+
 /* Cost of the *next* rung, mirroring upgradeCost on the Fear side - which is why this takes a
  * state where it used to take an id alone. Infinity once the last rung is taken.
  *
@@ -115,6 +130,17 @@ function purchasePresenceUpgrade(state, presenceId) {
   const t = locale(state);
   const record = PRESENCE_UPGRADES[presenceId];
   if (!record) return false;
+
+  // Before "maxed" and before the price, because a locked row has neither: it is not sold at
+  // any tier and not sold at any Presence total, so the two lines below have nothing true to
+  // say about it. The shop draws the button dead, and this is the same refusal for every path
+  // that does not go through the shop.
+  if (presenceUpgradeLocked(presenceId)) {
+    addLog(state, template(t.presenceLocked, {
+      upgrade: presenceUpgradeName(state, presenceId)
+    }));
+    return false;
+  }
 
   // "Owned" and "maxed" are the same sentence for a one-off, and for the ladder they are the
   // same sentence at the top rung, so one check and one line still cover both.
@@ -285,6 +311,12 @@ function ascend(state) {
   state.meta.cycleFearSpent = 0;
   state.meta.cycleBestWave = 0;
   state.upgrades.purchased = {};
+  // The second line the note above `presenceUpgrades` promised would never be needed. It is
+  // needed because The Dahan Find Their Strength is not a row and must not be one - see
+  // dahanStrengthClaimed - and because it is board power rather than an automation, so it is
+  // re-earned every cycle like every other thing Fear buys. What survives is the Presence row
+  // that allows the claim, which is the only part the player bought with Presence.
+  state.upgrades.dahanStrength = false;
 
   // Flavour rather than mechanics: nothing in the rules reads the round number - the
   // difficulty ladder is keyed to the wave - and a new age counting from one reads better than
@@ -354,10 +386,10 @@ function activeUpgradeTier(state, upgradeId) {
 //
 // A row the player has not revealed yet is in neither half - see upgradeRevealed.
 function orderedUpgradeIds(state) {
-  const maxed = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
+  const soldOutId = (id) => upgradeIsSoldOut(state, id);
   const shelf = UPGRADE_IDS.filter((id) => upgradeRevealed(state, id));
-  const buyable = shelf.filter((id) => !maxed(id));
-  const soldOut = shelf.filter(maxed);
+  const buyable = shelf.filter((id) => !soldOutId(id));
+  const soldOut = shelf.filter(soldOutId);
   return buyable.concat(soldOut);
 }
 
@@ -390,10 +422,29 @@ function upgradeRevealed(state, upgradeId) {
   return test ? Boolean(test(state)) : true;
 }
 
-function upgradeMaxTier(upgradeId) {
+/* How deep a row goes, which for exactly one row is a question about the game rather than
+ * about the catalogue.
+ *
+ * `dahan_remember` doubles when The Dahan Find Their Strength is claimed, so this takes
+ * `state` where it used to take an id alone. The alternative - an optional second argument,
+ * leaving the old call sites answering the pre-claim number - was rejected on purpose: it
+ * would leave two answers to "how deep is the pool" and let the wrong one win wherever nobody
+ * remembered to pass state. `normalizeState` is the call site that proves the point; see the
+ * clamp there, which would silently delete ten thousand Fear of pool on every load.
+ *
+ * A dispatch table rather than an `if` on the id, so the next moving ceiling is a line here
+ * instead of a second special case somewhere else.
+ */
+const UPGRADE_MAX_TIERS = {
+  dahan_remember: (state) => dahanHasteFearForFull(state)
+};
+
+function upgradeMaxTier(state, upgradeId) {
   const record = UPGRADES[upgradeId];
   if (!record) return 0;
   if (!record.repeatable) return 1;
+  const moving = UPGRADE_MAX_TIERS[upgradeId];
+  if (moving) return moving(state);
   return Number.isFinite(record.maxTier) ? record.maxTier : Infinity;
 }
 
@@ -491,7 +542,7 @@ function upgradeCostFromTier(upgradeId, from, count, baseCost) {
 function upgradeTiersAffordable(state, upgradeId) {
   const record = UPGRADES[upgradeId];
   if (!record) return 0;
-  const room = upgradeMaxTier(upgradeId) - upgradeTier(state, upgradeId);
+  const room = upgradeMaxTier(state, upgradeId) - upgradeTier(state, upgradeId);
   if (!(room > 0)) return 0;
   const fear = Math.max(0, Math.floor(Number(state.meta.fear) || 0));
   const base = upgradeBaseCost(state, upgradeId);
@@ -531,15 +582,116 @@ function startingEnergyForTier(tier) {
  * at all: saving, normalizing, ordering and the sold-out half all work on it unchanged. These
  * two are the only places that know the tier means Fear rather than a rung.
  */
-function dahanHasteFraction(invested) {
+function dahanHasteFraction(invested, full) {
   const fear = Math.max(0, Math.floor(Number(invested) || 0));
-  return Math.min(DAHAN_HASTE_MAX, fear / DAHAN_HASTE_FEAR_FOR_FULL);
+  const ceiling = Number.isFinite(full) && full > 0 ? full : DAHAN_HASTE_FEAR_FOR_FULL;
+  return Math.min(DAHAN_HASTE_MAX, fear / ceiling);
 }
 
 // Divided, not subtracted - see the note above DAHAN_HASTE_FEAR_FOR_FULL. A second cooldown
 // source belongs in the denominator beside this one rather than in a second formula.
-function dahanAttackIntervalFor(invested) {
-  return DAHAN_ATTACK_INTERVAL_SECONDS / (1 + dahanHasteFraction(invested));
+function dahanAttackIntervalFor(invested, full) {
+  return DAHAN_ATTACK_INTERVAL_SECONDS / (1 + dahanHasteFraction(invested, full));
+}
+
+/* ---------- The Dahan Find Their Strength ----------
+ *
+ * Three questions with three different answers, and keeping them apart is what makes the claim
+ * safe to reason about: whether the player may ever claim it (Presence), whether they already
+ * have (the flag), and whether they may claim it *right now* (the pool, and the clock).
+ *
+ * The flag lives on `state.upgrades` beside `purchased` rather than inside it, because it is
+ * not a row and must not be one: a catalogue entry would be orderable, priceable, and buyable
+ * by any path that does not consult the shop render. It wipes on Reclaim all the same - see
+ * the wipe in `ascend`, which now has two lines where the note above it promised one.
+ */
+function dahanStrengthUnlocked(state) {
+  return presenceUpgradeOwned(state, "presence_dahan_endure");
+}
+
+function dahanStrengthClaimed(state) {
+  return Boolean(state && state.upgrades && state.upgrades.dahanStrength);
+}
+
+// The pool's ceiling as it stands: doubled by the claim, and read by everything that asks how
+// deep the row is. `upgradeMaxTier` routes `dahan_remember` here rather than to the catalogue.
+function dahanHasteFearForFull(state) {
+  return dahanStrengthClaimed(state) ? DAHAN_STRENGTH_FEAR_FOR_FULL : DAHAN_HASTE_FEAR_FOR_FULL;
+}
+
+// What one Dahan spends per strike. The two readers are the strike itself and the simulation
+// the auto-cast target pickers run against it, which is why this is a function of state and
+// not a constant any more - see landClearsToDahanStrike.
+function dahanAttackDamage(state) {
+  return dahanStrengthClaimed(state) ? DAHAN_STRENGTH_DAMAGE : DAHAN_ATTACK_DAMAGE;
+}
+
+/* Between rounds only, which is the one rule here that is not about the pool.
+ *
+ * The shop is otherwise always open (see purchaseUpgrade), and a purchase can afford to be:
+ * every row is read through the round's frozen snapshot, so Fear spent at 9/10 Blight buys the
+ * next round and never the one being lost. This is not a purchase. It empties a row the
+ * running round has already snapshotted and doubles a divisor that round is still dividing by,
+ * so claiming it mid-round would hand the player double damage and take back half their haste
+ * in the same instant - a mid-round retune of the one clock the round cannot re-read.
+ *
+ * `round.status === "ended"` removes the question rather than answering it, and it is the rule
+ * `canAscend` already follows for the same reason: the irreversible things happen between
+ * rounds.
+ */
+function dahanStrengthPending(state) {
+  return dahanStrengthUnlocked(state)
+    && !dahanStrengthClaimed(state)
+    && upgradeTier(state, "dahan_remember") >= DAHAN_HASTE_FEAR_FOR_FULL;
+}
+
+function canClaimDahanStrength(state) {
+  return dahanStrengthPending(state) && state.round.status === "ended";
+}
+
+/* "Nothing left here", which is the question the shop *sorts* on - and deliberately not the
+ * same question as "is there a rung to buy", which is what the buy buttons ask.
+ *
+ * A full first pool has no rung left and still has the claim, so it answers no here and yes
+ * there: the buttons go quiet, the row stays in the buyable half, and the one moment the row
+ * has something new to say is not the moment it drops to the bottom of the shop. Without this
+ * the sort would bury the claim under every row it is about to outgrow.
+ */
+function upgradeIsSoldOut(state, upgradeId) {
+  if (upgradeId === "dahan_remember" && dahanStrengthPending(state)) return false;
+  return upgradeTier(state, upgradeId) >= upgradeMaxTier(state, upgradeId);
+}
+
+/* The claim. Sets the flag, empties the pool, and says so.
+ *
+ * The pool is deleted rather than set to 0 - `normalizeState` drops a zero tier on the next
+ * load anyway, and leaving one behind would put a row in `purchased` that the player owns
+ * nothing of. No Fear moves: the 10 000 already spent stays spent, `cycleFearSpent` is
+ * untouched, and the identity the playtest tally checks holds across this function because
+ * neither side of it is being asked to change.
+ */
+function claimDahanStrength(state) {
+  const t = locale(state);
+  if (!canClaimDahanStrength(state)) {
+    addLog(state, t.dahanStrengthRefused);
+    return false;
+  }
+
+  state.upgrades.dahanStrength = true;
+  delete state.upgrades.purchased.dahan_remember;
+  // The finished round's snapshot goes with it. Nothing is ticking between rounds, so this
+  // changes no rule - but `roundDahanAttackInterval` reads the snapshot rather than the owned
+  // tier, and a snapshot describing a pool that no longer exists would have the shop print
+  // 50% haste on an empty pool until the next round overwrote it. A stale number nobody reads
+  // is still a stale number the panel does.
+  if (state.round.upgradeTiers) delete state.round.upgradeTiers.dahan_remember;
+
+  addLog(state, template(t.dahanStrengthClaimed, {
+    damage: DAHAN_STRENGTH_DAMAGE,
+    full: DAHAN_STRENGTH_FEAR_FOR_FULL,
+    seconds: dialSecondsText(state, DAHAN_ATTACK_INTERVAL_SECONDS)
+  }));
+  return true;
 }
 
 /* What the round in progress is actually striking on, as against what the player owns.
@@ -549,9 +701,15 @@ function dahanAttackIntervalFor(invested) {
  * Fear poured in at 9/10 Blight buys the *next* round a faster strike, never the one being
  * lost (see activeUpgradeTier). A second frozen number would have been a second way to be
  * wrong about that, and one of them would eventually stop agreeing with the other.
+ *
+ * The ceiling is read live rather than snapshotted, and it is safe to be: the only thing that
+ * moves it is the claim, and the claim is refused unless the round has ended.
  */
 function roundDahanAttackInterval(state) {
-  return dahanAttackIntervalFor(activeUpgradeTier(state, "dahan_remember"));
+  return dahanAttackIntervalFor(
+    activeUpgradeTier(state, "dahan_remember"),
+    dahanHasteFearForFull(state)
+  );
 }
 
 // The permanent baseline every round starts from (04 Round Reset Formula).
@@ -562,7 +720,10 @@ function upgradeTotals(state) {
     startingEnergy: startingEnergyForTier(upgradeTier(state, "headwaters")),
     // The Dahan's strike clock, and the only cooldown the shop touches. Read off owned tiers
     // here; startRound is what freezes it for the round (see the snapshot note there).
-    dahanAttackInterval: dahanAttackIntervalFor(upgradeTier(state, "dahan_remember")),
+    dahanAttackInterval: dahanAttackIntervalFor(
+      upgradeTier(state, "dahan_remember"),
+      dahanHasteFearForFull(state)
+    ),
     // No upgrade moves *ability* cooldowns today - the Dahan clock above is its own thing and
     // deliberately not routed through this. The multiplier stays in the round state because
     // the next ability-cooldown upgrade will want it, and a round that reads 1 costs nothing
@@ -589,7 +750,7 @@ function purchaseUpgrade(state, upgradeId, count) {
   // remove the pause it used to live in - what keeps a round from buying its own way out is
   // the pool the Fear sits in, not the clock (see the two-pool note above FEAR_PER_POWER).
   const tier = upgradeTier(state, upgradeId);
-  const room = upgradeMaxTier(upgradeId) - tier;
+  const room = upgradeMaxTier(state, upgradeId) - tier;
   if (!(room > 0)) {
     addLog(state, template(t.upgradeMaxed, { upgrade: upgradeName(state, upgradeId) }));
     return false;
@@ -617,8 +778,8 @@ function purchaseUpgrade(state, upgradeId, count) {
     addLog(state, template(t.upgradeInvested, {
       upgrade: upgradeName(state, upgradeId),
       cost,
-      pct: hastePctText(dahanHasteFraction(tier + amount)),
-      seconds: dialSecondsText(state, dahanAttackIntervalFor(tier + amount))
+      pct: hastePctText(dahanHasteFraction(tier + amount, dahanHasteFearForFull(state))),
+      seconds: dialSecondsText(state, dahanAttackIntervalFor(tier + amount, dahanHasteFearForFull(state)))
     }));
   } else {
     addLog(state, template(t.upgradePurchased, {

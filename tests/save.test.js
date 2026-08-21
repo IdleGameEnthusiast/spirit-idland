@@ -213,7 +213,7 @@
     assert(!("made_up_upgrade" in state.upgrades.purchased), "unknown id dropped");
     assertEqual(
       state.upgrades.purchased.blight_resilience,
-      engine.upgradeMaxTier("blight_resilience"),
+      engine.upgradeMaxTier(state, "blight_resilience"),
       "tier clamped"
     );
     assert(!("dahan_reinforcement" in state.upgrades.purchased), "a negative tier is not a purchase");

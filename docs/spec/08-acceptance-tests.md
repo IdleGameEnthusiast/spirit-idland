@@ -112,7 +112,7 @@ See [02-core-loop.md](./02-core-loop.md#pacing).
 6. It is off the instant the last hurried wave resolves, not one wave later.
 7. `0x` still stops everything: no wave resolves and the round does not age. The dial stays the
    brake, and it is the only way out of a fast-forward the player did not want.
-8. It **replaces** the dial rather than multiplying it: 20x on a 2x dial, and 2x comes back
+8. It **replaces** the dial rather than multiplying it: 50x on a 2x dial, and 2x comes back
    after — not 40x, and not 1x.
 
 **The identity the price rests on**
@@ -120,7 +120,7 @@ See [02-core-loop.md](./02-core-loop.md#pacing).
 9. A hurried wave pays exactly what an unhurried one pays. Same seed, same board, same four
    waves: the same Fear, the same Blight and the same cards drawn, with the only difference
    being how long the player sat through them.
-10. No tick may resolve two waves, even at 20x. `MAX_TICK_SECONDS` is half a wave interval, so a
+10. No tick may resolve two waves, even at 50x. `MAX_TICK_SECONDS` is half a wave interval, so a
     dropped frame during a fast-forward runs the round *slow* and never skips it forward.
 
 **The wave gate**
@@ -142,7 +142,7 @@ See [02-core-loop.md](./02-core-loop.md#pacing).
 15. Every round gets the same opening off the same record, and a running round cannot widen its
     own: `meta.bestWaveReached` moves only in `endRound`, so the deeper round is the *next*
     one's cap.
-16. A round that has ended is not fast-forwarding anything, and the shop is never run at 20x.
+16. A round that has ended is not fast-forwarding anything, and the shop is never run at 50x.
 
 **What the shop says**
 
@@ -219,8 +219,9 @@ The fight is continuous. Every check here is about a *rate*, because the rates a
 12. A land's casualty bar clears when its last Dahan falls.
 13. The Dahan strike runs on `DAHAN_ATTACK_INTERVAL_SECONDS`, a constant of its own, and is
     armed at round start.
-14. Each Dahan deals `DAHAN_ATTACK_DAMAGE` per strike, spent on the highest-tier invader type
-    present first (cities, then towns, then explorers) until it or the invaders run out.
+14. Each Dahan deals `dahanAttackDamage(state)` per strike — `DAHAN_ATTACK_DAMAGE`, or
+    `DAHAN_STRENGTH_DAMAGE` once the strength is claimed — spent on the highest-tier invader
+    type present first (cities, then towns, then explorers) until it or the invaders run out.
 15. A land with no Dahan never strikes; a land with no invaders is skipped.
 16. Invaders defeated by a strike award Fear per the defeat formula.
 17. Partial damage on an invader persists across waves within a round.
@@ -400,9 +401,11 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     stranded above the ladder's end.
 13. `dahan_remember` is a pool, not a ladder. Every unit costs a flat 1 Fear at any depth, 100
     units buy 1% of haste, and the haste divides the strike interval by `1 + haste` — so a full
-    10000-Fear pool halves it and no amount of haste reaches zero. The cap holds against a
-    doctored save and the 10001st unit is refused. A bulk buy spends exactly what the same
-    number of single clicks would have; one larger than the pool's remaining room buys only
+    10000-Fear pool halves it and no amount of haste reaches zero. The percentage divides by
+    the ceiling **in play**, so a full second pool reads 100% and not 200%. The cap holds
+    against a doctored save and the unit past the ceiling is refused. A bulk buy spends exactly
+    what the same number of single clicks would have; one larger than the pool's remaining room
+    buys only
     what is left and is charged for only that; one the purse cannot cover is refused whole
     rather than part-paid. The Max count is bounded by the purse and by the room left. The pool
     stands in front of nothing: an empty one and a full one leave `auto_start_round` and
@@ -410,6 +413,27 @@ The kill-first rule, shared by every ability and by the Dahan strike.
     running round striking at its old rate and speeds up the next one. The row prints its haste
     to two decimals instead of a tier, quotes the strike interval in the speed dial's own
     seconds, and logs a purchase as Fear in and haste out.
+13a. **The Dahan Find Their Strength.** With `presence_dahan_endure` owned, a full
+    `dahan_remember` offers a claim instead of another rung. It is refused without the Presence
+    row, refused below the ceiling, and refused while a round is running. Claiming empties the
+    pool, sets Dahan damage to `DAHAN_STRENGTH_DAMAGE`, and raises the ceiling to
+    `DAHAN_STRENGTH_FEAR_FOR_FULL`. **Damage per second is identical either side of the claim**
+    — `1 × (1 + 1)` before, `2 × (1 + 0)` after. It can be claimed once per cycle and never
+    twice; a full second pool offers nothing further. The row does not sink into the sold-out
+    half while a claim is pending. `ascend` clears the claim and leaves the Presence row. A
+    claimed save reloads with a pool deeper than the first ceiling intact — the clamp in
+    `normalizeState` reads the flag before it caps the tiers, or every load would silently
+    delete the Fear poured in past 10000.
+13b. **The Presence row is locked.** `presence_dahan_endure` carries `locked: true`, so
+    `presenceUpgradeLocked` answers true for it and false for every other row in the catalogue,
+    and `purchasePresenceUpgrade` refuses it at **any** Presence total — a purse of 999 buys
+    nothing, is not charged, and leaves the row at tier 0 with `dahanStrengthUnlocked` false.
+    The refusal is the engine's, not the shop's: it is checked ahead of the maxed and price
+    tests, because a locked row has neither. Granting the row still works and still opens the
+    claim, which is what keeps 13a green and is the point — the lock closes the till without
+    touching the wiring, so re-opening the row is deleting the flag. Both locales carry
+    `presenceLocked` and `presenceLockedBtn`. See
+    [05-progression.md](./05-progression.md#the-row-is-currently-locked).
 14. `auto_buy_abilities` spends the round's Energy on the bar each tick: the locked kit first,
     cheapest before dearest, so a purse of 15 takes the 5 and the 10 and leaves the 20; then —
     once `presence_river_deepens` opens the top rung — one Innate rung per tick, never two, and

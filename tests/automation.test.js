@@ -460,7 +460,7 @@
     // one every 15 beats, so the ladder is the early lever and this is what replaces it.
     const lastRung = Math.round(
       engine.UPGRADES.dahan_reinforcement.baseCost
-      * Math.pow(engine.UPGRADE_COST_GROWTH, engine.upgradeMaxTier("dahan_reinforcement") - 1)
+      * Math.pow(engine.UPGRADE_COST_GROWTH, engine.upgradeMaxTier(newGame().state, "dahan_reinforcement") - 1)
     );
     assert(cost("auto_bounty") < lastRung, "the Bounty undercuts the ladder's last rung");
   });
@@ -470,8 +470,9 @@
       "auto_boon", "auto_innate", "auto_wash_away", "auto_bounty", "auto_flash_floods",
       "auto_buy_abilities", "auto_start_round"
     ];
+    const { state } = newGame();
     for (const id of ids) {
-      assertEqual(engine.upgradeMaxTier(id), 1, `${id} has a single tier`);
+      assertEqual(engine.upgradeMaxTier(state, id), 1, `${id} has a single tier`);
     }
   });
 

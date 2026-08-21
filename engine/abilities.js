@@ -1576,7 +1576,7 @@ function landClearsToDahanStrike(state, landId) {
   const dahan = state.dahan[landId] || 0;
   if (dahan <= 0) return false;
   const scratch = cloneCombatState(state);
-  spendDahanAttack(scratch, landId, dahan * DAHAN_ATTACK_DAMAGE);
+  spendDahanAttack(scratch, landId, dahan * dahanAttackDamage(state));
   return invaderCountInLand(scratch.invaders[landId]) <= 0;
 }
 

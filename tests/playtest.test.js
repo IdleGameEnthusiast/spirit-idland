@@ -249,7 +249,7 @@
 
   // Tiers are capped before they are priced, so a doctored ladder cannot mint generated Fear.
   test("cycle: the rebuild prices the tiers that survived normalization, not the ones claimed", () => {
-    const capped = engine.upgradeCostFromTier("rising_dread", 0, engine.upgradeMaxTier("rising_dread"));
+    const capped = engine.upgradeCostFromTier("rising_dread", 0, engine.upgradeMaxTier(newGame().state, "rising_dread"));
     const loaded = engine.normalizeState({
       meta: { fear: 0 },
       upgrades: { purchased: { rising_dread: 40, not_an_upgrade: 9 } }

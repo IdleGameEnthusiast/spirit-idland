@@ -192,25 +192,60 @@ shared damage rule, and the shared push rule.
 ```json
 {
   "id": "dahan_reinforcement",
+  "group": "dahan",
   "repeatable": true,
   "effect": "dahan_bonus_per_tier",
   "baseCost": 5
 }
 ```
 
+### The four groups
+
+Every row names a **`group`**, and `UPGRADE_GROUP_IDS` puts the groups in shelf order:
+
+| Group | Heading | What it holds |
+| --- | --- | --- |
+| `waves` | *Wellenfortschritt* / Wave progression | `headwaters`, `blight_resilience`, `power_card_interval` — what buys a deeper round: the Energy it opens with, the Blight it survives, how soon the next card arrives |
+| `fear` | *Furchtquellen* / Fear generators | `rising_dread`, `mounting_terror`, `high_water_mark` — what buys a richer round |
+| `dahan` | *Die Dahan* / The Dahan | `dahan_reinforcement`, `dahan_remember` — more defenders, and a faster strike |
+| `automation` | *Automatisierung* / Automation | every one-off, and nothing else |
+
+Two rules hold this together, and both are checked in `tests/shop.test.js`:
+
+- **A group's rows are contiguous in `UPGRADES`.** The shop walks the catalogue in order and
+  heads each run with the group it shares (see
+  [06-ui-contract.md](./06-ui-contract.md#required-screen-sections)), so a row that sorted away from its own
+  kind would print its heading twice. The catalogue order *is* the shelf order, as it always was
+- **`automation` is exactly the one-off half.** It is last, and every row in it is
+  non-`repeatable`, which is what lets its heading replace the lone "One-off" divider that used
+  to split the shelf by how a row is bought rather than by what it buys
+
+`upgradeGroup` is the reader, and it answers `automation` for a row that names no group — a new
+row landing among the one-offs is a smaller error than one landing anywhere else.
+
 ### Placeholder Upgrade Set
 
 See [05-progression.md](./05-progression.md#placeholder-upgrade-catalogue) for the full
 table and cost-curve note.
 
-- `dahan_reinforcement` — repeatable, +1 starting Dahan per tier. `baseCost` 10, max tier 8.
-- `blight_resilience` — repeatable, +1 Blight threshold per tier. `baseCost` 3, max tier 5.
 - `headwaters` — repeatable, the Energy every round opens with. `baseCost` 8, max tier 9. The
   gain is a table rather than a per-tier step, `STARTING_ENERGY_BY_TIER` — 1 / 2 / 3 / 5 / 8 /
   13 / 19 / 26 / 35 — because it climbs with the price instead of staying flat; read it through
   `startingEnergyForTier`, which clamps a tier past the end of the table to its top rather than
   answering `undefined`. It is the only row that spends Fear and pays out in Energy, and the
   only one whose worth shrinks with depth. Its ceiling is exactly the unlock kit (5 + 10 + 20).
+- `blight_resilience` — repeatable, +1 Blight threshold per tier. `baseCost` 3, max tier 5.
+- `power_card_interval` — *The Island Remembers Sooner*, repeatable, max tier 10, `baseCost` 30.
+  Each tier shortens the gap between power-card draws by one wave, 20 at tier 0 down to 10 at
+  tier 10; the first draw stays at wave 25. See
+  [10-power-cards.md](./10-power-cards.md#the-fear-row) for the cost table and the honest note
+  that its rungs are lumpy against a 70-wave round. It is also the catalogue's only row with a
+  **`revealedBy`**: `"power_card_owned"` keeps it off the shop list until the player owns a
+  first power card, since until then its text prices a drip they have nothing to receive. A
+  reveal is not a lock — `upgradeRevealed` decides whether the row is printed and nothing
+  else, `purchaseUpgrade` never consults it, and `orderedUpgradeIds` simply leaves an
+  unrevealed row out of both halves. See
+  [10-power-cards.md](./10-power-cards.md#it-is-not-on-the-shelf-until-the-first-card-is-bought).
 - `rising_dread` — repeatable, max tier 10, +10% Fear from defeated invaders per tier.
   `baseCost` 6.
 - `mounting_terror` — repeatable, max tier 10, +10% Fear from surviving waves per tier.
@@ -221,6 +256,7 @@ table and cost-curve note.
   only income in the game that is quadratic in depth, and the only one that arrives as an event
   rather than as a rate — which is why it is also the only one with a HUD flash.
 
+- `dahan_reinforcement` — repeatable, +1 starting Dahan per tier. `baseCost` 10, max tier 8.
 - `dahan_remember` — *The Dahan Remember*, repeatable and the catalogue's one **pool**:
   `costGrowth: 1`, `baseCost` 1, `maxTier` 10000, `bulkAmounts: [1, 10, 100, 1000]`. Its tier
   is the Fear invested, and the Fear invested is haste on the Dahan strike clock —
@@ -234,17 +270,7 @@ table and cost-curve note.
 predicate are gone: ten tiers each now, and a predicate with no `false` case left to report.
 So every row can sink into the shop's sold-out half, and none shows a bare price forever. See
 [04-economy-formulas.md](./04-economy-formulas.md#the-ladders-are-capped-at-ten).
-- `power_card_interval` — *The Island Remembers Sooner*, repeatable, max tier 10, `baseCost` 30.
-  Each tier shortens the gap between power-card draws by one wave, 20 at tier 0 down to 10 at
-  tier 10; the first draw stays at wave 25. See
-  [10-power-cards.md](./10-power-cards.md#the-fear-row) for the cost table and the honest note
-  that its rungs are lumpy against a 70-wave round. It is also the catalogue's only row with a
-  **`revealedBy`**: `"power_card_owned"` keeps it off the shop list until the player owns a
-  first power card, since until then its text prices a drip they have nothing to receive. A
-  reveal is not a lock — `upgradeRevealed` decides whether the row is printed and nothing
-  else, `purchaseUpgrade` never consults it, and `orderedUpgradeIds` simply leaves an
-  unrevealed row out of both halves. See
-  [10-power-cards.md](./10-power-cards.md#it-is-not-on-the-shelf-until-the-first-card-is-bought).
+
 - `unlock_<ability_id>` — one-time, adds an ability the active spirit's kit does not contain.
   **The machinery is implemented and no catalogue row uses it.** Unlocking a *kit* ability is
   now Energy's job and does not go through the shop at all; this key remains the path for a
@@ -424,9 +450,13 @@ row without it is a one-off whatever else the record says — see
 | --- | --- | --- |
 | `presence_current_quickens` — *Die Strömung eilt* / The Current Quickens | unlocks Focus directly — no Fear row, `abilityFocusUnlocked` reads it | 5 |
 | `presence_river_deepens` — *Der Fluss gräbt tiefer* / The River Runs Deeper | opens auto-buy's top rung — no Fear row, `autoBuyFocusUnlocked` reads it | 5 |
+| `presence_dahan_endure` — *Die Dahan halten stand* / The Dahan Endure | permits the claim on a full `dahan_remember` — no Fear row, `dahanStrengthUnlocked` reads it. **Carries `locked: true`: drawn, but not for sale** — see [05-progression.md](./05-progression.md#the-row-is-currently-locked) | 8 |
 
-Neither has a Fear row to name itself after and neither carries `grants`; they are the two rows
-in the catalogue that touch the board through what they open rather than through a Fear row.
+None has a Fear row to name itself after and none carries `grants`; they are the rows in the
+catalogue that touch the board through what they open rather than through a Fear row.
+`presence_dahan_endure` is named against the Fear row it continues — *The Dahan Remember* and
+*The Dahan Endure* are the same people and the second verb: remembering is what makes them
+faster, enduring is what makes them stronger.
 The structural test in `tests/ascension.test.js` names each by the **reader that gates on it**
 rather than by id, and asserts the pair — false on a fresh game, true once owned. A row whose
 gate was never wired to anything fails that second half, where a list of allowed ids would have
@@ -487,7 +517,7 @@ rather than the 1.
 
 | id | does | cost | rungs |
 | --- | --- | --- | --- |
-| `presence_deep_water_comes` — *Tiefes Wasser kommt früher* / Deep Water Comes Sooner | the first `floor(meta.bestWaveReached × share)` waves of every round run at 20x, with no card reveals — `tick` reads it through `effectiveGameSpeed` | 3 / 4 / 5 | 3 |
+| `presence_deep_water_comes` — *Tiefes Wasser kommt früher* / Deep Water Comes Sooner | the first `floor(meta.bestWaveReached × share)` waves of every round run at 50x, with no card reveals — `tick` reads it through `effectiveGameSpeed` | 3 / 4 / 5 | 3 |
 
 The catalogue's **second repeatable row and its only per-rung price**, carried in a `costs`
 array rather than the flat `cost` every other row uses (see `presenceUpgradeCost`). Three
@@ -513,10 +543,10 @@ opens no capability and endows no cycle — and what makes it safe to price as c
 Two behaviours it owns that are not simply "a bigger number on `dt`":
 
 - **It releases the wave gate for the waves it hurries** and closes it again after them, without
-  touching or being recorded in `ui.autoProceed`. A row that ran the opening at 20x and stopped
+  touching or being recorded in `ui.autoProceed`. A row that ran the opening at 50x and stopped
   at every wave for a click would have hurried nothing.
 - **It holds back card reveals while it runs** (`markCardFx`). `CARD_FX_MS` is 2600 *real*
-  milliseconds against a wave that now arrives every real second, so each reveal would be
+  milliseconds against a wave that now arrives every four-tenths of a real second, so each reveal would be
   overwritten before it could be read. The hand, the log and the drip's schedule are untouched.
 
 ### The rows that used to lower a price

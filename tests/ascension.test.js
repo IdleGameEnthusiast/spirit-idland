@@ -364,11 +364,12 @@
    */
   test("ascension: every grant names a real one-off Fear row, and no row twice", () => {
     const seen = {};
+    const { state } = newGame();
     for (const id of engine.PRESENCE_UPGRADE_IDS) {
       for (const target of engine.PRESENCE_UPGRADES[id].grants || []) {
         assert(engine.UPGRADES[target], `${id} grants ${target}, which is not in the catalogue`);
         assert(!engine.UPGRADES[target].repeatable, `${target} is repeatable, so a grant cannot express it`);
-        assertEqual(engine.upgradeMaxTier(target), 1, `${target} must have exactly one tier to grant`);
+        assertEqual(engine.upgradeMaxTier(state, target), 1, `${target} must have exactly one tier to grant`);
         assertEqual(seen[target], undefined, `${target} is granted by ${seen[target]} as well as ${id}`);
         seen[target] = id;
         assertEqual(engine.PRESENCE_GRANT_BY_UPGRADE[target], id, `${target} must map back to ${id}`);
@@ -526,7 +527,8 @@
    * it pass for having been added to the list. */
   const CAPABILITY_GATES = {
     presence_current_quickens: (state) => engine.abilityFocusUnlocked(state),
-    presence_river_deepens: (state) => engine.autoBuyFocusUnlocked(state)
+    presence_river_deepens: (state) => engine.autoBuyFocusUnlocked(state),
+    presence_dahan_endure: (state) => engine.dahanStrengthUnlocked(state)
   };
 
   /* The third kind of row, and the newest: one that neither grants a Fear row nor opens a

@@ -413,9 +413,9 @@ function fastForwardActive(state) {
  * - **A stopped clock stays stopped.** 0x is the player saying "nothing moves", and a purchase
  *   is not allowed to overrule that. It is also what keeps the dial usable as a brake *during*
  *   a fast-forward.
- * - **It replaces the dial, it does not multiply it.** 20x on top of a 2x dial would be 40x,
+ * - **It replaces the dial, it does not multiply it.** 50x on top of a 2x dial would be 100x,
  *   and the row's promise is a speed rather than a factor. `Math.max` rather than a bare
- *   assignment for the playtest dial alone: 8x is already below 20x, but a playtest speed
+ *   assignment for the playtest dial alone: 8x is already below 50x, but a playtest speed
  *   raised past it later must not be quietly slowed down by a comfort purchase.
  */
 function effectiveGameSpeed(state) {
@@ -441,7 +441,7 @@ function setAutoProceed(state, on) {
  * Two reasons it might, and they are kept apart on purpose. `autoProceedOn` is the player's
  * toggle and stays a pure read of it - the switch on screen must say what the player set and
  * never what a purchase is doing this instant. The fast-forward is the second reason, and it
- * has to be one: a row that ran the opening at 20x and then stopped at every wave for a click
+ * has to be one: a row that ran the opening at 50x and then stopped at every wave for a click
  * would have fast-forwarded nothing at all.
  *
  * So the gate is released for the fast-forwarded waves and closes again for the first wave
@@ -519,7 +519,7 @@ function tick(state, dt) {
   // `effectiveGameSpeed` rather than `gameSpeed`, so a fast-forwarded opening is nothing more
   // than a larger multiplier on this one line - which is the whole of why the row can promise
   // that the waves it hurries still cost and pay exactly what they always did. The cap holds
-  // at 20x as it does at 1x: it is half a wave interval, so no tick can ever resolve two
+  // at 50x as it does at 1x: it is half a wave interval, so no tick can ever resolve two
   // waves, and a frame the browser dropped mid-fast-forward runs slow rather than skipping.
   const step = Math.min(MAX_TICK_SECONDS, Math.max(0, Number(dt) || 0) * effectiveGameSpeed(state));
   state.time.totalSeconds += step;

@@ -437,9 +437,9 @@ function fmtSeconds(value) {
 //
 // `effectiveGameSpeed` and not `gameSpeed`, so a countdown stays honest through a fast-forwarded
 // opening - these are the numbers the player is watching move, and during those waves they move
-// at 20x whatever the dial says. This is the opposite call from `dialSecondsText` in the engine,
+// at 50x whatever the dial says. This is the opposite call from `dialSecondsText` in the engine,
 // which keeps quoting the dial: that one prices a *purchase* against the round the player has
-// chosen to play, and a shop row flickering to a twentieth of its figure and back would be
+// chosen to play, and a shop row flickering to a fiftieth of its figure and back would be
 // describing an instant rather than the round.
 function displaySeconds(state, gameSeconds) {
   const speed = effectiveGameSpeed(state);
@@ -1628,7 +1628,7 @@ function renderShop(state) {
   function renderRow(upgradeId, soldOutRow, parent) {
     const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
     const tier = upgradeTier(state, upgradeId);
-    const maxed = tier >= upgradeMaxTier(upgradeId);
+    const maxed = tier >= upgradeMaxTier(state, upgradeId);
     const cost = upgradeCost(state, upgradeId);
     const affordable = !maxed && state.meta.fear >= cost;
     // Owned but not yet running: bought during a round, waiting on the next one to start.
@@ -1675,11 +1675,34 @@ function renderShop(state) {
    * seeing from below it.
    */
   function poolButtons(state, upgradeId, maxed) {
+    /* The claim, which replaces the buys rather than joining them: a full first pool has no
+     * rung left to sell, so there is nothing for it to sit beside. Checked before `maxed`
+     * because a pending pool *is* maxed by the buy buttons' reading of the word - the row has
+     * no next tier and still has this.
+     *
+     * Drawn disabled mid-round instead of hidden, with the reason in the title. Hiding it
+     * would make the button appear out of nowhere at the end of a round the player was not
+     * watching the shop during; disabled-with-a-reason is how the row explains a rule it
+     * cannot bend (see canClaimDahanStrength for why the rule exists).
+     */
+    if (dahanStrengthPending(state)) {
+      const ready = canClaimDahanStrength(state);
+      const title = ready
+        ? template(t.shopDahanStrengthTitle, {
+          damage: DAHAN_STRENGTH_DAMAGE,
+          base: DAHAN_ATTACK_DAMAGE,
+          full: DAHAN_STRENGTH_FEAR_FOR_FULL
+        })
+        : t.shopDahanStrengthWait;
+      return `<div class="upgrade-pool-buys"><button type="button" class="upgrade-buy is-pool-claim"
+        data-dahan-strength="1" title="${title}" ${ready ? "" : "disabled"}>${t.shopDahanStrengthBtn}</button></div>`;
+    }
+
     if (maxed) {
       return `<div class="upgrade-pool-buys"><button type="button" class="upgrade-buy" disabled>${t.shopMaxedBtn}</button></div>`;
     }
 
-    const room = upgradeMaxTier(upgradeId) - upgradeTier(state, upgradeId);
+    const room = upgradeMaxTier(state, upgradeId) - upgradeTier(state, upgradeId);
     const affordableCount = upgradeTiersAffordable(state, upgradeId);
     const buttons = upgradeBulkAmounts(upgradeId).map((amount) => {
       // What this button will really take: the last +1000 before the cap spends what is left.
@@ -1712,10 +1735,10 @@ function renderShop(state) {
   // reveal rather than a lock: the card-interval row waits for the first power card, because
   // until then its text prices a drip the player has nothing to receive. Filtered here rather
   // than drawn disabled - a locked row invites a click, and this one has nothing to explain.
-  const maxedId = (id) => upgradeTier(state, id) >= upgradeMaxTier(id);
+  const soldOutId = (id) => upgradeIsSoldOut(state, id);
   const shelf = UPGRADE_IDS.filter((id) => upgradeRevealed(state, id));
-  const buyable = shelf.filter((id) => !maxedId(id));
-  const soldOut = shelf.filter(maxedId);
+  const buyable = shelf.filter((id) => !soldOutId(id));
+  const soldOut = shelf.filter(soldOutId);
 
   function renderDivider(label, extraClass) {
     const rule = document.createElement("div");
@@ -1724,12 +1747,21 @@ function renderShop(state) {
     dom.upgradeList.appendChild(rule);
   }
 
-  let seenOneOff = false;
+  // A heading wherever the group changes, and the catalogue decides where that is: the rows of
+  // a group are contiguous in UPGRADES (see the note above it), so walking in order and heading
+  // each run is the whole of the grouping. The list used to carry one divider - "One-off" -
+  // which split the shelf by *how* a row is bought rather than by what it buys; the last group
+  // is the one-off half, so nothing is lost by saying what those rows do instead.
+  //
+  // Only the buyable half is grouped. The sold-out fold below is a record of what has been
+  // bought, not a thing being shopped, and four headings over a closed list would be four
+  // headings nobody asked for.
+  let openGroup = null;
   for (const upgradeId of buyable) {
-    const repeatable = Boolean((UPGRADES[upgradeId] || {}).repeatable);
-    if (!repeatable && !seenOneOff) {
-      seenOneOff = true;
-      renderDivider(t.shopOneOffLabel);
+    const group = upgradeGroup(upgradeId);
+    if (group !== openGroup) {
+      openGroup = group;
+      renderDivider((t.shopGroupLabels || {})[group] || "");
     }
     renderRow(upgradeId, false);
   }
@@ -1886,24 +1918,30 @@ function renderPresenceShop(state) {
     // `is-one-off` keeps the layout it already had.
     const repeatable = Boolean((PRESENCE_UPGRADES[presenceId] || {}).repeatable);
     const maxed = presenceUpgradeMaxed(state, presenceId);
+    const locked = presenceUpgradeLocked(presenceId);
     const cost = presenceUpgradeCost(state, presenceId);
-    const affordable = !maxed && state.meta.presence >= cost;
+    const affordable = !maxed && !locked && state.meta.presence >= cost;
 
     const statusText = presenceUpgradeStatusText(state, presenceId);
     const status = statusText ? `<span class="upgrade-tier">${statusText}</span>` : "";
+    // A locked row shows neither a price nor an owned label: it has no price, and the one
+    // thing the button has left to say is that it is not selling. Maxed still wins the label
+    // if a row is somehow both - what the player owns is the more useful of the two facts.
     const buyLabel = maxed
       ? (repeatable ? t.shopMaxedBtn : t.presenceOwnedBtn)
-      : template(t.presenceCostLabel, { cost });
+      : locked
+        ? t.presenceLockedBtn
+        : template(t.presenceCostLabel, { cost });
 
     const row = document.createElement("div");
-    row.className = `upgrade is-presence${repeatable ? "" : " is-one-off"}${affordable ? " is-affordable" : ""}${soldOutRow ? " is-sold-out" : ""}`;
+    row.className = `upgrade is-presence${repeatable ? "" : " is-one-off"}${affordable ? " is-affordable" : ""}${locked ? " is-locked" : ""}${soldOutRow ? " is-sold-out" : ""}`;
     row.innerHTML = `
       <div class="upgrade-info">
         <span class="upgrade-name">${presenceUpgradeName(state, presenceId)}</span>
         <span class="upgrade-text">${presenceUpgradeText(state, presenceId)}</span>
         ${status}
       </div>
-      <button type="button" class="upgrade-buy" data-presence="${presenceId}" ${maxed || !affordable ? "disabled" : ""}>
+      <button type="button" class="upgrade-buy" data-presence="${presenceId}" ${maxed || locked || !affordable ? "disabled" : ""}>
         ${buyLabel}
       </button>
     `;
@@ -2066,7 +2104,7 @@ function patchHud(state) {
   // Four readings, and only one of them is a countdown. Ordered most specific answer first to
   // "why does this slot not look like a clock": a held gate has a button waiting to be pressed,
   // a stopped clock is the dial the player just turned, and a fast-forward is a countdown that
-  // is running - just twenty times too fast to read, which is the one thing the slot can still
+  // is running - just fifty times too fast to read, which is the one thing the slot can still
   // usefully say. Pause beats fast-forward because 0x wins over it in the engine too
   // (see effectiveGameSpeed), and the HUD must not claim motion the tick is not producing.
   const running = state.round.status === "running";
@@ -2303,7 +2341,7 @@ function patchPacingControls(state) {
   // button is in the markup all along and simply hidden while the code has not been redeemed.
   const offered = availableGameSpeeds(state);
   // The dial keeps drawing the player's own choice through a fast-forwarded opening, and the
-  // group wears a class instead. Lighting a 20x button nothing can be set to - or lighting
+  // group wears a class instead. Lighting a 50x button nothing can be set to - or lighting
   // none at all - would turn a readout of a setting into a readout of an instant, and the dial
   // is still live during the fast-forward: 0x brakes it, and the button the player presses has
   // to be the one that looks pressed afterwards.
@@ -2959,6 +2997,16 @@ dom.upgradeList.addEventListener("click", (event) => {
     fold.setAttribute("aria-expanded", String(soldOutOpen));
     const body = document.getElementById("upgradeSoldOut");
     if (body) body.hidden = !soldOutOpen;
+    return;
+  }
+
+  // Not a purchase and not a row: its own attribute, checked before the buy handler below so
+  // a claim never falls through to purchaseUpgrade.
+  const claim = target.closest("button[data-dahan-strength]");
+  if (claim) {
+    claimDahanStrength(state);
+    updateUI(state);
+    persist();
     return;
   }
 

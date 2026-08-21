@@ -1091,7 +1091,7 @@ to make, so the row is hidden and emptied — `.tier-split[hidden]` is spelled o
 because an author `display: flex` outranks the UA rule that hides `[hidden]` and the row would
 otherwise stay drawn after tier 3 was bought.
 
-### 23. The opening of a round runs at 20x — *built 2026-08-20*
+### 23. The opening of a round runs at 20x — *built 2026-08-20, raised to 50x — see item 25*
 
 From the Idea Inbox: "presence upgrade to play the first x waves in 20x speed". Landed as
 `presence_deep_water_comes`, three rungs at **3 / 4 / 5 Presence** fast-forwarding the first
@@ -1143,6 +1143,144 @@ share must stay well below where a round becomes a question, though — a row th
 the part of a round that can be *lost* would be playing it.
 
 
+### 24. A full Dahan pool can be started over for +1 damage — *built 2026-08-21*
+
+From the Idea Inbox, by way of a design conversation: "presence upgrade unlocking Fear upgrades
+that strengthen the Dahan — *The Dahan find their Strength*: Dahan deal 2 damage instead of 1."
+Landed as a **claim on `dahan_remember`** rather than as a Fear row of its own, gated by a new
+Presence row `presence_dahan_endure` at **8 Presence**. Covered by `tests/haste.test.js` (14 new
+tests); `tests/ascension.test.js` updated for a fifth Presence row shape. Unplayed against a
+live cycle.
+
+**Held shut, 2026-08-21.** The Presence row now carries `locked: true` and is drawn but not
+sold — `presenceUpgradeLocked` reads the flag, `purchasePresenceUpgrade` refuses on it ahead of
+the maxed and price checks, and the shop draws a dead *Noch nicht* / *Not yet* button. Nothing
+below the gate changed: the claim, the doubled pool, the doubled damage and the wipe on Reclaim
+are all still wired and still tested, because the tests grant the row rather than buying it.
+Re-opening it is deleting the flag. Three tests added in `tests/haste.test.js` for the lock
+itself. See [05-progression.md](../spec/05-progression.md#the-row-is-currently-locked).
+
+**Why it is not its own row.** Wounds persist — `applyDamage` accumulates into
+`state.invaderDamage` and nothing clears it between strikes or waves — so two strikes at 1
+damage kill exactly what one strike at 2 damage kills. `DAHAN_ATTACK_DAMAGE: 1→2` and
+`interval ÷2` are the *same throughput*, and `dahan_remember` at a full pool already is the
+÷2. A separate 10 000-Fear row for +1 damage would have been a second copy of an existing
+axis. So it became the pool's continuation past its own cap instead: the pool is the fine knob,
+the claim is the coarse one that takes over when the fine one runs out.
+
+**The arithmetic, which is the design.** Throughput per Dahan is `damage × (1 + haste)`. The
+claim trades a full pool's `1 × 2 = 2` for an empty pool's `2 × 1 = 2` — free in the moment it
+is taken, and every Fear poured into the second pool is profit the first pool had no room left
+to sell. `tests/haste.test.js` asserts that identity directly, and it is the test to read before
+touching any of this.
+
+**One claim, and the cap is load-bearing.** A second would trade `2 × 2 = 4` for `3 × 1 = 3`:
+twenty thousand Fear spent to lose a quarter of the strike, because `+1` is a doubling only
+while damage is 1. A third loses a third. **If a follow-up is ever wanted, the claim must start
+doubling damage (2, 4, 8) rather than incrementing it, and the two changes have to land
+together.** Written into `engine/constants.js` above `DAHAN_STRENGTH_DAMAGE` as well, because
+that is where someone will be standing when they think of it.
+
+**The second pool is 20 000 units at 1 Fear, not 10 000 at 2.** A Fear stays a unit and the row
+stays the flat 1:1 sink its design rests on. What paid for that: `upgradeMaxTier` now takes a
+`state` — the pool is the only row whose ceiling moves — and `dahanHasteFraction` divides by the
+ceiling in play, so a full second pool reads 100% rather than 200% and `DAHAN_HASTE_MAX` still
+means what it says.
+
+**Three decisions worth naming:**
+
+- **Between rounds only**, like `canAscend`. The claim empties a row the running round has
+  already snapshotted and doubles a divisor it is still dividing by; `round.status === "ended"`
+  removes the question instead of answering it. The claim also clears the finished round's
+  snapshot entry, or the panel would print 50% haste on an empty pool until the next round.
+- **A flag on `state.upgrades`, not a row in `purchased`.** A catalogue row would be orderable,
+  priceable and buyable by any path that skips the shop render. The cost is that `ascend`'s wipe
+  now has two lines where its comment promised one — which is correct, because this is board
+  power and board power is re-earned every cycle.
+- **The row does not sink while a claim is pending.** `upgradeIsSoldOut` answers the shop
+  sort's question ("anything left here?") separately from the buy button's ("a rung to buy?"),
+  so the one moment the row has something new to say is not the moment it drops to the bottom.
+
+**It revives `presenceUnlock`, deliberately.** That mechanism was deleted because a Presence row
+gating an *automation* asked for the Fear again every cycle and an outright grant beat it by an
+order of magnitude. The argument does not reach a row that changes what the Dahan do. The rule
+the two cases sit either side of is now written in
+[05-progression.md](../spec/05-progression.md#what-presence-grants-and-what-it-gates):
+**Presence grants automations and gates board power.**
+
+**The figures to watch.** The 8 Presence, which is a guess against two 5s and no played cycle;
+and whether 30 000 Fear across both pools is a sink a cycle can actually reach, given
+`DAHAN_HASTE_FEAR_FOR_FULL`'s own note already says early cycles will not fill the first 10 000.
+If it proves unreachable the lever is the ceiling, not the claim — the claim is neutral at any
+depth, so moving the pool is free of the arithmetic above.
+
+### 25. The fast-forwarded opening moves from 20x to 50x — *built 2026-08-21*
+
+`FAST_FORWARD_SPEED` 20 → 50. One constant, and the wording that quoted it: the shop text and
+the log line both read the number through `{speed}`, so `i18n.js` needed nothing.
+
+**Why the speed and not the share, when item 23 says the lever is the share.** That note is
+about making the row *stronger*, and this is not that. The share is untouched — the same waves
+are hurried, they still pay exactly what they paid, and no rung hands the player a wave it did
+not hand them yesterday. What moved is only how long the player sits through the waves the row
+already bought them out of: at a record of 87 the top rung's 17 waves took about 17 real
+seconds and now take about 7. The row is still comfort, and is still priced as comfort.
+
+**What had to be checked rather than assumed.**
+
+- **The tick cap still holds.** `MAX_TICK_SECONDS` is half a wave interval and is applied
+  *after* the speed multiplication, so no tick resolves two waves at 50x any more than at 20x.
+  What changes is where a dropped frame starts costing: a real step past 200 ms now clips
+  instead of one past 500 ms, and clipping makes the round run **slow**, never skip. The
+  fast-forward is lossy at the edges by design and always was.
+- **`effectiveGameSpeed` still replaces rather than multiplies.** The `Math.max` guard exists
+  for the playtest dial, and 8x is further below 50 than it was below 20 — no change in kind.
+- **Card reveals were already held back** for the whole fast-forward, so a wave arriving every
+  0.4 s instead of every 1 s does not make the reveal panel flicker; it makes the case for
+  holding them back stronger.
+
+**The one thing that did not survive the move unexamined: tick granularity.** The identity test
+failed on the bump, and it was right to. A tick is atomic and `tickCooldowns` floors at zero, so
+an ability whose cooldown lands mid-tick is cast at the end of that tick and the overshoot is
+thrown away — the kit effectively waits its cooldown *rounded up to a whole tick*. A tick was
+worth a third of a game second at 20x and is worth five sixths of one at 50x, so the rounding
+got coarser.
+
+Measured on a deliberately harsh fixture (tier 3, a record of 200, so the whole run is hurried),
+against the same run stepped finely:
+
+| waves | fine | 50x @ 60 fps | 50x @ 30 fps |
+| --- | --- | --- | --- |
+| 4 | 6 Fear | **5 Fear** | 6 Fear |
+| 5 | 7 Fear | 7 Fear | 7 Fear |
+| 6 | 8 Fear, 6 Blight | 8 Fear, **7 Blight** | 8 Fear, 6 Blight |
+| 8+ | lost at wave 7 | lost at wave **6** | lost at wave 7 |
+
+Lumpy rather than steady, and not monotonic in the tick size — 30 fps is a coarser tick than
+60 fps and loses nothing, because what matters is how a cooldown divides into a tick, not how
+big the tick is. Usually nothing; occasionally one cast in ten waves.
+
+**It was left alone on purpose, and here is the argument.** It is a property of tick granularity
+at every speed on the dial and not of this row — the same rounding is there at 1x, worth a
+sixtieth of a second. The row's claim is that *speed reaches no rule*, and that is exactly true:
+held at equal game-seconds-per-tick, the hurried and unhurried runs agree to the float. So the
+identity test now holds the granularity equal on both sides and says why, rather than asserting
+a rule and quietly testing a frame size.
+
+**If it ever needs to be exact, the fix is not a lower speed.** It is for `startCooldown` to
+carry the overshoot the way the wave timer and the Dahan attack already do a few lines below it
+in the same `tick` — `+=` an interval rather than `=` one. That is two lines and it would make
+the kit frame-rate independent at every speed, which it is not today. It is not done here
+because it changes every ability cast in the game to buy back roughly one Fear in ten waves of
+an opening that is 10–20% of a round, and that is a balance decision rather than a speed one.
+
+**The figure to watch.** Whether 50x reads as *fast-forward* or as *cut to black*. The row's
+promise is that the hurried waves visibly happened, and there is a speed past which the board
+is a strobe and the player stops believing the waves were played. If it crosses that line the
+answer is a step back toward 20x, not a smaller share.
+
+---
+
 ## Idea Inbox
 
 Unsorted and unargued. One line each, written down before it is thought about — the point is
@@ -1155,6 +1293,18 @@ is not a line down here.
 
 ### Mechanics
 
+- **Dahan deeds**: the Dahan do things besides strike, on a clock of their own, chosen by a
+  fixed priority over the board rather than at random - events without the dice. The skeleton is
+  already there twice over: `dahanAttackRemaining` is a Dahan clock, and `abilities.js` is
+  nothing but deterministic prio-ordered land pickers. First deed, straight from a Spirit Island
+  event: *Tend the Land* - remove 1 Blight from a land holding at least 2 Dahan (`removeBlight`
+  exists; the "preventive, never a rescue" invariant holds as long as it resolves on a tick).
+  Two things settled before any code: **all met deeds fire on a tick**, or each new deed dilutes
+  the ones already bought - the strictly-dominated rung the Presence discount ladder died of;
+  and deeds should mostly *not* be "more Dahan" or "more kills", which feed the loop that is
+  already strongest and duplicate the strike respectively. Tend the Land is the shape to copy:
+  it converts a Dahan stack into Blight relief, a different axis, self-limiting via
+  `BLIGHT_FLOOR_FRACTION`
 - check if Wash Away works correctly when a land holds more than 3 invaders
 - give tokens for casting abilities, spendable to upgrade them (or route that through the
   Presence shop instead)

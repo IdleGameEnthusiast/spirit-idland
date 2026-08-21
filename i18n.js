@@ -165,7 +165,16 @@ const I18N = {
     shopMaxedBtn: "Maximum",
     // A one-off is owned, not maxed: there was never a ladder for it to reach the top of.
     shopOwnedBtn: "Gekauft",
-    shopOneOffLabel: "Einmalig",
+    /* Die vier Überschriften im Furchtladen, in der Reihenfolge des Regals (UPGRADE_GROUP_IDS).
+     * Der Laden zeichnet eine davon, sobald die Gruppe wechselt - "Einmalig" stand hier
+     * früher allein und beschrieb die Art des Kaufs statt das, was er kauft. */
+    shopGroupLabels: {
+      waves: "Wellenfortschritt",
+      fear: "Furchtquellen",
+      dahan: "Die Dahan",
+      // Alle Einmalkäufe sind Automatisierungen, deshalb sagt die Zeile das Was statt das Wie.
+      automation: "Automatisierung"
+    },
     // Überschrift über allem, was ausverkauft ist - nichts darunter ist noch zu haben.
     shopSoldOutLabel: "Bereits gekauft",
     // Während der Runde gekauft: gehört dir, wirkt aber erst ab der nächsten Runde.
@@ -214,7 +223,11 @@ const I18N = {
       // Benannt nach dem Ziel, nicht nach dem Übersprungenen - siehe die englische Fassung.
       // "Tiefes Wasser" ist in beiden Läden neu: Flut, Fluss, Strömung und Quellwasser sind
       // schon vergeben.
-      presence_deep_water_comes: "Tiefes Wasser kommt früher"
+      presence_deep_water_comes: "Tiefes Wasser kommt früher",
+      // Benannt gegen "Die Dahan erinnern sich" in der Furchtliste: dieselben Leute, das
+      // zweite Verb. Erinnern ist, was sie schneller macht; ausharren ist, was sie stärker
+      // macht - und die Zeile schaltet genau die Fortsetzung jener Zeile frei.
+      presence_dahan_endure: "Die Dahan halten stand"
     },
     presenceTexts: {
       presence_tide_returns: "Neue Wellen starten von jetzt an von selbst.",
@@ -223,7 +236,8 @@ const I18N = {
       presence_current_quickens: "Schaltet Fokus frei: Energie während der Runde ausgeben und je Einsatz {seconds} Sek von der Abklingzeit einer Fähigkeit nehmen.",
       presence_river_deepens: "Der Auto-Kauf setzt auch Fokus ein und senkt die Abklingzeiten von selbst. Unter \"Anpassen\" legst du fest, was zuerst gekauft wird.",
       presence_fear_remains: "Beginne jede Aszension mit {step} Furcht in der Bank je Stufe. Zählt nicht gegen den Präsenzgewinn.",
-      presence_deep_water_comes: "Jede Stufe schickt mehr vom Rundenanfang in den Zeitraffer: die ersten {share}% deiner höchsten Welle mit {speed}x."
+      presence_deep_water_comes: "Jede Stufe schickt mehr vom Rundenanfang in den Zeitraffer: die ersten {share}% deiner höchsten Welle mit {speed}x.",
+      presence_dahan_endure: "Schaltet eine Reihe neuer Furcht-Upgrades frei, mit denen die Dahan im Lauf einer Aszension neue Stärke finden."
     },
     // Der Trenner für Namenslisten in Logzeilen - siehe die englische Fassung.
     listSeparator: ", ",
@@ -239,8 +253,10 @@ const I18N = {
     waveFastForwardValue: "Zeitraffer",
     presenceOwned: "{upgrade} gehört dir bereits.",
     presenceTooExpensive: "{upgrade} kostet {cost} Präsenz, du hast {presence}.",
+    presenceLocked: "{upgrade} ist noch nicht zu haben.",
     presenceCostLabel: "{cost} Präsenz",
     presenceOwnedBtn: "Freigeschaltet",
+    presenceLockedBtn: "Noch nicht",
     upgradeNames: {
       dahan_reinforcement: "Verstärkung der Dahan",
       blight_resilience: "Widerstand gegen Verderbnis",
@@ -287,7 +303,14 @@ const I18N = {
     upgradeMaxedTexts: {
       headwaters: "Jede Runde beginnt mit {energy} Energie in der Hand: die ganze Ausrüstung, gekauft vor der ersten Welle.",
       power_card_interval: "Die erste Machtkarte kommt in Welle {first}, danach alle {current} Wellen - schneller erinnert sich die Insel nicht.",
-      dahan_remember: "Alle {full} Furcht erinnert. Die Dahan schlagen alle {seconds}s zu - doppelt so oft wie die {base}s, mit denen sie begannen."
+      dahan_remember: "Alle {full} Furcht erinnert. Die Dahan schlagen alle {seconds}s zu - doppelt so oft wie die {base}s, mit denen sie begannen. Sie schlagen mit {damage} Schaden."
+    },
+    /* Der volle erste Vorrat: nicht fertig, sondern bereit. Die Zeile muss sagen, dass der
+     * Tausch nichts kostet - {full} Furcht aufzugeben sieht nach Verlust aus, und der Grund,
+     * warum es keiner ist, steht nicht auf dem Knopf. Doppelt so oft mal einfacher Schaden ist
+     * genau einfach oft mal doppelter Schaden. */
+    upgradeReadyTexts: {
+      dahan_remember: "Alle {full} Furcht erinnert - und die Dahan haben noch etwas vor. Beginne von vorn: {strength} Schaden statt einem, dafür wieder alle {base}s. Das ist im selben Moment genau derselbe Schaden - und der Vorrat fasst danach {next} Furcht."
     },
 
     /* ---------- Machtkarten ---------- */
@@ -487,6 +510,11 @@ const I18N = {
     upgradePurchased: "Gekauft: {upgrade} (Stufe {tier}) für {cost} Furcht.",
     // Ein Becken hat keine Stufe zu melden - also meldet es, was hineinging und was herauskam.
     upgradeInvested: "{upgrade}: {cost} Furcht erinnert. Jetzt {pct}% schneller - ein Schlag alle {seconds}s.",
+    dahanStrengthClaimed: "Die Dahan halten stand. Sie schlagen jetzt mit {damage} Schaden, wieder alle {seconds}s - und ihre Erinnerung fasst nun {full} Furcht.",
+    dahanStrengthRefused: "Dafür ist es zu früh: die Erinnerung der Dahan muss voll sein, und die Runde muss vorbei sein.",
+    shopDahanStrengthBtn: "Von vorn, mit +1 Schaden",
+    shopDahanStrengthTitle: "Die Dahan schlagen fortan mit {damage} statt {base} Schaden. Der Vorrat leert sich und fasst danach {full} Furcht - im Moment des Tauschs ändert sich am Schaden nichts.",
+    shopDahanStrengthWait: "Erst am Rundenende: der Tausch leert einen Vorrat, mit dem die laufende Runde noch rechnet.",
     upgradeTooExpensive: "{upgrade} kostet {cost} Furcht. Du hast {fear}.",
     upgradeMaxed: "{upgrade} ist bereits auf der höchsten Stufe.",
 
@@ -625,7 +653,12 @@ const I18N = {
     shopInvestMaxTitle: "Invest {amount} Fear - everything you can afford",
     shopMaxedBtn: "Maxed",
     shopOwnedBtn: "Owned",
-    shopOneOffLabel: "One-off",
+    shopGroupLabels: {
+      waves: "Wave progression",
+      fear: "Fear generators",
+      dahan: "The Dahan",
+      automation: "Automation"
+    },
     shopSoldOutLabel: "Already bought",
     shopPendingHint: "Takes effect next round.",
     startNextRoundBtn: "Start next round",
@@ -674,7 +707,11 @@ const I18N = {
       // round is the part worth playing, and arriving there sooner is the whole promise.
       // "Deep water" is unspoken-for in both shops - tide, river, current and headwaters are
       // all taken, and the island's memory twice over.
-      presence_deep_water_comes: "Deep Water Comes Sooner"
+      presence_deep_water_comes: "Deep Water Comes Sooner",
+      // Named against "The Dahan Remember" in the Fear list: the same people, the second verb.
+      // Remembering is what makes them faster; enduring is what makes them stronger - and this
+      // row unlocks precisely the continuation of that row.
+      presence_dahan_endure: "The Dahan Endure"
     },
     presenceTexts: {
       presence_tide_returns: "New waves start themselves from now on.",
@@ -683,7 +720,8 @@ const I18N = {
       presence_current_quickens: "Unlocks Focus: spend Energy mid-round to take {seconds} Sec off one ability's cooldown each cast.",
       presence_river_deepens: "Auto-buy casts Focus too, cutting ability cooldowns on its own. \"Customize\" is where you say what it buys first.",
       presence_fear_remains: "Start every ascension with {step} Fear in the bank per rank. Does not count against the Presence gain.",
-      presence_deep_water_comes: "Each tier fast-forwards more of the opening: the first {share}% of your highest wave at {speed}x."
+      presence_deep_water_comes: "Each tier fast-forwards more of the opening: the first {share}% of your highest wave at {speed}x.",
+      presence_dahan_endure: "Unlocks a run of new Fear upgrades, letting the Dahan find new strength over the course of an ascension."
     },
     // Says "for good", because that is the whole of what separates a Presence purchase from a
     // Fear one. {unlocks} is one row for two of the three grants and five for the other, joined
@@ -704,13 +742,15 @@ const I18N = {
     // log is the only thing moving slowly enough to read.
     fastForwardStarted: "Deep Water Comes Sooner: the first {waves} waves run at {speed}x.",
     fastForwardEnded: "Wave {wave} - the fast-forward ends, the pace is yours again.",
-    // Stands in for the wave countdown while the opening runs: at 20x the real figure would be
+    // Stands in for the wave countdown while the opening runs: at 50x the real figure would be
     // a blur, and what the player needs from that slot is the reason it is a blur.
     waveFastForwardValue: "Fast-forward",
     presenceOwned: "{upgrade} is already yours.",
     presenceTooExpensive: "{upgrade} costs {cost} Presence, you have {presence}.",
+    presenceLocked: "{upgrade} is not for sale yet.",
     presenceCostLabel: "{cost} Presence",
     presenceOwnedBtn: "Unlocked",
+    presenceLockedBtn: "Not yet",
     upgradeNames: {
       dahan_reinforcement: "Dahan Reinforcement",
       blight_resilience: "Blight Resilience",
@@ -759,7 +799,13 @@ const I18N = {
     upgradeMaxedTexts: {
       headwaters: "Every round opens with {energy} Energy in hand: the whole unlock kit, before the first wave.",
       power_card_interval: "The first power card arrives on wave {first}, then one every {current} waves - the island remembers no sooner than that.",
-      dahan_remember: "All {full} Fear remembered. The Dahan strike every {seconds}s - twice as often as the {base}s they began with."
+      dahan_remember: "All {full} Fear remembered. The Dahan strike every {seconds}s - twice as often as the {base}s they began with. They strike for {damage} damage."
+    },
+    /* A full first pool: not finished, ready. The line has to say the trade is free - giving up
+     * {full} Fear of haste looks like a loss, and the reason it is not one does not fit on the
+     * button. Twice as often for single damage is exactly once as often for double. */
+    upgradeReadyTexts: {
+      dahan_remember: "All {full} Fear remembered - and the Dahan are not done. Start over: {strength} damage instead of one, back to every {base}s. That is the very same damage in the moment - and the pool holds {next} Fear afterwards."
     },
 
     /* ---------- Power cards ---------- */
@@ -959,6 +1005,11 @@ const I18N = {
     upgradePurchased: "Purchased: {upgrade} (tier {tier}) for {cost} Fear.",
     // A pool has no tier to report, so it reports what went in and what came out of it.
     upgradeInvested: "{upgrade}: {cost} Fear remembered. Now {pct}% faster - a strike every {seconds}s.",
+    dahanStrengthClaimed: "The Dahan endure. They strike for {damage} damage now, every {seconds}s again - and their memory holds {full} Fear from here.",
+    dahanStrengthRefused: "Too early for that: the memory of the Dahan must be full, and the round must be over.",
+    shopDahanStrengthBtn: "Start over, +1 damage",
+    shopDahanStrengthTitle: "The Dahan strike for {damage} instead of {base} from here. The pool empties and holds {full} Fear afterwards - in the moment of the trade, nothing about the damage changes.",
+    shopDahanStrengthWait: "Between rounds only: the trade empties a pool the running round is still counting on.",
     upgradeTooExpensive: "{upgrade} costs {cost} Fear. You have {fear}.",
     upgradeMaxed: "{upgrade} is already at its highest tier.",
 

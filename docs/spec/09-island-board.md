@@ -142,7 +142,7 @@ rather than periodic.
 ### The Dahan strike
 
 On its own timer, every land holding both Dahan and invaders strikes at once, spending
-`DAHAN_ATTACK_DAMAGE` per Dahan on the highest-tier invader type present (cities, then towns,
+`dahanAttackDamage(state)` per Dahan on the highest-tier invader type present (cities, then towns,
 then explorers) until the pool or the invaders run out. This is not keyed to a terrain either,
 and it is not part of a wave.
 

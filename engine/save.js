@@ -51,7 +51,11 @@ function createInitialState() {
       unlockedSpiritIds: ["core_spirit_01"]
     },
     upgrades: {
-      purchased: {}
+      purchased: {},
+      // Not a row, and deliberately not a key in `purchased`: a catalogue entry would be
+      // orderable, priceable and buyable by any path that skips the shop render. Wiped by
+      // `ascend` all the same - see the claim there.
+      dahanStrength: false
     },
     // Its own object rather than more keys in `upgrades.purchased`, and that one decision is
     // what keeps ascension simple: the wipe is `upgrades.purchased = {}` whole, with no filter
@@ -350,6 +354,20 @@ function normalizeState(raw) {
   // something about a run is the best wave above. A save that carries one drops it here.
   delete merged.meta.totalRoundsPlayed;
 
+  /* The claim, normalized *before* the tiers below it, and the order is load-bearing.
+   *
+   * `upgradeMaxTier` asks this flag how deep `dahan_remember` goes, and the clamp in the loop
+   * below is measured against that answer. Normalize it afterwards and a claimed save carrying
+   * a 15 000 pool would be clamped to the unclaimed ceiling of 10 000 on every single load -
+   * ten thousand Fear deleted quietly, with no error and nothing in the log. That is the one
+   * call site that made threading `state` through `upgradeMaxTier` worth doing properly rather
+   * than with an optional argument.
+   *
+   * `merged.upgrades` is already spread from the raw input by this point, so the flag is here
+   * to be read; only its type is in question.
+   */
+  merged.upgrades.dahanStrength = Boolean(merged.upgrades.dahanStrength);
+
   // Upgrade tiers survive anything: an unknown id is dropped, a bad value clamps to 0.
   const purchased = {};
   for (const [id, value] of Object.entries(merged.upgrades.purchased || {})) {
@@ -360,7 +378,7 @@ function normalizeState(raw) {
     // Capping here is what makes the three Fear ladders' new maxTier free: a save carrying
     // rising_dread at 14 from the soft-capped build clamps to 10 rather than being stranded
     // above the ladder's end. No migration code was needed for it, only the number.
-    purchased[id] = Math.min(tier, upgradeMaxTier(id));
+    purchased[id] = Math.min(tier, upgradeMaxTier(merged, id));
   }
   merged.upgrades.purchased = purchased;
 
@@ -592,7 +610,7 @@ function normalizeState(raw) {
     const active = {};
     for (const [id, value] of Object.entries(merged.round.upgradeTiers)) {
       if (!UPGRADES[id]) continue;
-      active[id] = clamp(Math.floor(Number(value) || 0), 0, upgradeMaxTier(id));
+      active[id] = clamp(Math.floor(Number(value) || 0), 0, upgradeMaxTier(merged, id));
     }
     merged.round.upgradeTiers = active;
   } else {

@@ -62,25 +62,25 @@ const PLAYTEST_GAME_SPEEDS = [8];
 /* ---------- The fast-forwarded opening (05-progression.md, `presence_deep_water_comes`) ----
  *
  * A third pacing control, and the only one the player does not hold: a Presence row that runs
- * the first waves of every round at 20x and hands the dial back once they are behind.
+ * the first waves of every round at 50x and hands the dial back once they are behind.
  *
  * It is a *fast-forward and not a skip*, and the distinction is the whole of why the row is
  * priced as comfort. Speed multiplies dt (see gameSpeed) and reaches no rule, so the
  * fast-forwarded waves still build, still explore, still blight and still pay their Fear -
  * every one of them, at full value. What the row buys back is real seconds and nothing else.
  *
- * 20x is kept out of GAME_SPEEDS and PLAYTEST_GAME_SPEEDS alike for the reason the comment
+ * 50x is kept out of GAME_SPEEDS and PLAYTEST_GAME_SPEEDS alike for the reason the comment
  * above gives: a save must not come back stuck at a speed with no button to leave it by. This
  * one is never *set*, only applied while the opening runs - `effectiveGameSpeed` reads it,
  * `state.ui.gameSpeed` never holds it, and the dial keeps drawing the player's own choice.
  *
  * Why nothing can be hand-played at this speed, and why that is the row's real gate: a
- * cooldown ticks in game seconds, so at 20x the whole ability kit fires twenty times faster
+ * cooldown ticks in game seconds, so at 50x the whole ability kit fires fifty times faster
  * than a hand can answer. The row is only *free* to a player who owns the automations, which
  * puts 8 Presence of `presence_river_knows` + `presence_all_unbidden` underneath it before its
  * own 3 is asked for. That depth is the gate; the price is not asked to be one.
  */
-const FAST_FORWARD_SPEED = 20;
+const FAST_FORWARD_SPEED = 50;
 
 /* How much of the all-time record each rung fast-forwards, and the whole of the ladder.
  *
@@ -180,6 +180,35 @@ const DAHAN_ATTACK_DAMAGE = 1;
  */
 const DAHAN_HASTE_FEAR_FOR_FULL = 10000;
 const DAHAN_HASTE_MAX = 1;
+
+/* ---------- The Dahan Find Their Strength: the pool, started over ----------
+ *
+ * A full pool is the end of what Fear can buy on the strike clock, and this is the one thing
+ * on the other side of it. At 10000/10000 the row offers a claim rather than another rung:
+ * the Dahan's damage goes to DAHAN_STRENGTH_DAMAGE, the pool empties back to zero, and its
+ * ceiling becomes DAHAN_STRENGTH_FEAR_FOR_FULL. Once, ever - see canClaimDahanStrength.
+ *
+ * The arithmetic is the whole design, so it is written here rather than left to be
+ * rediscovered. Throughput per Dahan is `damage * (1 + haste)`, because haste divides the
+ * interval (see above) and damage multiplies what each strike spends. So the claim trades a
+ * full pool's `1 * (1 + 1) = 2` for an empty pool's `2 * (1 + 0) = 2` and hands back exactly
+ * what it took: the moment of the claim is free, and everything poured into the second pool is
+ * profit the first pool had no room left to sell.
+ *
+ * **That identity holds at one claim and nowhere else.** A second would trade `2 * 2 = 4` for
+ * `3 * 1 = 3` - twenty thousand Fear spent to lose a quarter of the strike - because +1 damage
+ * is a doubling only while damage is 1. A third loses a third. If this ever wants a follow-up,
+ * the claim has to start *doubling* damage (2, 4, 8) rather than incrementing it, and the two
+ * changes must land together. The cap below is what stops the question being asked by accident.
+ *
+ * The second pool is 20000 units at 1 Fear each rather than 10000 at 2, so a Fear is still a
+ * unit and the row stays the flat 1:1 sink its whole design rests on. What pays for that is
+ * upgradeMaxTier having to read state - the pool is the only row in the catalogue whose
+ * ceiling moves, and dahanHasteFraction divides by the ceiling in play so that a full second
+ * pool still reads 100% and DAHAN_HASTE_MAX still means what it says.
+ */
+const DAHAN_STRENGTH_DAMAGE = 2;
+const DAHAN_STRENGTH_FEAR_FOR_FULL = 20000;
 
 /* ---------- The ascension layer (05-progression.md) ----------
  *

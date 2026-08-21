@@ -322,7 +322,8 @@ function markRoundEndFx(state) {
  *
  * And nothing is written at all while the opening is being fast-forwarded. CARD_FX_MS is 2600
  * *real* milliseconds and a card drips every wave, so at FAST_FORWARD_SPEED a wave arrives
- * every second and each reveal would be overwritten by the next one before it could be read -
+ * every four-tenths of a second and each reveal would be overwritten by the next one before it
+ * could be read -
  * the panel would flicker through a stack of cards and settle on whichever happened to be
  * last. A reveal nobody can read is not a reveal, and holding them back is what the shop row
  * says it does.
