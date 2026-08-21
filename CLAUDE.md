@@ -86,7 +86,7 @@ same edit**. Section comments in the engine point at the doc that owns the rule.
 
 - `01-product-intent` · `02-core-loop` · `03-state-contract` · `04-economy-formulas`
 - `05-progression` · `06-ui-contract` · `07-content-registry` · `08-acceptance-tests`
-- `09-island-board` · `10-power-cards`
+- `09-island-board` · `10-power-cards` · `11-tutorial` (design only, not built)
 
 New ideas go in the **Idea Inbox** section of `docs/tasks/implementation-microtasks.md` —
 not a new file, not a new board.

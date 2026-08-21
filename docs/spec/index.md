@@ -33,7 +33,8 @@ suite by opening `tests.html`, or headlessly with `tests\headless.ps1`.
 8. [08 Acceptance and Tests](./08-acceptance-tests.md)
 9. [09 Island Board](./09-island-board.md)
 10. [10 Power Cards](./10-power-cards.md)
-11. [Implementation Microtasks](../tasks/implementation-microtasks.md)
+11. [11 Tutorial](./11-tutorial.md) - design only, not implemented
+12. [Implementation Microtasks](../tasks/implementation-microtasks.md)
 
 ## Concept Summary
 
