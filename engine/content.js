@@ -13,7 +13,7 @@
 const SPIRITS = {
   core_spirit_01: {
     id: "core_spirit_01",
-    name: "Reißende Fluten im Sonnenlicht",
+    name: "Sonnengenährter Fluss",
     englishName: "River Surges in Sunlight",
     traits: "Schnelle Ströme verschieben Invasoren und halten das Land beweglich. Fokus: Kontrolle, Positionierung und stetiger Fluss.",
     traitsEn: "Swift currents displace invaders and keep the land in motion. Focus: control, positioning, and steady flow.",

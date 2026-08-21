@@ -18,7 +18,7 @@ const I18N = {
     roundLabel: "Welle",
     bestWaveLabel: "Höchste Welle",
     cycleBestWaveLabel: "Dieser Zyklus",
-    blightLabel: "Verderbnis",
+    blightLabel: "Ödnis",
     waveLabel: "Nächste Welle",
     fearLabel: "Furcht",
     // Die Furcht dieser Runde ist noch nicht ausgebbar - sie wird erst am Rundenende gebucht.
@@ -56,7 +56,7 @@ const I18N = {
     abilitiesTitle: "Fähigkeiten",
     abilitiesHint: "Einsetzen kostet nur Abklingzeit. Energie schaltet neue Fähigkeiten frei.",
     energyLabel: "Energie",
-    energyHint: "Energie kommt aus besiegten Invasoren: 1 pro Entdecker, 2 pro Dorf, 3 pro Stadt. Boon of Vigor gibt +1. Zu Rundenbeginn fällt sie zurück - auf 0, oder auf das, was Quellwasser hergibt - und alles, was mit ihr gekauft wurde, ist damit weg.",
+    energyHint: "Energie kommt aus besiegten Invasoren: 1 pro Entdecker, 2 pro Dorf, 3 pro Stadt. Energieschub gibt +1. Zu Rundenbeginn fällt sie zurück - auf 0, oder auf das, was Quellwasser hergibt - und alles, was mit ihr gekauft wurde, ist damit weg.",
     abilityReady: "Bereit",
     abilityArmed: "Ziel wählen",
     abilityCooldown: "{seconds}s",
@@ -103,16 +103,22 @@ const I18N = {
     autoBuyFoot: "Nicht ausgegebene Energie verfällt am Rundenende.",
     autoBuyCloseHint: "Esc, oder daneben klicken",
     autoBuyDone: "Fertig",
+    // Die Ausrüstung des Geistes trägt die Namen, die auf den deutschen Karten von Pegasus
+    // stehen - Sonnengenährter Fluss' vier Startfähigkeiten, 1:1 aus Spirit Island. "Permanente
+    // Fähigkeit" ist der offizielle deutsche Begriff für "Innate Power" und steht hier für das,
+    // was die englische Fassung generisch "Innate Power" nennt; die Karte selbst hieße
+    // "Extremes Hochwasser".
     abilityNames: {
-      innate_power: "Angeborene Kraft",
-      boon_of_vigor: "Boon of Vigor",
-      rivers_bounty: "River's Bounty",
-      flash_floods: "Flash Floods",
-      wash_away: "Wash Away",
-      // Die sieben Machtkarten stehen in derselben Tabelle wie die Ausrüstung, weil eine Karte
-      // in jeder Hinsicht, die zählt, eine Fähigkeit ist - abilityName fragt nicht nach, was
-      // sie ist. Die deutschen Namen sind Platzhalter für dieses Paket und nicht die
-      // veröffentlichten Kartennamen; liegen die offiziellen vor, ersetzen sie diese hier.
+      innate_power: "Permanente Fähigkeit",
+      boon_of_vigor: "Energieschub",
+      rivers_bounty: "Fruchtbarkeit des Flusses",
+      flash_floods: "Überschwemmung",
+      wash_away: "Fortreißende Wasser",
+      // Die sieben Fähigkeitenkarten stehen in derselben Tabelle wie die Ausrüstung, weil eine
+      // Karte in jeder Hinsicht, die zählt, eine Fähigkeit ist - abilityName fragt nicht nach,
+      // was sie ist. Alle sieben sind echte Spirit-Island-Karten; von den deutschen Namen ist
+      // bislang nur "Beschleunigte Fäulnis" belegt. Die übrigen sechs sind weiterhin
+      // Platzhalter - liegt der gedruckte Name vor, ersetzt er den hier.
       pull_beneath: "Hinab in die hungrige Erde",
       song_of_sanctity: "Lied der Unverletzlichkeit",
       uncanny_melting: "Unheimliches Schmelzen",
@@ -124,22 +130,22 @@ const I18N = {
     // The Innate carries one text per tier, in tier order. Every other ability carries one.
     abilityTexts: {
       innate_power: [
-        "Schiebt {push} Entdecker/Dorf in ein angrenzendes Gebiet.",
-        "{damage} Schaden. Schiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet.",
+        "Verschiebt {push} Entdecker/Dorf in ein angrenzendes Gebiet.",
+        "{damage} Schaden. Verschiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet.",
         "{damage} Schaden auf jeden Invasor im gewählten Gebiet."
       ],
       boon_of_vigor: "+{amount} Energie.",
       rivers_bounty: "+{amount} Dahan im Gebiet mit den wenigsten Dahan und Invasoren, wenn möglich.",
       flash_floods: "{damage} Schaden. Liegt das Ziel an der Küste: +{coastal} Schaden.",
-      wash_away: "Schiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet. An der Küste spült das Wasser stattdessen bis zu {sea} von der Insel ins Meer.",
+      wash_away: "Verschiebt bis zu {push} Entdecker/Dörfer in ein angrenzendes Gebiet. An der Küste spült das Wasser stattdessen bis zu {sea} von der Insel ins Meer.",
       // Die Zahlen einer Karte kommen aus ihrer Schrittliste, nicht aus der Übersetzung -
       // siehe cardTextVars. Wer in POWER_CARDS eine Zahl ändert, ändert diese Texte mit.
       pull_beneath: "{fear} Furcht und {damage} Schaden. Liegt das Ziel in {terrains}: +{bonus} Schaden.",
-      song_of_sanctity: "Zerstört {destroy} Entdecker und schiebt alle übrigen Entdecker fort. Ohne Entdecker im Ziel: entfernt stattdessen {blight} Verderbnis.",
-      uncanny_melting: "Stehen Invasoren im Ziel: {fear} Furcht je Invasor. Liegt das Ziel in {terrains}: entfernt {blight} Verderbnis.",
-      natures_resilience: "Schutz {defend}. Entfernt {blight} Verderbnis.",
-      encompassing_ward: "Schutz {defend} in jedem Gebiet.",
-      accelerated_rot: "{fear} Furcht. {damage} Schaden. Entfernt {blight} Verderbnis.",
+      song_of_sanctity: "Zerstört {destroy} Entdecker und verschiebt alle übrigen Entdecker. Ohne Entdecker im Ziel: entfernt stattdessen {blight} Ödnis.",
+      uncanny_melting: "Stehen Invasoren im Ziel: {fear} Furcht je Invasor. Liegt das Ziel in {terrains}: entfernt {blight} Ödnis.",
+      natures_resilience: "Verteidigen {defend}. Entfernt {blight} Ödnis.",
+      encompassing_ward: "Verteidigen {defend} in jedem Gebiet.",
+      accelerated_rot: "{fear} Furcht. {damage} Schaden. Entfernt {blight} Ödnis.",
       tsunami: "Nur an der Küste: {fear} Furcht, {damage} Schaden, zerstört {dahan} Dahan. Ist der Schalter an, trifft es jede andere Küste mit {alsoFear} Furcht und {alsoDamage} Schaden und zerstört dort {alsoDahan} Dahan."
     },
 
@@ -259,7 +265,7 @@ const I18N = {
     presenceLockedBtn: "Noch nicht",
     upgradeNames: {
       dahan_reinforcement: "Verstärkung der Dahan",
-      blight_resilience: "Widerstand gegen Verderbnis",
+      blight_resilience: "Widerstand gegen Ödnis",
       headwaters: "Quellwasser",
       rising_dread: "Steigendes Grauen",
       mounting_terror: "Wachsender Schrecken",
@@ -276,19 +282,19 @@ const I18N = {
     },
     upgradeTexts: {
       dahan_reinforcement: "+1 Dahan zu Rundenbeginn, pro Stufe.",
-      blight_resilience: "+1 Verderbnisgrenze, pro Stufe.",
+      blight_resilience: "+1 Ödnisgrenze, pro Stufe.",
       headwaters: "Jede Runde beginnt mit Energie in der Hand: 1 / 2 / 3 / 5 / 8 / 13 / 19 / 26 / 35 nach Stufe. Stufe 9 ist die ganze Ausrüstung, gekauft vor der ersten Welle.",
       rising_dread: "+10% Furcht aus besiegten Invasoren, pro Stufe.",
       mounting_terror: "+10% Furcht für überstandene Wellen, pro Stufe.",
       high_water_mark: "Jede 10. Welle zahlt zusätzlich 10% ihrer eigenen Nummer als Furcht, pro Stufe. Welle 50 auf Stufe 3 bringt 15 dazu.",
-      power_card_interval: "Der Abstand zwischen zwei Machtkarten sinkt um 1 Welle, pro Stufe. Nur Rückfallebene - der Text der Zeile nennt die Abstände selbst.",
+      power_card_interval: "Der Abstand zwischen zwei Fähigkeitenkarten sinkt um 1 Welle, pro Stufe. Nur Rückfallebene - der Text der Zeile nennt die Abstände selbst.",
       dahan_remember: "Furcht, in die Erinnerung der Dahan gelegt - 100 je 1%. Sie schlagen früher dafür. Bei 100% schlagen sie doppelt so oft.",
-      auto_boon: "Boon of Vigor wirkt sich selbst, sobald es bereit ist.",
-      auto_innate: "Die Angeborene Kraft wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt.",
-      auto_wash_away: "Wash Away wirkt sich selbst und sucht sich sein Ziel - sobald es freigeschaltet und bereit ist.",
-      auto_bounty: "River's Bounty wirkt sich selbst, sobald es freigeschaltet und bereit ist.",
-      auto_flash_floods: "Flash Floods wirkt sich selbst und schlägt dorthin, wo es tötet - sobald es freigeschaltet und bereit ist.",
-      auto_buy_abilities: "Energie kauft von selbst: erst die verschlossenen Fähigkeiten, günstigste zuerst, dann die nächste Stufe der Angeborenen Kraft.",
+      auto_boon: "Der Energieschub wirkt sich selbst, sobald er bereit ist.",
+      auto_innate: "Die Permanente Fähigkeit wirkt sich selbst, sobald sie bereit ist - auf jeder Stufe, die du besitzt.",
+      auto_wash_away: "Die Fortreißenden Wasser wirken sich selbst und suchen sich ihr Ziel - sobald sie freigeschaltet und bereit sind.",
+      auto_bounty: "Die Fruchtbarkeit des Flusses wirkt sich selbst, sobald sie freigeschaltet und bereit ist.",
+      auto_flash_floods: "Die Überschwemmung wirkt sich selbst und schlägt dorthin, wo sie tötet - sobald sie freigeschaltet und bereit ist.",
+      auto_buy_abilities: "Energie kauft von selbst: erst die verschlossenen Fähigkeiten, günstigste zuerst, dann die nächste Stufe der Permanenten Fähigkeit.",
       auto_start_round: "Die nächste Runde startet von selbst. Abschaltbar, wenn du in Ruhe einkaufen willst."
     },
     // Was die nächste Stufe bringt, statt der Form der ganzen Leiter - siehe
@@ -296,13 +302,13 @@ const I18N = {
     upgradeNextTexts: {
       headwaters: "Nächste Stufe: +{gain} Energie zu Rundenbeginn, dann {next} in der Hand.",
       high_water_mark: "Nächste Stufe: +{pct}% der Wellennummer bei jeder 10. Welle - Welle {wave} zahlt dann {next} statt {current}.",
-      power_card_interval: "Die erste Machtkarte kommt in Welle {first}, danach alle {current} Wellen. Nächste Stufe: alle {next}.",
+      power_card_interval: "Die erste Fähigkeitenkarte kommt in Welle {first}, danach alle {current} Wellen. Nächste Stufe: alle {next}.",
       // Kein Vergleich mit dem Grundwert - siehe die englische Fassung.
       dahan_remember: "{invested} / {full} Furcht erinnert ({pct}%). Die Dahan schlagen alle {seconds}s zu. 100 Furcht bringen 1% mehr."
     },
     upgradeMaxedTexts: {
       headwaters: "Jede Runde beginnt mit {energy} Energie in der Hand: die ganze Ausrüstung, gekauft vor der ersten Welle.",
-      power_card_interval: "Die erste Machtkarte kommt in Welle {first}, danach alle {current} Wellen - schneller erinnert sich die Insel nicht.",
+      power_card_interval: "Die erste Fähigkeitenkarte kommt in Welle {first}, danach alle {current} Wellen - schneller erinnert sich die Insel nicht.",
       dahan_remember: "Alle {full} Furcht erinnert. Die Dahan schlagen alle {seconds}s zu - doppelt so oft wie die {base}s, mit denen sie begannen. Sie schlagen mit {damage} Schaden."
     },
     /* Der volle erste Vorrat: nicht fertig, sondern bereit. Die Zeile muss sagen, dass der
@@ -313,9 +319,9 @@ const I18N = {
       dahan_remember: "Alle {full} Furcht erinnert - und die Dahan haben noch etwas vor. Beginne von vorn: {strength} Schaden statt einem, dafür wieder alle {base}s. Das ist im selben Moment genau derselbe Schaden - und der Vorrat fasst danach {next} Furcht."
     },
 
-    /* ---------- Machtkarten ---------- */
+    /* ---------- Fähigkeitenkarten ---------- */
     // Der Kartenzug im Präsenzladen: drei liegen aus, eine wird behalten.
-    cardShopLabel: "Machtkarten",
+    cardShopLabel: "Fähigkeitenkarten",
     cardShopHint: "Drei liegen aus, eine gehört dir - für immer, auch über die Aszension hinweg. Auf der Hand liegt sie erst, wenn eine Runde tief genug kommt.",
     cardDrawCostLabel: "{cost} Präsenz",
     // Die Abklingzeit steht auf einer eigenen Zeile unter dem Namen, weil sie beim Kauf die
@@ -359,9 +365,9 @@ const I18N = {
     cardPartFear: "{amount} Furcht",
     cardPartDamage: "{amount} Schaden",
     cardPartDefeated: "{count} besiegt",
-    cardPartPushed: "{count} geschoben",
-    cardPartBlight: "{amount} Verderbnis entfernt",
-    cardPartDefend: "Schutz {amount}",
+    cardPartPushed: "{count} verschoben",
+    cardPartBlight: "{amount} Ödnis entfernt",
+    cardPartDefend: "Verteidigen {amount}",
     cardPartDahan: "{count} Dahan gefallen",
 
     logTitle: "Spielprotokoll",
@@ -410,28 +416,28 @@ const I18N = {
     neighboursLabel: "Angrenzend",
     coastalLabel: "Küste",
     inlandLabel: "Binnenland",
-    invaderHpHint: "HP {current}/{max}",
-    landBlightLabel: "Verderbnis hier",
+    invaderHpHint: "Abwehrkraft {current}/{max}",
+    landBlightLabel: "Ödnis hier",
     defeatHint: "Besiegt: -{count} {unit}",
-    blightHint: "+{amount} Verderbnis",
+    blightHint: "+{amount} Ödnis",
 
     etaNever: "nie",
     pressureNoInvaders: "keine Invasoren",
     pressureHeld: "gehalten - {line}",
     pressureChip: "+{rate}% / s - nächste in {eta}",
-    pressureDetail: "{gross} Schaden - {defence} Dahan = {net}/s. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
-    pressureDetailHeld: "{gross} Schaden gegen {defence} Dahan-Abwehr: aufgehalten, aber {net}/s sickern durch. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
+    pressureDetail: "{gross} Schaden - {defence} Dahan = {net}/s. +{rate}% Ödnis pro Sekunde, nächste in {eta}.",
+    pressureDetailHeld: "{gross} Schaden gegen {defence} Dahan-Abwehr: aufgehalten, aber {net}/s sickern durch. +{rate}% Ödnis pro Sekunde, nächste in {eta}.",
     // Ein Schutzwall, der den ganzen Angriff auffängt: kein Sickern, kein Verlust an Dahan.
-    pressureDenied: "abgeschirmt - Schutz {defense} deckt {gross} Schaden",
-    pressureDetailDenied: "{gross} Schaden gegen Schutz {defense}: nichts kommt durch. Der Schutzwall vergeht eine Welle, nachdem er zum ersten Mal gewirkt hat.",
+    pressureDenied: "abgeschirmt - Verteidigung {defense} deckt {gross} Schaden",
+    pressureDetailDenied: "{gross} Schaden gegen Verteidigung {defense}: nichts kommt durch. Der Schutzwall vergeht eine Welle, nachdem er zum ersten Mal gewirkt hat.",
     // Ein Schutzwall, der nur einen Teil auffängt - der Rest trifft das Gebiet als kleinerer Angriff.
-    pressureDetailWarded: "{gross} Schaden - Schutz {defense} = {effective}, davon {defence} durch Dahan = {net}/s. +{rate}% Verderbnis pro Sekunde, nächste in {eta}.",
-    landDefenseLabel: "Schutz hier",
+    pressureDetailWarded: "{gross} Schaden - Verteidigung {defense} = {effective}, davon {defence} durch Dahan = {net}/s. +{rate}% Ödnis pro Sekunde, nächste in {eta}.",
+    landDefenseLabel: "Verteidigung hier",
     buildChip: "+1 {unit}",
     buildChipNone: "nichts hier",
-    blightBarLabel: "Verderbnis",
-    dahanBarLabel: "Dahan-Gesundheit",
-    invaderBarLabel: "Gesundheit",
+    blightBarLabel: "Ödnis",
+    dahanBarLabel: "Dahan-Abwehrkraft",
+    invaderBarLabel: "Abwehrkraft",
 
     // Die Zeichenerklärung: was das Gebietsfeld zeigt, solange kein Land ausgewählt ist.
     // Jede Zahl darin kommt aus dem Zustand, damit die Erklärung nie etwas anderes behauptet
@@ -445,18 +451,18 @@ const I18N = {
     legendInvadersLabel: "Invasoren",
     legendFightLabel: "Der Kampf",
     legendWaveLabel: "Die Welle",
-    legendUnitNote: "{damage} Schaden, {health} Leben.",
+    legendUnitNote: "{damage} Schaden, {health} Abwehrkraft.",
     // Der wichtigste Satz der ganzen Erklärung, und deshalb der erste im Block: Es gibt keine
     // Angriffsphase, auf die man warten könnte.
-    legendBlightTerm: "Verderbnis",
-    legendBlightNote: "Es gibt keine Angriffsphase. Jedes Gebiet, in dem Invasoren stehen, wird in jedem Augenblick angegriffen. Je Punkt Schaden, den die Dahan nicht wegnehmen, wächst die Verderbnis um {rate}% pro Sekunde. {floor}% des Angriffs kommen immer durch, egal wie viele Dahan dort stehen - ein gehaltenes Gebiet sickert. Bei {threshold} endet die Runde.",
-    legendDahanNote: "Deine Leute, aus Holz statt aus weißem Kunststoff. Solange sie stehen, nehmen sie je {damage} Schaden vom Angriff ihres Gebiets weg. {health} Leben, und sie fallen um {rate}% pro Punkt durchkommenden Schaden und Sekunde - gleich schnell, wie viele auch dort stehen.",
+    legendBlightTerm: "Ödnis",
+    legendBlightNote: "Es gibt keine Angriffsphase. Jedes Gebiet, in dem Invasoren stehen, wird in jedem Augenblick angegriffen. Je Punkt Schaden, den die Dahan nicht wegnehmen, wächst die Ödnis um {rate}% pro Sekunde. {floor}% des Angriffs kommen immer durch, egal wie viele Dahan dort stehen - ein gehaltenes Gebiet sickert. Bei {threshold} endet die Runde.",
+    legendDahanNote: "Deine Leute, aus Holz statt aus weißem Kunststoff. Solange sie stehen, nehmen sie je {damage} Schaden vom Angriff ihres Gebiets weg. {health} Abwehrkraft, und sie fallen um {rate}% pro Punkt durchkommenden Schaden und Sekunde - gleich schnell, wie viele auch dort stehen.",
     legendStrikeTerm: "Dahan-Angriff",
     legendStrikeNote: "Alle {seconds}s schlagen alle Dahan zu, je {damage} Schaden, in jedem Gebiet mit Invasoren. Eine eigene Uhr, nicht die der Welle - deshalb zählt die Leiste oben zwei Zeiten.",
     legendWardTerm: "Schutzwall",
-    legendWardNote: "Fängt so viel Angriff ab, wie er groß ist. Deckt er den ganzen Angriff, kommt gar keine Verderbnis durch - als Einziges, denn er schlägt auch die {floor}% oben. Er vergeht eine Welle, nachdem er zum ersten Mal etwas bewirkt hat.",
+    legendWardNote: "Fängt so viel Angriff ab, wie er groß ist. Deckt er den ganzen Angriff, kommt gar keine Ödnis durch - als Einziges, denn er schlägt auch die {floor}% oben. Er vergeht eine Welle, nachdem er zum ersten Mal etwas bewirkt hat.",
     legendBarsTerm: "Die Balken",
-    legendBarsNote: "Zwei je Gebiet: die Verderbnis, die sich zum nächsten Fleck füllt, und die Verluste der Dahan. Beide laufen weiter, auch wenn sich die Zahl noch nicht bewegt hat - erst der volle Balken kostet eine Figur. Der Ring auf einer Figur zeigt, wie viel Leben ihr fehlt.",
+    legendBarsNote: "Zwei je Gebiet: die Ödnis, die sich zum nächsten Fleck füllt, und die Verluste der Dahan. Beide laufen weiter, auch wenn sich die Zahl noch nicht bewegt hat - erst der volle Balken kostet eine Figur. Der Ring auf einer Figur zeigt, wie viel Abwehrkraft ihr fehlt.",
     legendBuildNote: "Zuerst. Jedes Gebiet des Bau-Geländes, in dem Invasoren stehen, bekommt ein Dorf - oder eine Stadt, wenn dort schon mehr Dörfer als Städte sind. Leere Gebiete bauen nichts.",
     legendDiscoverTerm: "Entdecken",
     legendDiscoverNote: "Danach. Ein Entdecker in jedes Gebiet des Entdecken-Geländes, das an der Küste liegt oder an ein Dorf oder eine Stadt grenzt. Ab Welle {wave} in jedes Gebiet.",
@@ -495,18 +501,18 @@ const I18N = {
       mountains: "Berge",
       desert: "Wüste",
       jungle: "Dschungel",
-      wetlands: "Sümpfe"
+      wetlands: "Sumpf"
     },
 
-    roundStarted: "Runde {round} beginnt. Verderbnisgrenze {threshold}.",
-    roundEnded: "Runde {round} verloren bei Welle {wave}: Verderbnis {blight}/{threshold}. {fear} Furcht gebucht.",
+    roundStarted: "Runde {round} beginnt. Ödnisgrenze {threshold}.",
+    roundEnded: "Runde {round} verloren bei Welle {wave}: Ödnis {blight}/{threshold}. {fear} Furcht gebucht.",
     waveResolved: "Welle {wave} aufgelöst.",
     waveMilestone: "Hochwassermarke bei Welle {wave}: +{fear} Furcht.",
     waveIncoming: "Invasorenleiste - Bauen: {build}, Entdecken: {discover}.",
     dahanAttackResolved: "Dahan greifen in {land} an: {damage} Schaden, {defeated} Invasoren besiegt.",
     dahanAttackNoTargets: "Dahan-Angriff: kein Gebiet mit Invasoren und Dahan.",
     dahanFell: "{count} Dahan fallen in {land}. Noch {left} übrig.",
-    blightGained: "Verderbnis in {land}: +{amount}. Gesamt {total}/{threshold}.",
+    blightGained: "Ödnis in {land}: +{amount}. Gesamt {total}/{threshold}.",
     buildNothing: "Bauen: noch kein Gebiet auf der Leiste.",
     buildNoInvaders: "Bauen in {land}: keine Invasoren, nichts wird gebaut.",
     buildResolved: "Bauen in {land}: +1 {unit}.",
@@ -523,12 +529,12 @@ const I18N = {
     abilityCancelled: "{ability} abgebrochen.",
     abilityNoTarget: "{ability} findet kein gültiges Ziel. Abklingzeit läuft nicht.",
     abilityIllegalTarget: "{land} ist kein gültiges Ziel für {ability}.",
-    boonResolved: "Boon of Vigor: +{amount} Energie.",
-    pushResolved: "{ability}: {total} Einheiten von {from} nach {to} geschoben.",
+    boonResolved: "Energieschub: +{amount} Energie.",
+    pushResolved: "{ability}: {total} Einheiten von {from} nach {to} verschoben.",
     seaResolved: "{ability}: {total} Einheiten aus {land} ins Meer gespült.",
     damageResolved: "{ability} in {land}: {damage} Schaden, {defeated} Invasoren besiegt.",
     damageEachResolved: "{ability} in {land}: {damage} Schaden auf jeden Invasor, {defeated} besiegt.",
-    riversBountyResolved: "River's Bounty: +{amount} Dahan in {land}. Jetzt {total} dort.",
+    riversBountyResolved: "Fruchtbarkeit des Flusses: +{amount} Dahan in {land}. Jetzt {total} dort.",
 
     abilityUnlocked: "{ability} freigeschaltet für {cost} Energie.",
     abilityUnlockTooExpensive: "{ability} kostet {cost} Energie. Du hast {energy}.",

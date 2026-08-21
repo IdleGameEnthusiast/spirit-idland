@@ -37,6 +37,18 @@ island board, and the between-round shop.
   and stays fully interactive: `0x` is the brake on a running fast-forward and has to remain
   pressable, and the button the player presses has to be the one that looks pressed after.
 
+- **The German strings use Spirit Island's published German vocabulary, not a fresh
+  translation.** Where the board game has a printed word, `i18n.js` uses that word: Blight is
+  **Ödnis** (never "Verderbnis"), Explorer/Town/City are **Entdecker/Dorf/Stadt**, Push is
+  **verschieben**, Defend is **verteidigen**, a unit's health is its **Abwehrkraft**, a power
+  card is a **Fähigkeitenkarte**, and an Innate Power is a **Permanente Fähigkeit**. The
+  spirit and its kit carry their printed card names — Sonnengenährter Fluss, and Energieschub
+  / Fruchtbarkeit des Flusses / Überschwemmung / Fortreißende Wasser for the four starting
+  cards. The reason is not pedantry: a player who knows the board game should be able to read
+  a log line here without translating it back through English first. The seven power cards are
+  real Spirit Island cards too, but only *Beschleunigte Fäulnis* has a confirmed German name;
+  the other six carry placeholders and say so in a comment above them.
+
 ## Required Screen Sections
 
 1. Round HUD — laid over the island's top edge, not in a panel of its own

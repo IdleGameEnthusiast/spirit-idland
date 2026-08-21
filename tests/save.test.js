@@ -327,11 +327,11 @@
   // umlaut in the export, and the damage would only show up on the import.
   test("export: German log lines survive the encoding intact", () => {
     const { state } = newGame();
-    engine.addLog(state, "Verderbnis über die Küste, Dörfer zerstört");
+    engine.addLog(state, "Ödnis über die Küste, Dörfer zerstört");
 
     // Contains rather than equals: addLog stamps the time onto the front of every line.
     const loaded = engine.importSave(engine.exportSave(state)).state;
-    assert(loaded._log[0].includes("Verderbnis über die Küste, Dörfer zerstört"), `umlauts intact: ${loaded._log[0]}`);
+    assert(loaded._log[0].includes("Ödnis über die Küste, Dörfer zerstört"), `umlauts intact: ${loaded._log[0]}`);
   });
 
   test("import: an edited file is refused rather than loaded", () => {
