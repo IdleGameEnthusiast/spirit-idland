@@ -245,6 +245,96 @@ function buildChipText(state, landId) {
   return template(t.buildChip, { unit: unitLabelOne(state, built) });
 }
 
+/* ------------------------------------------------------------------ *
+ * The legend (06-ui-contract.md#the-legend)                        *
+ *                                                                      *
+ * The one thing on the page that explains a rule rather than reporting  *
+ * a number, and the land panel's resting face: it stands there whenever  *
+ * no land is selected, which on a fresh game is from the first frame.    *
+ *                                                                       *
+ * Every figure in it is read out of state through the same helpers the   *
+ * board reads, so the explanation and the thing explained cannot drift.  *
+ * An Invader's damage climbs here on exactly the wave it climbs on the   *
+ * chip, and the strike interval is quoted off the Fear actually poured   *
+ * into it. Nothing here restates *when* those numbers grow: the          *
+ * escalation ladder is two inches away and owns that.                    *
+ *                                                                       *
+ * Data only, like the rest of this file. `glyph` names a token, not a    *
+ * sprite - ui.js owns the map from one to the other - and a null glyph   *
+ * is a row about a rule rather than about a piece.                       *
+ * ------------------------------------------------------------------ */
+function legendRows(state) {
+  const t = locale(state);
+  const dahan = unitStats(state, "dahan");
+  const floor = pctText(BLIGHT_FLOOR_FRACTION);
+
+  const invaders = INVADER_TYPES.map((type) => {
+    const stats = unitStats(state, type);
+    return {
+      glyph: type,
+      term: unitLabelOne(state, type),
+      note: template(t.legendUnitNote, { damage: stats.damage, health: stats.health })
+    };
+  });
+
+  return [
+    { label: t.legendInvadersLabel, rows: invaders },
+    {
+      label: t.legendFightLabel,
+      rows: [
+        {
+          glyph: "blight",
+          term: t.legendBlightTerm,
+          note: template(t.legendBlightNote, {
+            rate: pctText(BLIGHT_PER_DAMAGE_SECOND),
+            floor,
+            threshold: state.round.blightThreshold
+          })
+        },
+        {
+          glyph: "dahan",
+          term: t.dahanLabel,
+          note: template(t.legendDahanNote, {
+            damage: dahan.damage,
+            health: dahan.health,
+            rate: pctText(DAHAN_LOSS_PER_DAMAGE_SECOND)
+          })
+        },
+        {
+          glyph: "axe",
+          term: t.legendStrikeTerm,
+          // Through the speed dial, like every other duration the player is watching tick -
+          // the strike bar on the chips is the thing this sentence is about.
+          note: template(t.legendStrikeNote, {
+            seconds: dialSecondsText(state, roundDahanAttackInterval(state)),
+            damage: dahanAttackDamage(state)
+          })
+        },
+        {
+          glyph: "shield",
+          term: t.legendWardTerm,
+          note: template(t.legendWardNote, { floor })
+        },
+        { glyph: null, term: t.legendBarsTerm, note: t.legendBarsNote }
+      ]
+    },
+    {
+      // The three phases in the order resolveWave runs them, which is the whole point of the
+      // block: a player reading only the Build slot cannot see that the track slides.
+      label: t.legendWaveLabel,
+      rows: [
+        { glyph: null, term: t.buildWord, note: t.legendBuildNote },
+        {
+          glyph: null,
+          term: t.legendDiscoverTerm,
+          note: template(t.legendDiscoverNote, { wave: EXPLORE_UNRESTRICTED_FROM_WAVE })
+        },
+        { glyph: null, term: t.legendTrackTerm, note: t.legendTrackNote }
+      ]
+    }
+  ];
+}
+
 function upgradeName(state, upgradeId) {
   const t = locale(state);
   return (t.upgradeNames && t.upgradeNames[upgradeId]) || upgradeId;

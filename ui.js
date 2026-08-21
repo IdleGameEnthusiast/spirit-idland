@@ -136,7 +136,12 @@ const renderCache = {
   // `cardScrollId` is the card the bar should bring into view once the reveal has finished
   // saying its piece; see patchCardReveal for why it waits.
   cardRevealAt: null,
-  cardScrollId: null
+  cardScrollId: null,
+  // The legend's own memory, kept apart from `map`. The land panel is rebuilt whenever
+  // anything on the board moves, which is many times a second; the legend is prose the player
+  // is in the middle of reading, and its figures move about once a round. Nulled on the way
+  // into the per-land face, so coming back out of it draws the legend again.
+  legend: null
 };
 
 /* ------------------------------------------------------------------ *
@@ -744,17 +749,131 @@ function patchLandMeters(state) {
  * Land detail panel                                                    *
  * ------------------------------------------------------------------ */
 
+// The legend speaks for every land at once, so it borrows no land's hue: the panel's accent
+// goes to the same slate the mountains wear, which is the one terrain colour that reads as
+// "no terrain in particular".
+const LEGEND_RGB = "171, 184, 196";
+
+// What the legend is actually made of, so it is rebuilt when its own figures move and not
+// when the board does. Built from the rendered strings rather than from the state fields
+// behind them: a rung that changes no printed number is not a change the reader can see, and
+// this way nothing has to remember which fields legendRows() happens to read.
+//
+// That last property is what makes the speed dial work here. The strike interval is quoted
+// through dialSecondsText, so moving the dial rewrites a line of the legend - and the dial is
+// in no other signature on the page. Reading the finished strings catches it without this
+// function having to know that dialSecondsText exists.
+function legendSignature(state) {
+  return [currentLang(state), state.ui.legendCollapsed === true ? "shut" : "open"]
+    .concat(legendRows(state).map((block) => block.rows.map((row) => row.note).join("|")))
+    .join("~");
+}
+
+// A legend glyph, by the token name the engine gave it. Three of these are not units and so
+// are not in UNIT_GLYPH: they are the marks a land wears rather than the pieces standing on
+// it, and each carries the colour it wears on the board - the whole point of the legend is
+// that a symbol here and the same symbol out there are the same symbol.
+const LEGEND_GLYPH = {
+  explorers: "si-explorer",
+  towns: "si-town",
+  cities: "si-city",
+  dahan: "si-dahan",
+  blight: "si-blight",
+  shield: "si-shield",
+  axe: "si-axe"
+};
+
+// A row with no glyph still gets the cell, empty: the prose in every row lines up under one
+// left edge, and a rule about the bars is not less of a row than a piece is.
+function legendGlyphCell(glyph) {
+  const sprite = LEGEND_GLYPH[glyph];
+  if (!sprite) return `<span class="legend-glyph"></span>`;
+  const paint = UNIT_GLYPH[glyph] ? `unit-${glyph}` : `glyph-${glyph}`;
+  return `<span class="legend-glyph ${paint}"><svg class="tok" aria-hidden="true" focusable="false"><use href="#${sprite}"/></svg></span>`;
+}
+
+/* The panel's resting face, and what a player who has never clicked a land sees from the
+ * first frame - a fresh save selects nothing.
+ *
+ * It explains rather than reports, which makes it the one thing on the page that could
+ * disagree with the game. It cannot: every figure in it comes out of legendRows(), which
+ * reads the same helpers the chips read. Nothing is written down here. */
+function renderLegend(state) {
+  const t = locale(state);
+  const shut = state.ui.legendCollapsed === true;
+  const blocks = shut ? "" : legendRows(state).map((block) => `
+    <div class="detail-block legend-block">
+      <div class="detail-label">${block.label}</div>
+      ${block.rows.map((row) => `
+        <div class="legend-row">
+          ${legendGlyphCell(row.glyph)}
+          <p class="legend-text"><strong class="legend-term">${row.term}</strong>${row.note}</p>
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+
+  // No terrain to tint by, so the panel's own accent is neutral here - the legend is about
+  // every land at once, and borrowing one land's hue would say otherwise.
+  dom.landDetail.style.setProperty("--terrain-rgb", LEGEND_RGB);
+  // The head is the handle, the way the shop's sold-out divider is: the whole bar folds the
+  // thing under it, so the target is the width of the panel rather than one small caret. Shut,
+  // the panel is that bar and nothing else - it keeps naming itself, which is the difference
+  // between a folded panel and a panel that has vanished.
+  dom.landDetail.innerHTML = `
+    <button type="button" class="detail-head legend-head" data-fold="legend"
+            aria-expanded="${String(!shut)}" aria-controls="legendBody"
+            title="${shut ? t.legendFoldShutHint : t.legendFoldOpenHint}">
+      <span class="upgrade-fold-caret" aria-hidden="true"></span>
+      <span class="detail-terrain">${t.legendTitle}</span>
+      <span class="detail-tag">${t.legendTag}</span>
+    </button>
+    <div id="legendBody" class="detail-body legend-body" ${shut ? "hidden" : ""}>${blocks}</div>
+    ${shut ? "" : `<p class="legend-hint">${t.legendHint}</p>`}
+  `;
+}
+
+/* Drawn every frame rather than only when the board changes, unlike the per-land face beside
+ * it. Two of the legend's own inputs are in no map signature: the speed dial, which rewrites
+ * the strike interval through dialSecondsText, and the fold. At 0x neither the board nor the
+ * clock moves, so nothing else would ever carry the change in - the panel would sit quoting
+ * the reading from a dial position the player has since left.
+ *
+ * Cheap enough to run unconditionally: it early-outs on its own signature, and builds nothing
+ * until one of the printed strings actually differs. */
+function renderLegendIfChanged(state) {
+  if (isLandId(state.ui.selectedLand)) return;
+  const nextLegendSig = legendSignature(state);
+  if (renderCache.legend === nextLegendSig) return;
+  renderLegend(state);
+  renderCache.legend = nextLegendSig;
+}
+
+// Folding, and the one writer the caret, the `hidden` and the saved flag all go through - the
+// same arrangement setAutoBuyOpen has, and for the same reason: three copies of one boolean
+// that are written in three places will eventually disagree.
+function setLegendCollapsed(state, collapsed) {
+  state.ui.legendCollapsed = collapsed === true;
+  updateUI(state);
+  persist();
+}
+
 function renderLandDetail(state) {
   // Unlike the map ring - which always has something to highlight, wave target or not - the
-  // panel now has an off state: clicking the selected land again clears the raw selection, and
+  // panel has an off state: clicking the selected land again clears the raw selection, and
   // that is the one signal this reads. effectiveSelectedLand would paper back over it with the
   // same fallback the ring uses, which is exactly what must not happen here.
-  if (!isLandId(state.ui.selectedLand)) {
-    dom.landDetail.hidden = true;
-    dom.landDetail.innerHTML = "";
-    return;
-  }
+  //
+  // Off no longer means empty. The panel keeps its space and shows the legend instead, which
+  // is why the whole thing is worth the room it takes: the board is the one place a rule can
+  // be explained beside the thing it governs, and a hidden panel explained nothing to the
+  // player who most needed it.
   dom.landDetail.hidden = false;
+  // The legend face is renderLegendIfChanged's, which runs every frame - see the note there.
+  // This one only ever draws the per-land face, and clears the legend's memory on the way past
+  // so that deselecting redraws it rather than finding a signature that still matches.
+  if (!isLandId(state.ui.selectedLand)) return;
+  renderCache.legend = null;
 
   const t = locale(state);
   const landId = state.ui.selectedLand;
@@ -2620,6 +2739,10 @@ function updateUI(state) {
     renderLandDetail(state);
     renderCache.map = nextMapSig;
   }
+  // Always, and after the block above: the legend answers to the speed dial and to its own
+  // fold, neither of which is in the map's signature, and at 0x nothing in that signature ever
+  // moves again. Ahead of patchLandMeters, which patches into whichever face is now standing.
+  renderLegendIfChanged(state);
   // Always, even when the board itself did not change: the bars and their countdowns move
   // between renders, and that motion is the only thing telling the player time is passing.
   patchLandMeters(state);
@@ -2979,6 +3102,13 @@ dom.islandSvg.addEventListener("focusout", () => markLandFocus(null));
 dom.landDetail.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  // The legend's fold, checked before the neighbour jump: the two never share a panel face,
+  // but the fold is the one control here that can be reached with no land selected at all.
+  if (target.closest('button[data-fold="legend"]')) {
+    setLegendCollapsed(state, state.ui.legendCollapsed !== true);
+    return;
+  }
+
   const jump = target.closest("button[data-goto-land]");
   if (!jump) return;
   selectLand(state, jump.getAttribute("data-goto-land") || "");

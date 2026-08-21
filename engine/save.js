@@ -121,6 +121,11 @@ function createInitialState() {
       // with the other preferences because that is what it is - and because the round's start
       // closes it (see startNextRound), which is a thing the engine has to be able to do.
       autoBuyOpen: false,
+      // Whether the land panel's legend is folded away. Disclosure like autoBuyOpen above it,
+      // and a preference in the same sense: it is how the player has chosen to read the page.
+      // Open by default, because the one player it exists for has not read it yet - and unlike
+      // the auto-buy sheet, nothing in a round's start folds it back.
+      legendCollapsed: false,
       // The playtest code, once redeemed. It sits with the other settings rather than in meta
       // because it is the same kind of thing: how the game is being read, not what has been
       // earned inside it. Nothing in the rules reads it - see the playtest section.
@@ -321,6 +326,9 @@ function normalizeState(raw) {
   merged.ui.autoBuy.focusAbilities = focusAbilities;
 
   merged.ui.autoBuyOpen = merged.ui.autoBuyOpen === true;
+  // `=== true` rather than `!== false`, so a save written before the fold existed loads with
+  // the legend open. That is the right default for the only save that can be missing the key.
+  merged.ui.legendCollapsed = merged.ui.legendCollapsed === true;
   merged.ui.selectedLand = isLandId(merged.ui.selectedLand) ? merged.ui.selectedLand : null;
   merged.ui.defeatFx = normalizeDefeatFx(merged.ui.defeatFx);
   merged.ui.blightFx = normalizeBlightFx(merged.ui.blightFx);

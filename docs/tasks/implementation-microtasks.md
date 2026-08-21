@@ -1312,7 +1312,6 @@ is not a line down here.
 ### UI
 
 - give the player better feedback: invader/Dahan deaths, end of round, Fear/Energy generated
-- rework or toss the land info panel
 
 ### Balance questions
 

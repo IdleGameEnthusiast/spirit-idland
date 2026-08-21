@@ -62,6 +62,7 @@ Define the canonical save shape for the round-based redesign.
       "focusAbilities": {}
     },
     "autoBuyOpen": false,
+    "legendCollapsed": false,
     "playtest": false,
     "defeatFx": null,
     "blightFx": null,
@@ -312,6 +313,12 @@ Fields the first draft of this contract did not have. Each earns its place:
   but it lives in the state because the **engine** closes it: `startRound` sets it false, so a
   round begun by `auto_start_round` — which no click ever touches — folds it away too. See
   [06-ui-contract.md](./06-ui-contract.md#the-auto-buy-sheet).
+- **`ui.legendCollapsed`** — whether the land panel's legend is folded away. Disclosure like
+  `ui.autoBuyOpen` above it, with one difference: no engine path ever writes it. The auto-buy
+  sheet is folded away by `startRound`; the legend is folded only by the player, and stays that
+  way across rounds and reloads. Normalised with `=== true`, so the one save that can be missing
+  the key — one written before the fold existed — loads with the legend open. See
+  [06-ui-contract.md](./06-ui-contract.md#the-legend).
 - **`ui.playtest`** — whether the playtest code has been redeemed, and with it the only thing
   in the state no rule reads: it widens the speed dial, reveals two buttons that hand out
   currency and one readout of the cycle's Fear, and nothing else in the engine branches on it.

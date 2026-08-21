@@ -2889,6 +2889,113 @@ button.reset {
   color: var(--accent-pressure);
 }
 
+/* ---------- the legend ---------- */
+
+/* The head, made into the handle that folds the panel under it - the same move the shop's
+   sold-out divider makes, stripped back to the bar it already was so the panel keeps its shape
+   whether the legend is open or shut. Only the caret and the pointer say it can be clicked. */
+.legend-head {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* .detail-head sits its children on a shared baseline, which a zero-height triangle has no
+     useful place on. */
+  align-items: center;
+}
+
+/* Shut, the panel is this bar and nothing else, so there is nothing left for a rule to divide
+   it from. */
+.legend-head[aria-expanded="false"] { border-bottom: 0; }
+
+.legend-head:hover { color: var(--ink-0); }
+.legend-head:focus-visible { outline: 2px solid #8ed3e6; outline-offset: -2px; }
+
+/* Same trap the ward row fell into: `display: grid` on .detail-body outranks the browser's own
+   rule for [hidden], so the folded legend would stay on screen without this. */
+.detail-body[hidden] { display: none; }
+
+/* The land panel's resting face: prose rather than figures, and the only place on the page
+   that says what a symbol means. It reuses the panel's own vocabulary - .detail-head,
+   .detail-block, .detail-label - because it is the same card wearing a different face, and a
+   second set of names for the same chrome would drift from it.
+
+   Three blocks across the board's width rather than one long column: the panel sits under a
+   760px map and a single column of it would push the invader track off the fold. The tracks
+   collapse to one on a narrow screen, where the board has already gone full-width. */
+.legend-body {
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.7rem 1.3rem;
+  align-items: start;
+  /* .detail-body's own bottom padding, given up to the hint line that follows it here. */
+  padding-bottom: 0.3rem;
+}
+
+/* Grid children default to min-content width, which lets one long word in a note widen the
+   whole track and squeeze the ones beside it. */
+.legend-block { min-width: 0; }
+
+.legend-row {
+  display: grid;
+  grid-template-columns: 1.15rem minmax(0, 1fr);
+  gap: 0.4rem;
+  padding: 0.18rem 0;
+  align-items: start;
+}
+
+/* Boxed to the height of one line of the prose beside it, so the glyph sits on the first
+   line rather than centring itself against a three-line note. */
+.legend-glyph {
+  display: grid;
+  place-items: center;
+  height: 1.08rem;
+}
+
+.legend-glyph .tok {
+  width: 0.92rem;
+  height: 0.92rem;
+  vertical-align: 0;
+}
+
+/* The three marks that are not units. Each takes the colour it already wears on the board -
+   the whole claim of a legend is that the symbol here and the symbol out there are one
+   symbol, and a recoloured copy would quietly break it. */
+.glyph-blight { color: #aab2b5; }
+.glyph-shield { color: var(--accent-calm); }
+.glyph-axe { color: var(--dahan-ink); }
+
+.legend-text {
+  margin: 0;
+  font-size: 0.735rem;
+  line-height: 1.45;
+  color: rgba(212, 207, 190, 0.8);
+}
+
+.legend-term {
+  color: var(--ink-1);
+  font-weight: 700;
+}
+
+/* In the stylesheet rather than in i18n.js: it is punctuation between two fields, not a
+   translatable string, and every language here already writes this dash the same way. */
+.legend-term::after {
+  content: " - ";
+  font-weight: 400;
+  color: rgba(212, 207, 190, 0.45);
+}
+
+.legend-hint {
+  margin: 0;
+  padding: 0 0.6rem 0.6rem;
+  font-size: 0.68rem;
+  font-style: italic;
+  color: rgba(212, 207, 190, 0.5);
+}
+
 @keyframes defeat-pop {
   0% { opacity: 0; transform: translateY(4px) scale(0.96); }
   20% { opacity: 1; transform: translateY(0) scale(1); }

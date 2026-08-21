@@ -433,6 +433,36 @@ const I18N = {
     dahanBarLabel: "Dahan-Gesundheit",
     invaderBarLabel: "Gesundheit",
 
+    // Die Zeichenerklärung: was das Gebietsfeld zeigt, solange kein Land ausgewählt ist.
+    // Jede Zahl darin kommt aus dem Zustand, damit die Erklärung nie etwas anderes behauptet
+    // als das Brett daneben tut.
+    legendTitle: "Zeichenerklärung",
+    legendTag: "Karte",
+    legendHint: "Klicke ein Gebiet an, um seine eigenen Zahlen zu sehen.",
+    // Der Griff sagt, was ein Klick tut, nicht wie es gerade steht - das steht im Pfeil.
+    legendFoldOpenHint: "Zeichenerklärung einklappen",
+    legendFoldShutHint: "Zeichenerklärung ausklappen",
+    legendInvadersLabel: "Invasoren",
+    legendFightLabel: "Der Kampf",
+    legendWaveLabel: "Die Welle",
+    legendUnitNote: "{damage} Schaden, {health} Leben.",
+    // Der wichtigste Satz der ganzen Erklärung, und deshalb der erste im Block: Es gibt keine
+    // Angriffsphase, auf die man warten könnte.
+    legendBlightTerm: "Verderbnis",
+    legendBlightNote: "Es gibt keine Angriffsphase. Jedes Gebiet, in dem Invasoren stehen, wird in jedem Augenblick angegriffen. Je Punkt Schaden, den die Dahan nicht wegnehmen, wächst die Verderbnis um {rate}% pro Sekunde. {floor}% des Angriffs kommen immer durch, egal wie viele Dahan dort stehen - ein gehaltenes Gebiet sickert. Bei {threshold} endet die Runde.",
+    legendDahanNote: "Deine Leute, aus Holz statt aus weißem Kunststoff. Solange sie stehen, nehmen sie je {damage} Schaden vom Angriff ihres Gebiets weg. {health} Leben, und sie fallen um {rate}% pro Punkt durchkommenden Schaden und Sekunde - gleich schnell, wie viele auch dort stehen.",
+    legendStrikeTerm: "Dahan-Angriff",
+    legendStrikeNote: "Alle {seconds}s schlagen alle Dahan zu, je {damage} Schaden, in jedem Gebiet mit Invasoren. Eine eigene Uhr, nicht die der Welle - deshalb zählt die Leiste oben zwei Zeiten.",
+    legendWardTerm: "Schutzwall",
+    legendWardNote: "Fängt so viel Angriff ab, wie er groß ist. Deckt er den ganzen Angriff, kommt gar keine Verderbnis durch - als Einziges, denn er schlägt auch die {floor}% oben. Er vergeht eine Welle, nachdem er zum ersten Mal etwas bewirkt hat.",
+    legendBarsTerm: "Die Balken",
+    legendBarsNote: "Zwei je Gebiet: die Verderbnis, die sich zum nächsten Fleck füllt, und die Verluste der Dahan. Beide laufen weiter, auch wenn sich die Zahl noch nicht bewegt hat - erst der volle Balken kostet eine Figur. Der Ring auf einer Figur zeigt, wie viel Leben ihr fehlt.",
+    legendBuildNote: "Zuerst. Jedes Gebiet des Bau-Geländes, in dem Invasoren stehen, bekommt ein Dorf - oder eine Stadt, wenn dort schon mehr Dörfer als Städte sind. Leere Gebiete bauen nichts.",
+    legendDiscoverTerm: "Entdecken",
+    legendDiscoverNote: "Danach. Ein Entdecker in jedes Gebiet des Entdecken-Geländes, das an der Küste liegt oder an ein Dorf oder eine Stadt grenzt. Ab Welle {wave} in jedes Gebiet.",
+    legendTrackTerm: "Die Leiste rückt",
+    legendTrackNote: "Zuletzt. Was gerade entdeckt wurde, ist das Bau-Gelände der nächsten Welle - das Entdecken-Feld zeigt also schon, wo als Nächstes gebaut wird.",
+
     invaderTrackTitle: "Invasorenleiste",
     buildLabel: "Bauen:",
     discoverLabel: "Entdecken:",
@@ -927,6 +957,36 @@ const I18N = {
     blightBarLabel: "Blight",
     dahanBarLabel: "Dahan health",
     invaderBarLabel: "Health",
+
+    // The legend: what the land panel shows while no land is selected. Every number in it is
+    // read out of state, so the explanation can never claim something other than what the
+    // board beside it is doing.
+    legendTitle: "Legend",
+    legendTag: "Map",
+    legendHint: "Click a land for its own numbers.",
+    // The handle says what a click will do, not how it is set - the caret says that.
+    legendFoldOpenHint: "Fold the legend away",
+    legendFoldShutHint: "Open the legend",
+    legendInvadersLabel: "Invaders",
+    legendFightLabel: "The fight",
+    legendWaveLabel: "The wave",
+    legendUnitNote: "{damage} damage, {health} health.",
+    // The most important sentence in the whole legend, and so the first one in the block:
+    // there is no attack phase to wait for.
+    legendBlightTerm: "Blight",
+    legendBlightNote: "There is no attack phase. Every land holding invaders is under attack every moment. For each point of damage the Dahan do not cancel, Blight grows {rate}% per second. {floor}% of the attack always gets through, however many Dahan stand there - a held land still seeps. At {threshold} the round ends.",
+    legendDahanNote: "Your people, in wood rather than white plastic. While they stand, each cancels {damage} damage from their land's attack. {health} health, and they fall at {rate}% per point of damage that gets through per second - at the same rate however many are standing there.",
+    legendStrikeTerm: "Dahan attack",
+    legendStrikeNote: "Every {seconds}s all Dahan strike for {damage} each, in every land holding invaders. Its own clock, not the wave's - which is why the strip above counts two.",
+    legendWardTerm: "Ward",
+    legendWardNote: "Absorbs as much attack as it is worth. Cover the whole attack and no Blight gets through at all - the only thing that does, because it beats the {floor}% above. It lapses one wave after the first moment it did anything.",
+    legendBarsTerm: "The bars",
+    legendBarsNote: "Two per land: Blight filling toward the next splotch, and the Dahan's casualties. Both keep running while the count still reads the same - only a full bar costs a piece. The ring on a piece shows the health it has lost.",
+    legendBuildNote: "First. Every land of the Build terrain holding invaders gains a Town - or a City if it already has more towns than cities. Empty lands build nothing.",
+    legendDiscoverTerm: "Discover",
+    legendDiscoverNote: "Then. One Explorer into each land of the Discover terrain that is coastal or borders a town or city. From wave {wave} on, into every land.",
+    legendTrackTerm: "The track slides",
+    legendTrackNote: "Last. What was just discovered becomes the next wave's Build terrain - so the Discover slot already shows where the building happens next.",
 
     invaderTrackTitle: "Invader track",
     buildLabel: "Build:",

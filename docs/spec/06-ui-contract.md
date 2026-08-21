@@ -265,6 +265,8 @@ island board, and the between-round shop.
   while there is a ward to report — must hide in **CSS as well as in the attribute**: a
   `display: flex` row beats the browser's own rule for `[hidden]`, which is what had the panel
   printing "Defense here: 0" on all eight lands
+- **With no land selected the same panel shows the legend** — see
+  [The Legend](#the-legend) below. The panel has no empty state any more
 
 4. The round controls — a bare row in the rail, above the shop panel
 - The two controls that answer *when does the next round begin*: **a clear "Start Next Round"
@@ -871,6 +873,65 @@ Two clarifications the implementation forced:
   is the only question on screen at that moment, and a second highlight competing with it
   would blunt exactly the teaching that dimming is for. The selection ring is drawn
   independently of the state, so the selected land never disappears.
+
+## The Legend
+
+The land panel's resting face, shown whenever no land is selected — which on a fresh save is
+from the first frame, because nothing is selected until the player clicks. It is the one thing
+on the page that explains a **rule** rather than reporting a number, and the only place the
+board's symbols are named.
+
+It exists because three of the game's rules are invisible on the board and undeducible from
+it: that damage is **continuous and has no phase**, that a land the Dahan fully hold **still
+seeps** (`BLIGHT_FLOOR_FRACTION`), and that the invader track **slides**, so the Discover slot
+is a preview of the next wave's Build. A player can watch the island for ten minutes and infer
+none of the three.
+
+### Rules
+
+- **Every figure in it is read out of state**, through the same helpers the chips read
+  (`unitStats`, `roundDahanAttackInterval`, `dahanAttackDamage`, `round.blightThreshold`).
+  The legend explains the thing beside it, so it must not be able to disagree with it: an
+  Invader's damage climbs here on exactly the wave it climbs on the chip. Nothing in the
+  legend is a written-down constant.
+- **It does not restate a rule another panel owns.** The escalation ladder is two inches away
+  and says *when* the numbers grow, so the legend only says what they are now.
+- **`legendRows()` is data, not markup.** It returns blocks of `{ glyph, term, note }`, where
+  `glyph` names a *token* — `blight`, `shield`, `axe`, or an invader/Dahan type — and never a
+  sprite id. `ui.js` owns the map from token to sprite, which is what keeps the engine free of
+  the DOM. A `null` glyph is a row about a rule rather than about a piece.
+- **A symbol in the legend wears the colour it wears on the board.** The ward is
+  `--accent-calm`, the strike axe `--dahan-ink`, the Blight splotch the same grey as the chip
+  badge. The whole claim of a legend is that the two are one symbol; a recoloured copy breaks
+  it silently.
+- **It is cached on its own signature, not on the map's.** The land panel rebuilds whenever
+  anything on the board moves, many times a second; the legend is prose the player is in the
+  middle of reading and its figures move about once a round. The signature is built from the
+  rendered notes themselves, so a change that alters no printed word triggers no rebuild.
+- **It is checked every frame, not only when the board changes.** Two of its inputs are in no
+  map signature: the **speed dial**, which rewrites the strike interval through
+  `dialSecondsText` exactly as every other watched duration on the page is rewritten, and the
+  fold. At `0x` nothing in the map signature will ever move again, so a legend drawn only on
+  board changes would sit quoting a dial position the player has since left. Reading the
+  finished strings for the signature is what catches this without the check having to know that
+  `dialSecondsText` is involved.
+- **It folds.** The head bar is the handle — `aria-expanded`, the same caret the shop's
+  sold-out divider uses — and shut, the panel is that bar and nothing else. It keeps naming
+  itself: a folded panel and a vanished one must not look the same. The state is
+  `ui.legendCollapsed`, it persists, and **no engine path writes it**: unlike the auto-buy
+  sheet, which `startRound` folds away, this one is folded only by the player. `.detail-body`
+  needs `display: none` under `[hidden]` for the fold to take, the same trap the ward row fell
+  into.
+
+### Contents
+
+Three blocks, in the order a round teaches them:
+
+| Block | Rows |
+| --- | --- |
+| Invaders | Explorer, Town, City — damage and health, live |
+| The fight | Blight (no attack phase, the floor, the threshold), Dahan, the strike clock, the ward, the two bars |
+| The wave | Build, Discover, and the track sliding — in the order `resolveWave` runs them |
 
 ## Live Update Rules
 

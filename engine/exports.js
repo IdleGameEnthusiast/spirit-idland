@@ -127,6 +127,7 @@ const ENGINE_EXPORTS = {
   pressureChipText,
   pressureDetailText,
   buildChipText,
+  legendRows,
   upgradeName,
   upgradeText,
   upgradeStatusText,
